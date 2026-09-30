@@ -15,9 +15,11 @@ CRT0      := $(BSP_DIR)/crt0.S
 QEMU_LINKER := $(BSP_DIR)/linker.ld
 HW_LINKER   := $(BSP_DIR)/hardware.ld
 
-ARCH_FLAGS    := -march=rv32i -mabi=ilp32
+ARCH          ?= rv32im
+ABI           ?= ilp32
+ARCH_FLAGS    := -march=$(ARCH) -mabi=$(ABI)
 COMMON_CFLAGS := $(ARCH_FLAGS) -nostdlib -nostartfiles -fno-builtin -I$(BSP_DIR) -O2 -Wall
-LDFLAGS    := -T $(LINKER) -m elf32lriscv -nostdlib
+LDFLAGS       := -T $(LINKER) -m elf32lriscv -nostdlib
 
 RTL_SRCS := hw/rtl/control.sv \
             hw/rtl/alu_control.sv \
@@ -27,6 +29,7 @@ RTL_SRCS := hw/rtl/control.sv \
             hw/rtl/alu.sv \
             hw/rtl/branch_unit.sv \
             hw/rtl/datapath.sv \
+			hw/rtl/multiplier.sv \
             hw/rtl/cpu.sv
 
 TB_CPU_BIN := hw/sim/sim_tb_cpu.out
@@ -135,6 +138,17 @@ sim-cpu: $(TB_CPU_BIN)
 # 例: make sim-prog PROG=hw/sim/prog_basic
 sim-prog: $(PROG).hex $(TB_CPU_BIN)
 	$(VVP) $(TB_CPU_BIN) +hex=$(PROG).hex
+
+sim-mandelbrot: sw/mandelbrot/mandelbrot.hex sw/mandelbrot/mandelbrot.hw.dump $(TB_CPU_BIN)
+	$(VVP) $(TB_CPU_BIN) +hex=sw/mandelbrot/mandelbrot.hex
+
+sim: $(TB_CPU_BIN)
+	@mkdir -p hw/sim
+	$(CC) $(COMMON_CFLAGS) -T $(HW_LINKER) $(if $(filter %.c,$(SRC)),$(CRT0)) $(SRC) -o hw/sim/test.hw.elf
+	$(OBJCOPY) -O binary hw/sim/test.hw.elf hw/sim/test.bin
+	python3 -c 'import sys, struct; data = open(sys.argv[1], "rb").read(); [print(f"{w:08x}") for (w,) in struct.iter_unpack("<I", data[:len(data) - (len(data) % 4)])]' hw/sim/test.bin > hw/sim/test.hex
+	$(OBJDUMP) -D -S hw/sim/test.hw.elf > hw/sim/test.hw.dump
+	$(VVP) $(TB_CPU_BIN) +hex=hw/sim/test.hex
 
 compiler:
 	$(MAKE) -C compiler

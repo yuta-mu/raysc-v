@@ -2,6 +2,7 @@
 
 module control(
     input  opcode_t      opcode,
+    input  logic [6:0]   funct7,
     output logic         branch_en,
     output logic         jump,
     output logic         mem_read,
@@ -30,8 +31,13 @@ module control(
                 reg_write  = 1'b1;
                 alu_src_a  = 1'b0; // rs1
                 alu_src_b  = 1'b0; // rs2
-                result_src = RESULT_ALU;
-                alu_op     = ALU_OP_RTYPE;
+                if (funct7 == 7'b0000001) begin
+                    result_src = RESULT_MDU;
+                    alu_op     = ALU_OP_ADD;
+                end else begin
+                    result_src = RESULT_ALU;
+                    alu_op     = ALU_OP_RTYPE;
+                end
             end
 
             OP_IMM: begin

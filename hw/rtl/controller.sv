@@ -3,7 +3,7 @@
 module controller (
     input  opcode_t      opcode,
     input  logic [2:0]   funct3,
-    input  logic         funct7_5,
+    input  logic [6:0]   funct7,
 
     // Controls to datapath
     output logic         branch_en,
@@ -21,6 +21,7 @@ module controller (
 
     control u_control (
         .opcode     (opcode),
+        .funct7     (funct7),
         .branch_en  (branch_en),
         .jump       (jump),
         .mem_read   (mem_read),
@@ -35,7 +36,7 @@ module controller (
     alu_control u_alu_control (
         .alu_op   (alu_op_mode),
         .funct3   (funct3),
-        .funct7_5 (funct7_5),
+        .funct7_5 (funct7[5]),
         .alu_ctrl (alu_op)
     );
 

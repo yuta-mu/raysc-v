@@ -33,6 +33,7 @@ module datapath (
     logic [31:0] alu_src_a_data;
     logic [31:0] alu_src_b_data;
     logic [31:0] alu_result;
+    logic [31:0] mul_result;
     logic [31:0] result_data;
     logic        branch_taken;
 
@@ -85,6 +86,13 @@ module datapath (
         .zero     ()
     );
 
+    multiplier u_multiplier (
+        .a      (rs1_data),
+        .b      (rs2_data),
+        .funct3 (funct3),
+        .result (mul_result)
+    );
+
     branch_unit u_branch_unit (
         .rs1_data     (rs1_data),
         .rs2_data     (rs2_data),
@@ -95,6 +103,9 @@ module datapath (
 
     // Memory & Writeback
     assign mem_addr  = alu_result;
+
+    logic [1:0] byte_offset;
+    assign byte_offset = mem_addr[1:0];
 
     logic [7:0]  rs2_b;
     logic [15:0] rs2_h;
@@ -144,9 +155,6 @@ module datapath (
     logic [7:0]  selected_byte;
     logic [15:0] selected_half;
 
-    logic [1:0] byte_offset;
-    assign byte_offset = mem_addr[1:0];
-
     always_comb begin
         case (byte_offset)
             2'b00:   selected_byte = rdata_b0;
@@ -182,6 +190,7 @@ module datapath (
             RESULT_MEM: result_data = load_data;
             RESULT_PC4: result_data = pc_plus4;
             RESULT_IMM: result_data = imm;
+            RESULT_MDU: result_data = mul_result;
             default:    result_data = alu_result;
         endcase
     end

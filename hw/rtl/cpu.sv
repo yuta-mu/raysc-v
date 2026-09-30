@@ -29,16 +29,16 @@ module cpu (
     // Instruction fields for controller
     opcode_t     opcode;
     logic [2:0]  funct3;
-    logic        funct7_5;
+    logic [6:0]  funct7;
 
-    assign opcode   = opcode_t'(inst[6:0]);
-    assign funct3   = inst[14:12];
-    assign funct7_5 = inst[30];
+    assign opcode = opcode_t'(inst[6:0]);
+    assign funct3 = inst[14:12];
+    assign funct7 = inst[31:25];
 
     controller u_controller (
         .opcode     (opcode),
         .funct3     (funct3),
-        .funct7_5   (funct7_5),
+        .funct7     (funct7),
         .branch_en  (branch_en),
         .jump       (jump),
         .mem_read   (mem_read),
