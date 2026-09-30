@@ -13,3 +13,4 @@ module top;
     always #5 clk = ~clk;
     always @(posedge clk) count <= count + 1;
 endmodule
+
