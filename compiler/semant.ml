@@ -86,10 +86,6 @@ and type_stmt ast env =
                           raise (TypeErr "iprint requires int value")
           | CallProc ("return", [arg]) -> () (* result type should be checked *)
           | CallProc ("sprint", _) -> ()
-          | CallProc ("new", [VarExp (Var s)]) -> let entry = env s in 
-                    (match entry with
-                          VarEntry {ty=ty; _} -> check_array (actual_ty ty)
-                        | _ -> raise (No_such_symbol s))
           | CallProc (s, el) -> 
                     let _ = type_exp (CallFunc (s, el)) env in ()
           | Block (dl, _) -> check_redecl dl [] []

@@ -46,7 +46,7 @@ let epilogue = "\tmv sp, s0\n"
 (* エントリーポイントの頭 *)
 let header = ".section .text\n"
            ^ ".globl _start\n"
-           ^ ".equ STACK_TOP, 0x80050000\n"
+           ^ ".equ STACK_TOP, 0x80002000\n"
            ^ ".equ UART0_BASE, 0x10000000\n"
            ^ "_start:\n"
            ^ "\tli sp, STACK_TOP\n"
@@ -66,19 +66,19 @@ let iprint = "_iprint:\n"
            ^ "\tneg a0, a0\n"
            ^ "_iprepare_stack:\n"
            ^ "\taddi sp, sp, -1\n"
-           ^ "\tsw zero, 0(sp)\n"
+           ^ "\tsb zero, 0(sp)\n"
            ^ "_iconvert_loop:\n"
            ^ "\tremu t2, a0, t1\n"
            ^ "\tdivu a0, a0, t1\n"
            ^ "\taddi t2, t2, '0'\n"
            ^ "\taddi sp, sp, -1\n"
-           ^ "\tsw t2, 0(sp)\n"
+           ^ "\tsb t2, 0(sp)\n"
            ^ "\tbnez a0, _iconvert_loop\n"
            ^ "_iprint_loop:\n"
-           ^ "\tlw t1, 0(sp)\n"
+           ^ "\tlb t1, 0(sp)\n"
            ^ "\taddi sp, sp, 1\n"
            ^ "\tbeqz t1, _done\n"
-           ^ "\tsw t1, 0(t0)\n"
+           ^ "\tsb t1, 0(t0)\n"
            ^ "\tj _iprint_loop\n"
 (* sprintのフラグと文字出力コード *)
 let sprint_flag = ref false
@@ -149,13 +149,6 @@ and trans_stmt ast nest tenv env =
                               trans_exp arg nest env
                             ^ "\tlw a0, 0(sp)\n"
                             ^ "\taddi sp, sp, 4\n"
-                  | CallProc ("new", [VarExp v]) -> "" (*
-                        let size = calc_size (type_var v env) in
-                      sprintf "\tmovq $%d, %%rdi\n" size
-                            ^ "\tcallq malloc\n"
-                            ^ "\tpushq %rax\n"
-                            ^  trans_var v nest env
-                            ^  "\tpopq (%rax)\n"*)
                   (* 手続き呼出しのコード *)
                   | CallProc (s, el) -> 
                       let entry = env s in 
