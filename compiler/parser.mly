@@ -11,7 +11,7 @@ let parse_error msg =
 /* File parser.mly */
 %token <int> NUM
 %token <string> STR ID
-%token INT IF DO WHILE FOR DOTDOT QUEST COLON SPRINT IPRINT SCAN EQ NEQ GT LT GE LE ELSE RETURN NEW
+%token INT IF DO WHILE FOR DOTDOT QUEST COLON SPRINT IPRINT EQ NEQ GT LT GE LE ELSE RETURN NEW
 %token PLUS MINUS TIMES DIV MOD HAT INC PLUS_ASSIGN LB RB LS RS LP RP ASSIGN SEMI COMMA TYPE VOID
 %type <Ast.stmt> prog
 
@@ -86,7 +86,6 @@ stmt : ID ASSIGN expr SEMI    { Assign (Var $1, $3) }
      }
      | SPRINT LP STR RP SEMI  { CallProc ("sprint", [StrExp $3]) }
      | IPRINT LP expr RP SEMI { CallProc ("iprint", [$3]) }
-     | SCAN LP ID RP SEMI  { CallProc ("scan", [VarExp (Var $3)]) }
      | NEW LP ID RP SEMI   { CallProc ("new", [ VarExp (Var $3)]) }
      | ID LP aargs_opt RP SEMI  { CallProc ($1, $3) }
      | RETURN expr SEMI    { CallProc ("return", [$2]) }

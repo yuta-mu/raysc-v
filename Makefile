@@ -7,7 +7,7 @@ BSP_DIR   := bsp
 CRT0      := $(BSP_DIR)/crt0.s
 LINKER    := $(BSP_DIR)/linker.ld
 
-CFLAGS    := -march=rv32i -mabi=ilp32 -nostdlib -nostartfiles -fno-builtin \
+CFLAGS    := -march=rv32im -mabi=ilp32 -nostdlib -nostartfiles -fno-builtin \
              -T $(LINKER) -I$(BSP_DIR) -O2 -Wall
 
 .PHONY: all clean check-env run run-mandelbrot run-raytrace sim-hw compiler

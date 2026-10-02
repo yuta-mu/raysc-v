@@ -14,7 +14,7 @@ let main () =
              (* 生成コードの書出しとファイルのクローズ *)
              output_string file code; close_out file;     
              (* アセンブラとリンカの呼出し *)
-             let _ = Unix.system "gcc tmp.s" in () ;;                
+             let _ = Unix.system "riscv64-unknown-elf-gcc -march=rv32im -mabi=ilp32 -nostdlib -nostartfiles -fno-builtin -T bsp/linker.ld -Ibsp -O2 -Wall tmp.s -o output.elf" in () ;;                
 
 let _ = try main () with 
          Parsing.Parse_error -> ()
