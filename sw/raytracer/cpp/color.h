@@ -4,14 +4,19 @@
 #include <ostream>
 
 using color = vec3;
+
+inline uint32_t color_byte(fpm_t channel) {
+  if (channel <= 0) return 0;
+  if (channel >= f_scale) return 255;
+  // [0, 1] 内では従来の「255.999を掛けて整数化」と同じ結果。
+  // 256で割り切れる境界を1だけ下げてから、小数部の下位8bitを落とす。
+  return (static_cast<uint32_t>(channel) - 1u) >> (f_frac_bits - 8);
+}
+
 inline void write_color(std::ostream& out, const color& pixel_color) {
-  const fpm_t scale = fpm_from_ratio(255999, 1000);
-  const color scaled = pixel_color * scale;
-  int rbyte = fpm_to_int(scaled.x());
-  int gbyte = fpm_to_int(scaled.y());
-  int bbyte = fpm_to_int(scaled.z());
-  out << rbyte << ' ' << gbyte << ' ' << bbyte << '\n';
+  out << color_byte(pixel_color.x()) << ' '
+      << color_byte(pixel_color.y()) << ' '
+      << color_byte(pixel_color.z()) << '\n';
 }
 
 #endif
-

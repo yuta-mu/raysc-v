@@ -1,7 +1,5 @@
 #ifndef VEC3_H
 #define VEC3_H
-#include <cmath>
-#include <iostream>
 #include "fpm.h"
 
 
@@ -22,9 +20,9 @@ public:
   fpm_t& operator[](int i) {return e[i];}
 
   vec3& operator+=(const vec3 &v) {
-    e[0] = fpm_add(e[0], v.e[0]);
-    e[1] = fpm_add(e[1], v.e[1]);
-    e[2] = fpm_add(e[2], v.e[2]);
+    e[0] += v.e[0];
+    e[1] += v.e[1];
+    e[2] += v.e[2];
     return *this;
   }
 
@@ -46,7 +44,7 @@ public:
   }
 
   fpm_t length_squared() const {
-    return fpm_add(fpm_add(fpm_mul(e[0], e[0]) , fpm_mul(e[1], e[1])) , fpm_mul(e[2], e[2]));
+    return fpm_mul(e[0], e[0]) + fpm_mul(e[1], e[1]) + fpm_mul(e[2], e[2]);
   }
 
 };
@@ -54,11 +52,11 @@ public:
 using point3 = vec3;
 
 inline vec3 operator+(const vec3 &u, const vec3 &v) {
-  return vec3(fpm_add(u.e[0] , v.e[0]), fpm_add(u.e[1] , v.e[1]), fpm_add(u.e[2] , v.e[2]));
+  return vec3(u.e[0] + v.e[0], u.e[1] + v.e[1], u.e[2] + v.e[2]);
 }
 
 inline vec3 operator-(const vec3 &u, const vec3 &v) {
-  return vec3(fpm_sub(u.e[0] , v.e[0]), fpm_sub(u.e[1] , v.e[1]), fpm_sub(u.e[2] , v.e[2]));
+  return vec3(u.e[0] - v.e[0], u.e[1] - v.e[1], u.e[2] - v.e[2]);
 }
 
 inline vec3 operator*(const vec3 &u, const vec3 &v) {
@@ -78,15 +76,14 @@ inline vec3 operator/(vec3 v, fpm_t t) {
 }
 
 inline fpm_t dot(const vec3 &u, const vec3 &v) {
-  return fpm_add(fpm_add(fpm_mul(u.e[0] , v.e[0])
-    , fpm_mul(u.e[1] , v.e[1]))
-    , fpm_mul(u.e[2] , v.e[2]));
+  return fpm_mul(u.e[0], v.e[0]) + fpm_mul(u.e[1], v.e[1])
+    + fpm_mul(u.e[2], v.e[2]);
 }
 
 inline vec3 cross(const vec3 &u, const vec3 &v) {
-  return vec3(fpm_sub(fpm_mul(u.e[1] , v.e[2]) , fpm_mul(u.e[2] , v.e[1])),
-              fpm_sub(fpm_mul(u.e[2] , v.e[0]) , fpm_mul(u.e[0] , v.e[2])),
-              fpm_sub(fpm_mul(u.e[0] , v.e[1]) , fpm_mul(u.e[1] , v.e[0])));
+  return vec3(fpm_mul(u.e[1], v.e[2]) - fpm_mul(u.e[2], v.e[1]),
+              fpm_mul(u.e[2], v.e[0]) - fpm_mul(u.e[0], v.e[2]),
+              fpm_mul(u.e[0], v.e[1]) - fpm_mul(u.e[1], v.e[0]));
 }
 
 inline vec3 unit_vector(vec3 v) {
