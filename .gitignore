@@ -22,8 +22,7 @@ Thumbs.db
 # Verilog など
 *.vcd
 *.fst
-sim.out
-a.out
+*.out
 obj_dir/
 work/
 

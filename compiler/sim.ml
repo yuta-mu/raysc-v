@@ -22,3 +22,4 @@ let _ = try main () with
        | Semant.TypeErr s -> print_string (s^"\n")
        | Semant.Err s -> print_string (s^"\n")
        | Table.SymErr s -> print_string (s^"\n")
+
