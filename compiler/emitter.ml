@@ -356,7 +356,7 @@ and trans_cond ast nest env = match ast with
                               | "<"  -> (code ^ sprintf "\tbge t0, t1, L%d\n" l, l)
                               | ">=" -> (code ^ sprintf "\tblt t0, t1, L%d\n" l, l)
                               | "<=" -> (code ^ sprintf "\tbgt t0, t1, L%d\n" l, l)
-                              | _ -> ("",0))
+                              | _ -> raise (Err ("unknown comparison operator: " ^ op)))
                  | _ -> raise (Err "internal error")
 (* プログラム全体の生成 *)
 let trans_prog ast = let code = trans_stmt ast 0 initTable initTable in
