@@ -149,6 +149,7 @@ and trans_stmt ast nest tenv env =
                               trans_exp arg nest env
                             ^ "\tlw a0, 0(sp)\n"
                             ^ "\taddi sp, sp, 4\n"
+                            ^ epilogue
                   (* 手続き呼出しのコード *)
                   | CallProc (s, el) -> 
                       let entry = env s in 
