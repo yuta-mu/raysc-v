@@ -54,14 +54,18 @@ module datapath (
     assign pc_next   = pc_src ? pc_target : pc_plus4;
 
     always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) pc <= 32'h0;
-        else        pc <= pc_next;
+        if (!rst_n)     pc <= 32'h0;
+        else if(!stall) pc <= pc_next;
     end
 
     // Submodules
+
+    logic reg_write_effective;
+    assign reg_write_effective = reg_write && !stall;
+
     regfile u_regfile (
         .clk       (clk),
-        .reg_write (reg_write),
+        .reg_write (reg_write_effective),
         .rs1_addr  (rs1),
         .rs2_addr  (rs2),
         .rd_addr   (rd),
@@ -92,6 +96,34 @@ module datapath (
         .funct3 (funct3),
         .result (mul_result)
     );
+
+    logic [31:0] div_result;
+    logic        div_busy;
+    logic        div_done;
+
+    logic is_div_op;
+    assign is_div_op = (result_src == RESULT_MDU) && funct3[2];
+
+    logic div_start;
+    assign div_start = is_div_op && !div_busy;
+
+    logic stall;
+    assign stall = is_div_op && !div_done;
+
+    divider u_divider (
+        .clk    (clk),
+        .rst_n  (rst_n),
+        .start  (div_start),
+        .funct3 (funct3),
+        .a      (rs1_data),
+        .b      (rs2_data),
+        .result (div_result),
+        .busy   (div_busy),
+        .done   (div_done)
+    );
+
+    logic [31:0] mdu_result;
+    assign mdu_result = funct3[2] ? div_result : mul_result;
 
     branch_unit u_branch_unit (
         .rs1_data     (rs1_data),
@@ -190,7 +222,7 @@ module datapath (
             RESULT_MEM: result_data = load_data;
             RESULT_PC4: result_data = pc_plus4;
             RESULT_IMM: result_data = imm;
-            RESULT_MDU: result_data = mul_result;
+            RESULT_MDU: result_data = mdu_result;
             default:    result_data = alu_result;
         endcase
     end

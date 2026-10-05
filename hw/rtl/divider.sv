@@ -49,10 +49,10 @@ module divider (
 
     always_comb begin
         case (state)
-            IDLE:    next_state = start ? DIVIDE : IDLE;
-            DIVIDE:  next_state = (count == 5'd31) ? FINISH : DIVIDE;
-            FINISH:  next_state = IDLE;
-            default: next_state = IDLE;
+            IDLE:    next_state = state_t'(start ? DIVIDE : IDLE);
+            DIVIDE:  next_state = state_t'((count == 5'd31) ? FINISH : DIVIDE);
+            FINISH:  next_state = state_t'(IDLE);
+            default: next_state = state_t'(IDLE);
         endcase
     end
 
