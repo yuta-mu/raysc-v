@@ -105,4 +105,9 @@ PSEUDO_INSTRUCTIONS = {
     'ret':  {'arg_count': 0, 'template': "jalr x0, ra, 0"},
     'beqz': {'arg_count': 2, 'template': "beq {0}, x0, {1}"},
     'bnez': {'arg_count': 2, 'template': "bne {0}, x0, {1}"},
+    'bgez': {'arg_count': 2, 'template': "bge {0}, x0, {1}"},
+    'blez': {'arg_count': 2, 'template': "ble {0}, x0, {1}"},
+    'bltz': {'arg_count': 2, 'template': "blt {0}, x0, {1}"},
+    'bgtz': {'arg_count': 2, 'template': "bgt {0}, x0, {1}"},
+    'call': {'arg_count': 1, 'template': "jal ra, {0}"},
 }

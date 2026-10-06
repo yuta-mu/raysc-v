@@ -9,7 +9,9 @@ UNSUPPORTED_DATA_DIRECTIVES = {
 }
 
 SAFE_SKIP_DIRECTIVES = {
-    '.text', '.data', '.globl', '.global', '.section', '.file'
+    '.data', '.globl', '.global', '.section', '.file',
+    '.type', '.size', '.ident', '.option', '.attribute',
+    '.align', '.p2align', '.balign',
 }
 
 def parse_reg(reg_str):
@@ -22,6 +24,12 @@ def parse_reg(reg_str):
     else:
         raise ValueError(f"Unknown register: {reg_str}")
 
+def parse_literal_or_int(val_str):
+    """'-'などを整数に"""
+    val_str = str(val_str).strip()
+    if val_str.startswith("'") and val_str.endswith("'") and len(val_str) >= 3:
+        return ord(val_str[1])
+    return int(val_str, 0)
 
 def parse_imm(imm_val_or_str, bits, signed=True):
     """即値 -> 2の補数(範囲外:error)"""
@@ -29,7 +37,7 @@ def parse_imm(imm_val_or_str, bits, signed=True):
         val = imm_val_or_str
     else:
         try:
-            val = int(imm_val_or_str, 0)
+            val = parse_literal_or_int(imm_val_or_str)
         except ValueError:
             raise ValueError(f"Invalid immediate: '{imm_val_or_str}'")
 
@@ -42,7 +50,10 @@ def parse_imm(imm_val_or_str, bits, signed=True):
     return val & ((1 << bits) - 1)
 
 
-def resolve_target(tok, current_pc, symbol_table):
+def resolve_target(tok, current_pc=0, symbol_table=None):
+    if symbol_table is None:
+        symbol_table = {}
+    
     """オフセット"""
     if tok in symbol_table:
         offset = symbol_table[tok] - current_pc
@@ -61,11 +72,18 @@ def check_args(tokens, n):
         raise ValueError(f"'{tokens[0]}' expects {n} operands, got {len(tokens) - 1}")
 
 
-def expand_li(rd, imm_str):
-    try:
-        imm = int(imm_str, 0)
-    except ValueError:
-        raise ValueError(f"Invalid immediate: '{imm_str}'")
+def expand_li(rd, imm_str, symbol_table=None):
+    if symbol_table is None:
+        symbol_table = {}
+
+    if imm_str in symbol_table:
+        imm = symbol_table[imm_str]
+    else:
+        try:
+            imm = parse_literal_or_int(imm_str)
+        except ValueError:
+            raise ValueError(f"Invalid immediate: '{imm_str}'")
+    
     if not -(1 << 31) <= imm < (1 << 32):
         raise ValueError(f"li immediate {imm} out of 32-bit range")
     imm = ((imm + (1 << 31)) % (1 << 32)) - (1 << 31)
@@ -81,8 +99,11 @@ def expand_li(rd, imm_str):
     return lines
 
 
-def expand_pseudo(line):
+def expand_pseudo(line, symbol_table=None):
     """疑似命令の展開"""
+    if symbol_table is None:
+        symbol_table = {}
+
     line = line.strip()
     clean_line = line.replace(',', ' ').replace('(', ' ').replace(')', ' ')
     tokens = clean_line.split()
@@ -92,12 +113,25 @@ def expand_pseudo(line):
     op = tokens[0].lower()
     args = tokens[1:]
 
+    if op == 'call':
+        if len(args) != 1:
+            raise ValueError(f"'call' expects 1 operands")
+        return [f"jal ra, {args[0]}"]
+
     if op == 'li':
         if len(args) != 2:
             raise ValueError("'li' expects 2 operands")
-        return expand_li(args[0], args[1])
+        return expand_li(args[0], args[1], symbol_table)
+    
+    if op == 'la':
+        if len(args) != 2:
+            raise ValueError("'la' expects 2 operands")
+        rd, sym = args[0], args[1]
+        return [f"auipc {rd}, %pcrel_hi({sym})", f"addi {rd}, {rd}, %pcrel_lo({sym})"]
+
     if op == 'jal' and len(args) == 1:
         return [f"jal ra, {args[0]}"]
+
     if op == 'jalr' and len(args) == 1:
         return [f"jalr ra, {args[0]}, 0"]
 
@@ -109,12 +143,25 @@ def expand_pseudo(line):
 
     return [line]
 
+def resolve_pcrel(line, current_pc, symbol_table):
+    """%pcrel_hi(sym) / %pcrel_lo(sym) を数値に置換する"""
+    def repl(m):
+        kind, sym = m.group(1), m.group(2).strip()
+        if sym not in symbol_table:
+            raise ValueError(f"Undefined label: '{sym}'")
+        base = current_pc if kind == 'hi' else current_pc - 4
+        offset = symbol_table[sym] - base
+        if kind == 'hi':
+            return str(((offset + 0x800) >> 12) & 0xFFFFF)
+        return str(((offset & 0xFFF) ^ 0x800) - 0x800)
+    return re.sub(r'%pcrel_(hi|lo)\(([^)]*)\)', repl, line)
 
 def assemble_line(line, current_pc=0, symbol_table=None):
     """基本命令1行 -> 16進数"""
     if symbol_table is None:
         symbol_table = {}
 
+    line = resolve_pcrel(line, current_pc, symbol_table)
     clean_line = line.replace(',', ' ').replace('(', ' ').replace(')', ' ')
     tokens = clean_line.split()
     op = tokens[0].lower()
@@ -241,57 +288,122 @@ def main():
     with open(input_file, "r", encoding="utf-8") as f:
         lines = f.read().splitlines()
     
-    startup_code = [
-        "lui sp, 0x40",
-        "jal ra, main",
-        "loop: j loop"
-    ]
-    lines = startup_code + lines
+    # Add startup code
+    numbered = list(enumerate(lines, 1))
+    has_main = any(re.match(r'^\s*main\s*:', l) for l in lines)
+    if has_main and "--no-startup" not in sys.argv:
+        # メモリ構成による
+        STACK_TOP_LUI = 0x40
+
+        startup_code = [
+            f"lui sp, {STACK_TOP_LUI:#x}",
+            "jal ra, main",
+            "__halt: j __halt",
+        ]
+        numbered = [(0, l) for l in startup_code] + numbered
 
     symbol_table = {}
     items = []
     errors = []
 
+    current_section = "text"
+    text_pc = 0
+    rodata_pc = 0
+
     # Pass 1
-    pc = 0
-    for lineno, raw in enumerate(lines, 1):
+    current_pc = 0
+    for lineno, raw in numbered:
         try:
             labels, text = split_labels(strip_comment(raw))
+            current_pc = text_pc if current_section == "text" else rodata_pc
             for name in labels:
                 if name in symbol_table:
                     raise ValueError(f"Duplicate label '{name}'")
-                symbol_table[name] = pc
+                symbol_table[name] = current_pc
             if not text:
                 continue
 
             if text.startswith('.'):
                 directive = text.split()[0].lower()
+                if directive == '.section':
+                    parts = text.split()
+                    if len(parts) > 1:
+                        current_section = parts[1].lstrip('.')
+                    continue
+
                 if directive == '.word':
                     values = [v for v in re.split(r'[,\s]+', text[len('.word'):]) if v]
                     if not values:
                         raise ValueError(".word needs a value")
                     for v in values:
-                        items.append((lineno, raw, f".word {v}", pc))
-                        pc += 4
+                        items.append((lineno, raw, f".word {v}", current_section, current_pc))
+                        current_pc += 4
                     continue
+                elif directive == '.equ':
+                    parts = [v for v in re.split(r'[,\s]+', text[len('.equ'):]) if v]
+                    if len(parts) == 2:
+                        symbol_table[parts[0]] = int(parts[1], 0)
+                    continue
+
+                elif directive == '.string':
+                    # ""の中身pic
+                    match = re.search(r'"([^"]*)"', text)
+                    if not match:
+                        raise ValueError("Invalid .string format")
+                    s_val = match.group(1)
+                    
+                    s_val = s_val.encode('utf-8').decode('unicode_escape')
+                    
+                    bytes_data = list(s_val.encode('utf-8')) + [0]
+                    
+                    while len(bytes_data) % 4 != 0:
+                        bytes_data.append(0)
+
+                    for i in range(0, len(bytes_data), 4):
+                        chunk = bytes_data[i:i+4]
+                        val = chunk[0] | (chunk[1] << 8) | (chunk[2] << 16) | (chunk[3] << 24)
+                        
+                        # .word として登録
+                        items.append((lineno, raw, f".word {val}", current_section, current_pc))
+                        current_pc += 4
+                    continue
+
                 elif directive in SAFE_SKIP_DIRECTIVES:
                     continue
                 else:
                     # .align, 未対応定義(.byte, .string,...) -> error
                     raise ValueError(f"Unsupported directive '{directive}' (align/data sections are not supported)")
 
-            for ins in expand_pseudo(text):
-                items.append((lineno, raw, ins, pc))
-                pc += 4
+            for ins in expand_pseudo(text, symbol_table):
+                items.append((lineno, raw, ins, current_section, current_pc))
+                current_pc += 4
         except ValueError as e:
             errors.append((lineno, raw, e))
+        finally:
+            if current_section == "text":
+                text_pc = current_pc
+            else:
+                rodata_pc = current_pc
 
     # Pass 2:
+    def assemble_byte(tok):
+        """.byte の値 -> 2桁の16進数（1バイト）"""
+        tok = tok.strip().rstrip(',')
+        try:
+            val = int(tok, 0)
+        except ValueError:
+            raise ValueError(f"Invalid byte value: '{tok}'")
+        if not 0 <= val <= 255:
+            raise ValueError(f"Byte value {val} out of range (0..255)")
+        return f"{val & 0xFF:02x}"
+
     hex_lines = []
-    for lineno, raw, text, ipc in items:
+    for lineno, raw, text, section, ipc in items:
         try:
             if text.startswith('.word'):
                 hex_lines.append(assemble_word(text.split()[1], symbol_table))
+            elif text.startswith('.byte'):
+                hex_lines.append(assemble_byte(text.split()[1]))
             else:
                 hex_lines.append(assemble_line(text, ipc, symbol_table))
         except ValueError as e:
@@ -299,7 +411,7 @@ def main():
 
     if errors:
         for lineno, raw, e in sorted(errors, key=lambda x: x[0]):
-            print(f"{input_file}:{lineno}: error: {e}\n    {raw.strip()}")
+            print(f"{input_file}:{lineno or '(startup)'}: error: {e}\n    {raw.strip()}")
         sys.exit(1)
 
     with open(output_file, "w", encoding="utf-8") as f:
@@ -314,3 +426,7 @@ if __name__ == "__main__":
 
 # asm:
 # 	python ../tools/assembler.py ../tools/test.s -o ../tools/test.hex
+
+# python assembler.py prog.s -o prog.hex                # main があれば付く
+# python assembler.py prog.s -o prog.hex --no-startup   # 付けない
+
