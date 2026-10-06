@@ -45,16 +45,10 @@ let epilogue = "\tmv sp, s0\n"
              ^ "\tret\n"               (* 呼出し位置の次のアドレスへ戻る *)
 (* エントリーポイントの頭 *)
 let header = ".section .text\n"
-           ^ ".globl _start\n"
-           ^ ".equ STACK_TOP, 0x80002000\n"
+           ^ ".globl main\n"
            ^ ".equ UART0_BASE, 0x10000000\n"
-           ^ "_start:\n"
-           ^ "\tli sp, STACK_TOP\n"
-           ^ "\tmv s0, sp\n"
-           ^ "\tmv ra, zero\n"
-(* 無限ループ *)
-let loop = "_loop:\n"
-         ^ "\tj _loop\n"
+           ^ "main:\n"
+           ^ prologue
 (* iprintのフラグと文字出力コード *)
 let iprint_flag = ref false
 let iprint = "_iprint:\n"
@@ -363,4 +357,7 @@ let trans_prog ast = let code = trans_stmt ast 0 initTable initTable in
                                 if !iprint_flag then output := (!output) ^ iprint else ();
                                 if !sprint_flag then output := (!output) ^ sprint else ();
                                 if !iprint_flag || !sprint_flag then output := (!output) ^ doneret else ();
-                                header ^ code ^ loop ^ (!output)
+                                header ^ code 
+                                ^ "\tli a0, 0\n" (*mainの戻り値0*)
+                                ^ epilogue
+                                ^ (!output)
