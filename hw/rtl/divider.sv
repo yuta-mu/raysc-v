@@ -22,7 +22,7 @@ module divider (
 
     state_t state, next_state;
 
-    logic [4:0]  count;
+    logic [2:0]  count;
     logic [31:0] divisor;
     logic [63:0] rem_quot; // [63:32]: Remainder, [31:0]: Quotient
 
@@ -36,8 +36,28 @@ module divider (
     assign is_signed = (funct3 == FUNCT3_DIV) || (funct3 == FUNCT3_REM);
     assign is_rem    = (funct3 == FUNCT3_REM) || (funct3 == FUNCT3_REMU);
 
-    logic [32:0] sub_res;
-    assign sub_res = {1'b0, rem_quot[62:31]} - {1'b0, divisor};
+    logic [63:0] step0_rq, step1_rq, step2_rq, step3_rq;
+    logic [32:0] sub0, sub1, sub2, sub3;
+
+    // Stage 1
+    assign sub0     = {1'b0, rem_quot[62:31]} - {1'b0, divisor};
+    assign step0_rq = !sub0[32] ? {sub0[31:0], rem_quot[30:0], 1'b1}
+                                : {rem_quot[62:0], 1'b0};
+
+    // Stage 2
+    assign sub1     = {1'b0, step0_rq[62:31]} - {1'b0, divisor};
+    assign step1_rq = !sub1[32] ? {sub1[31:0], step0_rq[30:0], 1'b1}
+                                : {step0_rq[62:0], 1'b0};
+
+    // Stage 3
+    assign sub2     = {1'b0, step1_rq[62:31]} - {1'b0, divisor};
+    assign step2_rq = !sub2[32] ? {sub2[31:0], step1_rq[30:0], 1'b1}
+                                : {step1_rq[62:0], 1'b0};
+
+    // Stage 4
+    assign sub3     = {1'b0, step2_rq[62:31]} - {1'b0, divisor};
+    assign step3_rq = !sub3[32] ? {sub3[31:0], step2_rq[30:0], 1'b1}
+                                : {step2_rq[62:0], 1'b0};
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -50,7 +70,7 @@ module divider (
     always_comb begin
         case (state)
             IDLE:    next_state = state_t'(start ? DIVIDE : IDLE);
-            DIVIDE:  next_state = state_t'((count == 5'd31) ? FINISH : DIVIDE);
+            DIVIDE:  next_state = state_t'((count == 3'd7) ? FINISH : DIVIDE);
             FINISH:  next_state = state_t'(IDLE);
             default: next_state = state_t'(IDLE);
         endcase
@@ -58,7 +78,7 @@ module divider (
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            count       <= 5'd0;
+            count       <= 3'd0;
             divisor     <= 32'd0;
             rem_quot    <= 64'd0;
             a_neg       <= 1'b0;
@@ -69,7 +89,7 @@ module divider (
             case (state)
                 IDLE: begin
                     if (start) begin
-                        count <= 5'd0;
+                        count <= 3'd0;
 
                         a_neg <= is_signed & a[31];
                         b_neg <= is_signed & b[31];
@@ -83,12 +103,8 @@ module divider (
                 end
 
                 DIVIDE: begin
-                    count <= count + 5'd1;
-                    if (!sub_res[32]) begin
-                        rem_quot <= {sub_res[31:0], rem_quot[30:0], 1'b1};
-                    end else begin
-                        rem_quot <= {rem_quot[62:0], 1'b0};
-                    end
+                    count    <= count + 3'd1;
+                    rem_quot <= step3_rq;
                 end
 
                 FINISH: begin
