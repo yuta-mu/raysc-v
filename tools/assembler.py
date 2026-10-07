@@ -15,7 +15,7 @@ SAFE_SKIP_DIRECTIVES = {
 }
 
 def parse_reg(reg_str):
-    """'x1' / 'a0' -> 0-31 """
+    """'x1' , 'a0' -> 0~31 """
     reg_str = reg_str.strip().lower()
     if re.fullmatch(r'x\d+', reg_str) and int(reg_str[1:]) <= 31:
         return int(reg_str[1:])
@@ -51,10 +51,10 @@ def parse_imm(imm_val_or_str, bits, signed=True):
 
 
 def resolve_target(tok, current_pc=0, symbol_table=None):
+    """オフセット計算"""
     if symbol_table is None:
         symbol_table = {}
     
-    """オフセット"""
     if tok in symbol_table:
         offset = symbol_table[tok] - current_pc
     else:
@@ -143,8 +143,10 @@ def expand_pseudo(line, symbol_table=None):
 
     return [line]
 
-def resolve_pcrel(line, current_pc, symbol_table):
-    """%pcrel_hi(sym) / %pcrel_lo(sym) を数値に置換する"""
+def resolve_pcrel(line, current_pc, symbol_table=None):
+    """%pcrel_hi(sym) / %pcrel_lo(sym) を数値置換"""
+    if symbol_table is None:
+        symbol_table = {}
     def repl(m):
         kind, sym = m.group(1), m.group(2).strip()
         if sym not in symbol_table:
@@ -303,24 +305,20 @@ def main():
         numbered = [(0, l) for l in startup_code] + numbered
 
     symbol_table = {}
-    items = []
     errors = []
+
+    text_items = []
+    rodata_items = []
 
     current_section = "text"
     text_pc = 0
-    rodata_pc = 0
 
-    # Pass 1
+    # Pass 1-1 sectionごとに命令とデータを分類
     current_pc = 0
     for lineno, raw in numbered:
         try:
             labels, text = split_labels(strip_comment(raw))
-            current_pc = text_pc if current_section == "text" else rodata_pc
-            for name in labels:
-                if name in symbol_table:
-                    raise ValueError(f"Duplicate label '{name}'")
-                symbol_table[name] = current_pc
-            if not text:
+            if not text and not labels:
                 continue
 
             if text.startswith('.'):
@@ -329,20 +327,26 @@ def main():
                     parts = text.split()
                     if len(parts) > 1:
                         current_section = parts[1].lstrip('.')
+                    if labels:
+                        for name in labels:
+                            text_items.append(('LABEL_DEF', lineno, raw, name, current_section))
                     continue
 
-                if directive == '.word':
-                    values = [v for v in re.split(r'[,\s]+', text[len('.word'):]) if v]
-                    if not values:
-                        raise ValueError(".word needs a value")
-                    for v in values:
-                        items.append((lineno, raw, f".word {v}", current_section, current_pc))
-                        current_pc += 4
-                    continue
                 elif directive == '.equ':
                     parts = [v for v in re.split(r'[,\s]+', text[len('.equ'):]) if v]
                     if len(parts) == 2:
                         symbol_table[parts[0]] = int(parts[1], 0)
+                    continue
+
+                elif directive == '.word':
+                    values = [v for v in re.split(r'[,\s]+', text[len('.word'):]) if v]
+                    for v in values:
+                        item = (lineno, raw, f".word {v}", current_section, labels)
+                        labels = []
+                        if current_section == "text":
+                            text_items.append(item)
+                        else:
+                            rodata_items.append(item)
                     continue
 
                 elif directive == '.string':
@@ -351,7 +355,6 @@ def main():
                     if not match:
                         raise ValueError("Invalid .string format")
                     s_val = match.group(1)
-                    
                     s_val = s_val.encode('utf-8').decode('unicode_escape')
                     
                     bytes_data = list(s_val.encode('utf-8')) + [0]
@@ -359,51 +362,87 @@ def main():
                     while len(bytes_data) % 4 != 0:
                         bytes_data.append(0)
 
+                    first_chunk = True
                     for i in range(0, len(bytes_data), 4):
                         chunk = bytes_data[i:i+4]
                         val = chunk[0] | (chunk[1] << 8) | (chunk[2] << 16) | (chunk[3] << 24)
                         
                         # .word として登録
-                        items.append((lineno, raw, f".word {val}", current_section, current_pc))
-                        current_pc += 4
+                        item_labels = labels if first_chunk else []
+                        item = (lineno, raw, f".word {val}", "rodata", item_labels)
+                        rodata_items.append(item)
+                        first_chunk = False
+                        labels = []
                     continue
 
                 elif directive in SAFE_SKIP_DIRECTIVES:
+                    if labels:
+                        for name in labels:
+                            text_items.append(('LABEL_DEF', lineno, raw, name, current_section))
                     continue
+                
                 else:
-                    # .align, 未対応定義(.byte, .string,...) -> error
-                    raise ValueError(f"Unsupported directive '{directive}' (align/data sections are not supported)")
+                    # 未対応 -> error
+                    raise ValueError(f"Unsupported directive '{directive}'")
 
+            # 通常・疑似命令の展開
             for ins in expand_pseudo(text, symbol_table):
-                items.append((lineno, raw, ins, current_section, current_pc))
-                current_pc += 4
+                item = (lineno, raw, ins, current_section, labels)
+                labels = []
+                if current_section == "text":
+                    text_items.append(item)
+                else:
+                    rodata_items.append(item)
+
         except ValueError as e:
             errors.append((lineno, raw, e))
-        finally:
-            if current_section == "text":
-                text_pc = current_pc
-            else:
-                rodata_pc = current_pc
+    
+    # Pass 1-2: 正式なアドレス（PC）の割り当てとシンボルテーブルの構築
+    # .text 部分のPCを順に確定
+    final_text_items = []
+    text_pc = 0
+    for item in text_items:
+        if item[0] == 'LABEL_DEF':
+            _, lineno, raw, name, sec = item
+            symbol_table[name] = text_pc
+            continue
+        
+        lineno, raw, text, sec, labels = item
+        for name in labels:
+            if name in symbol_table:
+                # 既に登録済みの重複チェック
+                pass
+            symbol_table[name] = text_pc
+        
+        final_text_items.append((lineno, raw, text, "text", text_pc))
+        text_pc += 4
+
+    # 直後のアドレスを .rodata の開始アドレスに設定
+    rodata_pc = text_pc
+    final_rodata_items = []
+    for item in rodata_items:
+        lineno, raw, text, sec, labels = item
+        for name in labels:
+            symbol_table[name] = rodata_pc
+        
+        final_rodata_items.append((lineno, raw, text, "rodata", rodata_pc))
+        rodata_pc += 4
+
+    items = final_text_items + final_rodata_items
 
     # Pass 2:
-    def assemble_byte(tok):
-        """.byte の値 -> 2桁の16進数（1バイト）"""
-        tok = tok.strip().rstrip(',')
-        try:
-            val = int(tok, 0)
-        except ValueError:
-            raise ValueError(f"Invalid byte value: '{tok}'")
-        if not 0 <= val <= 255:
-            raise ValueError(f"Byte value {val} out of range (0..255)")
-        return f"{val & 0xFF:02x}"
-
     hex_lines = []
     for lineno, raw, text, section, ipc in items:
         try:
+            text = text.strip()
+            if not text:
+                continue
             if text.startswith('.word'):
-                hex_lines.append(assemble_word(text.split()[1], symbol_table))
-            elif text.startswith('.byte'):
-                hex_lines.append(assemble_byte(text.split()[1]))
+                parts = text.split()
+                if len(parts) > 1:
+                    hex_lines.append(assemble_word(text.split()[1], symbol_table))
+                else:
+                    raise ValueError(".word is missing an operand")
             else:
                 hex_lines.append(assemble_line(text, ipc, symbol_table))
         except ValueError as e:
