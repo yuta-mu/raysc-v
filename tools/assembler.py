@@ -1,18 +1,87 @@
 # tools/assembler.py
-import sys
+import argparse
 import re
+import sys
+
 from asm_types import REG_MAP, OPCODES, PSEUDO_INSTRUCTIONS
 
+NOP = "addi x0, x0, 0"
+
+# sp 初期値: コアのメモリ構成に合わせて決める
+STARTUP_STACK_LUI = 0x40
+
+# バイト/ハーフ単位のデータは未対応
 UNSUPPORTED_DATA_DIRECTIVES = {
     '.byte', '.half', '.short', '.2byte', '.4byte', '.dword', '.quad',
-    '.ascii', '.asciz', '.string', '.zero', '.space', '.skip', '.fill',
+    '.zero', '.space', '.skip', '.fill',
 }
 
+# 読み飛ばして問題ない指令
 SAFE_SKIP_DIRECTIVES = {
-    '.data', '.globl', '.global', '.section', '.file',
+    '.globl', '.global', '.local', '.weak', '.file',
     '.type', '.size', '.ident', '.option', '.attribute',
-    '.align', '.p2align', '.balign',
 }
+
+# 文字列系指令: 末尾に NUL を付けるか
+STRING_DIRECTIVES = {'.string': True, '.asciz': True, '.ascii': False}
+
+# 文字リテラルの認識('a' '\n' ',' など)
+CHAR_LIT = r"'(?:\\.|[^'\\])'"
+# トークンの抽出
+TOKEN_RE = re.compile(CHAR_LIT + r"|[^\s,()]+")
+# ""の中身の抽出
+STRING_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
+
+
+def tokenize(line):
+    """'lb t1, 0(a0)' -> ['lb', 't1', '0', 'a0']"""
+    return TOKEN_RE.findall(line)
+
+
+def has_mem_operand(line):
+    """メモリアクセス判定（imm(rs1) 形式か）"""
+    return '(' in re.sub(CHAR_LIT, "''", line)
+
+
+def strip_comment(line):
+    """ コメント（# と // 以降）の除去 """
+    out = []
+    i = 0
+    in_str = False
+    while i < len(line):
+        c = line[i]
+        if in_str:
+            out.append(c)
+            if c == '\\' and i + 1 < len(line):
+                out.append(line[i + 1])
+                i += 1
+            elif c == '"':
+                in_str = False
+        elif c == '"':
+            in_str = True
+            out.append(c)
+        elif c == "'" and re.match(CHAR_LIT, line[i:]):
+            n = len(re.match(CHAR_LIT, line[i:]).group(0))
+            out.append(line[i:i + n])
+            i += n - 1
+        elif c == '#' or line.startswith('//', i):
+            break
+        else:
+            out.append(c)
+        i += 1
+    return ''.join(out).strip()
+
+
+def split_labels(line):
+    """'loop: addi x1, x1, 1' -> (['loop'], 'addi x1, x1, 1')"""
+    labels = []
+    while True:
+        m = re.match(r'^([A-Za-z_.$][\w.$]*)\s*:\s*(.*)$', line)
+        if not m:
+            break
+        labels.append(m.group(1))
+        line = m.group(2).strip()
+    return labels, line
 
 def parse_reg(reg_str):
     """'x1' , 'a0' -> 0~31 """
@@ -25,10 +94,13 @@ def parse_reg(reg_str):
         raise ValueError(f"Unknown register: {reg_str}")
 
 def parse_literal_or_int(val_str):
-    """'-'などを整数に"""
+    """文字リテラル ('a', '\\n') や数値文字列 -> 整数 """
     val_str = str(val_str).strip()
-    if val_str.startswith("'") and val_str.endswith("'") and len(val_str) >= 3:
-        return ord(val_str[1])
+    if re.fullmatch(CHAR_LIT, val_str):
+        body = val_str[1:-1]
+        if body.startswith('\\'):
+            body = body.encode('latin-1', 'backslashreplace').decode('unicode_escape')
+        return ord(body)
     return int(val_str, 0)
 
 def parse_imm(imm_val_or_str, bits, signed=True):
@@ -38,7 +110,7 @@ def parse_imm(imm_val_or_str, bits, signed=True):
     else:
         try:
             val = parse_literal_or_int(imm_val_or_str)
-        except ValueError:
+        except (ValueError, TypeError):
             raise ValueError(f"Invalid immediate: '{imm_val_or_str}'")
 
     if signed:
@@ -51,10 +123,10 @@ def parse_imm(imm_val_or_str, bits, signed=True):
 
 
 def resolve_target(tok, current_pc=0, symbol_table=None):
-    """オフセット計算"""
+    """分岐・ジャンプ先からPC相対オフセット"""
     if symbol_table is None:
         symbol_table = {}
-    
+
     if tok in symbol_table:
         offset = symbol_table[tok] - current_pc
     else:
@@ -83,7 +155,7 @@ def expand_li(rd, imm_str, symbol_table=None):
             imm = parse_literal_or_int(imm_str)
         except ValueError:
             raise ValueError(f"Invalid immediate: '{imm_str}'")
-    
+
     if not -(1 << 31) <= imm < (1 << 32):
         raise ValueError(f"li immediate {imm} out of 32-bit range")
     imm = ((imm + (1 << 31)) % (1 << 32)) - (1 << 31)
@@ -104,29 +176,22 @@ def expand_pseudo(line, symbol_table=None):
     if symbol_table is None:
         symbol_table = {}
 
-    line = line.strip()
-    clean_line = line.replace(',', ' ').replace('(', ' ').replace(')', ' ')
-    tokens = clean_line.split()
+    tokens = tokenize(line)
     if not tokens:
-        return [line]
+        return [line.strip()]
 
     op = tokens[0].lower()
     args = tokens[1:]
-
-    if op == 'call':
-        if len(args) != 1:
-            raise ValueError(f"'call' expects 1 operands")
-        return [f"jal ra, {args[0]}"]
 
     if op == 'li':
         if len(args) != 2:
             raise ValueError("'li' expects 2 operands")
         return expand_li(args[0], args[1], symbol_table)
-    
+
     if op == 'la':
         if len(args) != 2:
             raise ValueError("'la' expects 2 operands")
-        rd, sym = args[0], args[1]
+        rd, sym = args
         return [f"auipc {rd}, %pcrel_hi({sym})", f"addi {rd}, {rd}, %pcrel_lo({sym})"]
 
     if op == 'jal' and len(args) == 1:
@@ -138,15 +203,17 @@ def expand_pseudo(line, symbol_table=None):
     if op in PSEUDO_INSTRUCTIONS:
         info = PSEUDO_INSTRUCTIONS[op]
         if len(args) != info['arg_count']:
-            raise ValueError(f"Pseudo-instruction '{op}' expects {info['arg_count']} args, got {len(args)}")
+            raise ValueError(f"'{op}' expects {info['arg_count']} operands, got {len(args)}")
         return [info['template'].format(*args)]
 
-    return [line]
+    return [line.strip()]
+
 
 def resolve_pcrel(line, current_pc, symbol_table=None):
-    """%pcrel_hi(sym) / %pcrel_lo(sym) を数値置換"""
+    """%pcrel_hi(sym) / %pcrel_lo(sym) を数値に置換"""
     if symbol_table is None:
         symbol_table = {}
+
     def repl(m):
         kind, sym = m.group(1), m.group(2).strip()
         if sym not in symbol_table:
@@ -159,13 +226,14 @@ def resolve_pcrel(line, current_pc, symbol_table=None):
     return re.sub(r'%pcrel_(hi|lo)\(([^)]*)\)', repl, line)
 
 def assemble_line(line, current_pc=0, symbol_table=None):
-    """基本命令1行 -> 16進数"""
+    """基本命令1行 -> 16進数(8桁)"""
     if symbol_table is None:
         symbol_table = {}
 
     line = resolve_pcrel(line, current_pc, symbol_table)
-    clean_line = line.replace(',', ' ').replace('(', ' ').replace(')', ' ')
-    tokens = clean_line.split()
+    tokens = tokenize(line)
+    if not tokens:
+        raise ValueError("Empty instruction")
     op = tokens[0].lower()
 
     if op not in OPCODES:
@@ -184,9 +252,9 @@ def assemble_line(line, current_pc=0, symbol_table=None):
     # I-type
     elif fmt == 'I':
         check_args(tokens, 3)
-        if '(' in line:   # lw rd, imm(rs1) / jalr rd, imm(rs1) -> [op, rd, imm, rs1]
+        if has_mem_operand(line):   # lw rd, imm(rs1) / jalr rd, imm(rs1) -> [op, rd, imm, rs1]
             rd, imm_s, rs1 = parse_reg(tokens[1]), tokens[2], parse_reg(tokens[3])
-        else:             # addi rd, rs1, imm / jalr rd, rs1, imm -> [op, rd, rs1, imm]
+        else:                       # addi rd, rs1, imm / jalr rd, rs1, imm -> [op, rd, rs1, imm]
             if info['opcode'] == 0x03:
                 raise ValueError(f"'{op}' expects rd, imm(rs1)")
             rd, rs1, imm_s = parse_reg(tokens[1]), parse_reg(tokens[2]), tokens[3]
@@ -199,7 +267,7 @@ def assemble_line(line, current_pc=0, symbol_table=None):
 
     # S-type
     elif fmt == 'S':
-        if '(' not in line:
+        if not has_mem_operand(line):
             raise ValueError(f"'{op}' expects rs2, imm(rs1)")
         check_args(tokens, 3)   # [sw, rs2, imm, rs1]
         rs2, imm, rs1 = parse_reg(tokens[1]), parse_imm(tokens[2], info['imm_bits']), parse_reg(tokens[3])
@@ -247,58 +315,58 @@ def assemble_line(line, current_pc=0, symbol_table=None):
 
 
 def assemble_word(tok, symbol_table):
-    """.word の値(数値 or ラベルのアドレス) -> 16進数"""
+    """.word の値 -> 16進数(8桁)"""
     tok = tok.strip().rstrip(',')
     if tok in symbol_table:
         val = symbol_table[tok]
     else:
         try:
-            val = int(tok, 0)
+            val = parse_literal_or_int(tok)
         except ValueError:
-            raise ValueError(f"Undefined label: '{tok}'")
+            raise ValueError(f"Undefined label or invalid value: '{tok}'")
     if not -(1 << 31) <= val < (1 << 32):
         raise ValueError(f".word value {val} out of 32-bit range")
     return f"{val & 0xFFFFFFFF:08x}"
 
 
-def strip_comment(line):
-    return re.sub(r'(#|//).*', '', line).strip()
+def section_kind(name):
+    """'.text' -> 'text' / '.rodata', '.data', '.bss' など -> 'rodata' (データ側)"""
+    name = name.split(',')[0].strip().lstrip('.')
+    return 'text' if name.startswith('text') else 'rodata'
 
 
-def split_labels(line):
-    """'loop: addi x1, x1, 1' -> (['loop'], 'addi x1, x1, 1')"""
-    labels = []
-    while True:
-        m = re.match(r'^([A-Za-z_.$][\w.$]*)\s*:\s*(.*)$', line)
-        if not m:
-            break
-        labels.append(m.group(1))
-        line = m.group(2).strip()
-    return labels, line
+def decode_string(s):
+    """\\n, \\0, \\" などのエスケープを解釈 (非ASCII文字はそのまま保持)"""
+    return s.encode('latin-1', 'backslashreplace').decode('unicode_escape')
+
+
+def report_errors(input_file, errors):
+    for lineno, raw, e in sorted(errors, key=lambda x: x[0]):
+        print(f"{input_file}:{lineno or '(startup)'}: error: {e}\n    {raw.strip()}")
+    sys.exit(1)
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python tools/assembler.py <input.s> [-o output.hex]")
-        sys.exit(1)
+    ap = argparse.ArgumentParser(description="RV32I(+M) assembler")
+    ap.add_argument("input", help="input .s file")
+    ap.add_argument("-o", "--output", default="output.hex", help="output .hex file")
+    ap.add_argument("--no-startup", action="store_true",
+                    help="main があってもスタートアップコードを付けない")
+    args = ap.parse_args()
 
-    input_file = sys.argv[1]
-    output_file = "output.hex"
-    if "-o" in sys.argv:
-        output_file = sys.argv[sys.argv.index("-o") + 1]
+    input_file = args.input
+    output_file = args.output
 
     with open(input_file, "r", encoding="utf-8") as f:
         lines = f.read().splitlines()
-    
-    # Add startup code
-    numbered = list(enumerate(lines, 1))
-    has_main = any(re.match(r'^\s*main\s*:', l) for l in lines)
-    if has_main and "--no-startup" not in sys.argv:
-        # メモリ構成による
-        STACK_TOP_LUI = 0x40
 
+    numbered = list(enumerate(lines, 1))
+
+    # スタートアップコード (main があるときだけ)
+    has_main = any(re.match(r'^\s*main\s*:', l) for l in lines)
+    if has_main and not args.no_startup:
         startup_code = [
-            f"lui sp, {STACK_TOP_LUI:#x}",
+            f"lui sp, {STARTUP_STACK_LUI:#x}",
             "jal ra, main",
             "__halt: j __halt",
         ]
@@ -307,157 +375,151 @@ def main():
     symbol_table = {}
     errors = []
 
+    # セクションごとのアイテム
+    #   命令/データ : (lineno, raw, text)
+    #   ラベル定義  : ('LABEL_DEF', lineno, raw, name)
+    #   アラインメント: ('ALIGN', lineno, raw, nbytes)
     text_items = []
     rodata_items = []
-
     current_section = "text"
-    text_pc = 0
 
-    # Pass 1-1 sectionごとに命令とデータを分類
-    current_pc = 0
+    def target_list():
+        return text_items if current_section == "text" else rodata_items
+
+    def emit(item_text, lineno, raw):
+        target_list().append((lineno, raw, item_text))
+
+    # Pass 1-1: セクションごとに分類
     for lineno, raw in numbered:
         try:
             labels, text = split_labels(strip_comment(raw))
-            if not text and not labels:
+
+            for name in labels:
+                target_list().append(('LABEL_DEF', lineno, raw, name))
+            if not text:
                 continue
 
             if text.startswith('.'):
-                directive = text.split()[0].lower()
+                toks = tokenize(text)
+                directive = toks[0].lower()
+                dargs = toks[1:]
+
                 if directive == '.section':
-                    parts = text.split()
-                    if len(parts) > 1:
-                        current_section = parts[1].lstrip('.')
-                    if labels:
-                        for name in labels:
-                            text_items.append(('LABEL_DEF', lineno, raw, name, current_section))
+                    if dargs:
+                        current_section = section_kind(dargs[0])
                     continue
 
-                elif directive == '.equ':
-                    parts = [v for v in re.split(r'[,\s]+', text[len('.equ'):]) if v]
-                    if len(parts) == 2:
-                        symbol_table[parts[0]] = int(parts[1], 0)
+                elif directive in ('.text', '.data', '.rodata', '.bss'):
+                    current_section = section_kind(directive)
+                    continue
+
+                elif directive in ('.equ', '.set'):
+                    if len(dargs) != 2:
+                        raise ValueError(f"'{directive}' expects NAME, VALUE")
+                    symbol_table[dargs[0]] = parse_literal_or_int(dargs[1])
                     continue
 
                 elif directive == '.word':
-                    values = [v for v in re.split(r'[,\s]+', text[len('.word'):]) if v]
-                    for v in values:
-                        item = (lineno, raw, f".word {v}", current_section, labels)
-                        labels = []
-                        if current_section == "text":
-                            text_items.append(item)
-                        else:
-                            rodata_items.append(item)
+                    if not dargs:
+                        raise ValueError(".word needs a value")
+                    for v in dargs:
+                        emit(f".word {v}", lineno, raw)
                     continue
 
-                elif directive == '.string':
-                    # ""の中身pic
-                    match = re.search(r'"([^"]*)"', text)
-                    if not match:
-                        raise ValueError("Invalid .string format")
-                    s_val = match.group(1)
-                    s_val = s_val.encode('utf-8').decode('unicode_escape')
-                    
-                    bytes_data = list(s_val.encode('utf-8')) + [0]
-                    
-                    while len(bytes_data) % 4 != 0:
-                        bytes_data.append(0)
-
-                    first_chunk = True
-                    for i in range(0, len(bytes_data), 4):
-                        chunk = bytes_data[i:i+4]
-                        val = chunk[0] | (chunk[1] << 8) | (chunk[2] << 16) | (chunk[3] << 24)
-                        
-                        # .word として登録
-                        item_labels = labels if first_chunk else []
-                        item = (lineno, raw, f".word {val}", "rodata", item_labels)
-                        rodata_items.append(item)
-                        first_chunk = False
-                        labels = []
+                elif directive in STRING_DIRECTIVES:
+                    literals = STRING_RE.findall(text)
+                    if not literals:
+                        raise ValueError(f"Invalid {directive} format")
+                    data = bytearray()
+                    for lit in literals:
+                        data += decode_string(lit).encode('utf-8')
+                        if STRING_DIRECTIVES[directive]:
+                            data.append(0)
+                    while len(data) % 4:
+                        data.append(0)
+                    for i in range(0, len(data), 4):
+                        val = int.from_bytes(data[i:i + 4], 'little')
+                        emit(f".word {val}", lineno, raw)
                     continue
+
+                elif directive in ('.align', '.p2align', '.balign'):
+                    if len(dargs) < 1:
+                        raise ValueError(f"'{directive}' expects an argument")
+                    n = parse_literal_or_int(dargs[0])
+                    nbytes = n if directive == '.balign' else (1 << n)
+                    if nbytes <= 0 or nbytes & (nbytes - 1):
+                        raise ValueError(f"Invalid alignment: {n}")
+                    if nbytes > 4:   # 全アイテムが4バイト単位なので 4 以下は常に満たされる
+                        target_list().append(('ALIGN', lineno, raw, nbytes))
+                    continue
+
+                elif directive in UNSUPPORTED_DATA_DIRECTIVES:
+                    raise ValueError(f"'{directive}' is not supported (word-sized data only)")
 
                 elif directive in SAFE_SKIP_DIRECTIVES:
-                    if labels:
-                        for name in labels:
-                            text_items.append(('LABEL_DEF', lineno, raw, name, current_section))
                     continue
-                
+
                 else:
-                    # 未対応 -> error
                     raise ValueError(f"Unsupported directive '{directive}'")
 
-            # 通常・疑似命令の展開
+            # 通常命令・疑似命令の展開
             for ins in expand_pseudo(text, symbol_table):
-                item = (lineno, raw, ins, current_section, labels)
-                labels = []
-                if current_section == "text":
-                    text_items.append(item)
-                else:
-                    rodata_items.append(item)
+                emit(ins, lineno, raw)
 
         except ValueError as e:
             errors.append((lineno, raw, e))
-    
-    # Pass 1-2: 正式なアドレス（PC）の割り当てとシンボルテーブルの構築
-    # .text 部分のPCを順に確定
-    final_text_items = []
-    text_pc = 0
-    for item in text_items:
-        if item[0] == 'LABEL_DEF':
-            _, lineno, raw, name, sec = item
-            symbol_table[name] = text_pc
-            continue
-        
-        lineno, raw, text, sec, labels = item
-        for name in labels:
-            if name in symbol_table:
-                # 既に登録済みの重複チェック
-                pass
-            symbol_table[name] = text_pc
-        
-        final_text_items.append((lineno, raw, text, "text", text_pc))
-        text_pc += 4
 
-    # 直後のアドレスを .rodata の開始アドレスに設定
-    rodata_pc = text_pc
-    final_rodata_items = []
-    for item in rodata_items:
-        lineno, raw, text, sec, labels = item
-        for name in labels:
-            symbol_table[name] = rodata_pc
-        
-        final_rodata_items.append((lineno, raw, text, "rodata", rodata_pc))
-        rodata_pc += 4
+    if errors:
+        report_errors(input_file, errors)
 
+    # Pass 1-2: 連結・アドレス割り当て
+    def assign(src_items, start_pc, section):
+        out, pc = [], start_pc
+        for item in src_items:
+            if item[0] == 'LABEL_DEF':
+                _, lineno, raw, name = item
+                if name in symbol_table:
+                    errors.append((lineno, raw, ValueError(f"Duplicate label '{name}'")))
+                symbol_table[name] = pc
+            elif item[0] == 'ALIGN':
+                _, lineno, raw, nbytes = item
+                while pc % nbytes:
+                    pad = NOP if section == "text" else ".word 0"
+                    out.append((lineno, raw, pad, section, pc))
+                    pc += 4
+            else:
+                lineno, raw, text = item
+                out.append((lineno, raw, text, section, pc))
+                pc += 4
+        return out, pc
+
+    final_text_items, text_end = assign(text_items, 0, "text")
+    final_rodata_items, _ = assign(rodata_items, text_end, "rodata")
     items = final_text_items + final_rodata_items
+
+    if errors:
+        report_errors(input_file, errors)
 
     # Pass 2:
     hex_lines = []
     for lineno, raw, text, section, ipc in items:
         try:
-            text = text.strip()
-            if not text:
-                continue
             if text.startswith('.word'):
-                parts = text.split()
-                if len(parts) > 1:
-                    hex_lines.append(assemble_word(text.split()[1], symbol_table))
-                else:
-                    raise ValueError(".word is missing an operand")
+                hex_lines.append(assemble_word(text[len('.word'):], symbol_table))
             else:
                 hex_lines.append(assemble_line(text, ipc, symbol_table))
         except ValueError as e:
             errors.append((lineno, raw, e))
 
     if errors:
-        for lineno, raw, e in sorted(errors, key=lambda x: x[0]):
-            print(f"{input_file}:{lineno or '(startup)'}: error: {e}\n    {raw.strip()}")
-        sys.exit(1)
+        report_errors(input_file, errors)
 
     with open(output_file, "w", encoding="utf-8") as f:
         for hex_code in hex_lines:
             f.write(hex_code + "\n")
 
-    print(f"Successfully assembled '{input_file}' -> '{output_file}' ({len(hex_lines)} instructions)")
+    print(f"Successfully assembled '{input_file}' -> '{output_file}' "
+          f"({len(hex_lines)} words: text {len(final_text_items)}, rodata {len(final_rodata_items)})")
 
 
 if __name__ == "__main__":
@@ -468,4 +530,3 @@ if __name__ == "__main__":
 
 # python assembler.py prog.s -o prog.hex                # main があれば付く
 # python assembler.py prog.s -o prog.hex --no-startup   # 付けない
-
