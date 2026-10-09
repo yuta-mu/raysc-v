@@ -210,10 +210,12 @@ and trans_var ast nest env = match ast with
                                 ^ nCopyStr (nest-level) "\tlw t0, 8(t0)\n"
                                 ^ addImmTo "t0" offset (* offsetが12bit即値を超える場合も *)
                            | _ -> raise (No_such_symbol s))
-                 | IndexedVar (v, size) -> 
-                            trans_exp (CallFunc("*", [IntExp 4; size])) nest env
+                 | IndexedVar (v, idx) -> 
+                        let elem_size = (match type_var v env with
+                                          ARRAY (_, t, _) -> calc_size (actual_ty t)
+                                        | _ -> raise (Err "internal error")) in
+                            trans_exp (CallFunc("*", [IntExp elem_size; idx])) nest env
                           ^ trans_var v nest env
-                          ^ "\tlw t0, 0(t0)\n"
                           ^ "\tlw t1, 0(sp)\n"
                           ^ "\taddi sp, sp, 4\n"
                           ^ "\tadd t0, t0, t1\n"
