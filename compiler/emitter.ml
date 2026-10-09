@@ -149,21 +149,14 @@ and trans_stmt ast nest tenv env =
                       let entry = env s in 
                          (match entry with
                              (FunEntry {formals=_; result=_; level=level}) -> 
-                                 (* 実引数のコード *)
-                                 (* 16バイト境界に調整 *)
-                                 (* 64bit(8byte)->32bit(4byte) *)
-                                 (match (List.length el) mod 4 with
-                                      1 -> ""
-                                    | 2 -> "\taddi sp, sp, -12\n"
-                                    | 3 -> "\taddi sp, sp, -8\n"
-                                    | _ -> "\taddi sp, sp, -4\n")
-                               ^ List.fold_right  (fun  ast code -> code ^ (trans_exp ast nest env)) el "" 
-                                 (* 静的リンクを渡すコード *)
-                               ^  passLink nest level
-                                 (* 関数の呼出しコード *)
-                               ^  "\tcall " ^ s ^ "\n"
-                                 (* 積んだ引数+静的リンクを降ろす *)
-                               ^  sprintf "\taddi sp, sp, %d\n" ((List.length el + 3 + 3) / 4 * 16) 
+                                 let n = List.length el in
+                                 let used = 4 * (n+1) in (*引数+静的リンク*)(*4の倍数*)
+                                    List.fold_right (fun ast code -> code ^ (trans_exp ast nest env)) el ""
+                                  (*静的リンクを渡すコード*)
+                                  ^ passLink nest level
+                                  (*関数呼び出しコード*)
+                                  ^ "\tcall " ^ s ^ "\n"
+                                  ^ sprintf "\taddi sp, sp, %d\n" used (*積んだ分を戻す*)
                             | _ -> raise (No_such_symbol s)) 
                   (* ブロックのコード：文を表すブロックは，関数定義を無視する．*)
                   | Block (dl, sl) -> 
