@@ -1,6 +1,8 @@
 #ifndef VEC3_H
 #define VEC3_H
 #include "fpm.h"
+#include "rtweekend.h"
+#include <ostream>
 
 
 
@@ -38,8 +40,13 @@ public:
     e[2] = fpm_div(e[2], t);
     return *this ;
   }
-  
+
   fpm_t length() const {
+    const fpm_t scale = std::max(std::abs(e[0]), std::max(std::abs(e[1]), std::abs(e[2])));
+    if (scale > 104 * f_scale) {
+      const vec3 scaled(fpm_div(e[0], scale), fpm_div(e[1], scale), fpm_div(e[2], scale));
+      return fpm_mul(scale, fpm_sqrt(scaled.length_squared()));
+    }
     return fpm_sqrt(length_squared());
   }
 
@@ -47,9 +54,22 @@ public:
     return fpm_mul(e[0], e[0]) + fpm_mul(e[1], e[1]) + fpm_mul(e[2], e[2]);
   }
 
+  static vec3 random() {
+    return vec3(random_fixed(), random_fixed(), random_fixed());
+  }
+
+  static vec3 random(fpm_t min, fpm_t max) {
+    return vec3(random_fixed(min, max), random_fixed(min, max), random_fixed(min, max));
+  }
+
 };
 
 using point3 = vec3;
+using color = vec3;
+
+inline std::ostream& operator<<(std::ostream& out, const vec3& v) {
+  return out << v.x() << ' ' << v.y() << ' ' << v.z();
+}
 
 inline vec3 operator+(const vec3 &u, const vec3 &v) {
   return vec3(u.e[0] + v.e[0], u.e[1] + v.e[1], u.e[2] + v.e[2]);
@@ -89,6 +109,36 @@ inline vec3 cross(const vec3 &u, const vec3 &v) {
 inline vec3 unit_vector(vec3 v) {
   fpm_t t = v.length();
   return vec3(fpm_div(v.e[0],t), fpm_div(v.e[1],t), fpm_div(v.e[2],t));
+}
+
+inline vec3 random_in_unit_sphere() {
+  while (true) {
+    const vec3 p = vec3::random(-f_scale, f_scale);
+    const fpm_t squared = p.length_squared();
+    if (squared > 0 && squared < f_scale) return p;
+  }
+}
+
+inline vec3 random_unit_vector() {
+  return unit_vector(random_in_unit_sphere());
+}
+
+inline vec3 random_in_unit_disk() {
+  while (true) {
+    const vec3 p(random_fixed(-f_scale, f_scale), random_fixed(-f_scale, f_scale), 0);
+    if (p.length_squared() < f_scale) return p;
+  }
+}
+
+inline vec3 reflect(const vec3& v, const vec3& n) {
+  return v - (2 * dot(v, n)) * n;
+}
+
+inline vec3 refract(const vec3& uv, const vec3& n, fpm_t ratio) {
+  const fpm_t cosine = clamp(dot(-uv, n), 0, f_scale);
+  const vec3 parallel = ratio * (uv + cosine * n);
+  const vec3 perpendicular = -fpm_sqrt(std::max(0, f_scale - parallel.length_squared())) * n;
+  return parallel + perpendicular;
 }
 
 
