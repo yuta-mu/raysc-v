@@ -350,8 +350,7 @@ def main():
     ap = argparse.ArgumentParser(description="RV32I(+M) assembler")
     ap.add_argument("input", help="input .s file")
     ap.add_argument("-o", "--output", default="output.hex", help="output .hex file")
-    ap.add_argument("--no-startup", action="store_true",
-                    help="main があってもスタートアップコードを付けない")
+    ap.add_argument("--no-startup", action="store_true", help="startup code なし")
     args = ap.parse_args()
 
     input_file = args.input
@@ -362,7 +361,7 @@ def main():
 
     numbered = list(enumerate(lines, 1))
 
-    # スタートアップコード (main があるときだけ)
+    # mainあるときだけ挿入
     has_main = any(re.match(r'^\s*main\s*:', l) for l in lines)
     if has_main and not args.no_startup:
         startup_code = [
@@ -375,7 +374,7 @@ def main():
     symbol_table = {}
     errors = []
 
-    # セクションごとのアイテム
+    # セクション管理
     #   命令/データ : (lineno, raw, text)
     #   ラベル定義  : ('LABEL_DEF', lineno, raw, name)
     #   アラインメント: ('ALIGN', lineno, raw, nbytes)
@@ -389,7 +388,7 @@ def main():
     def emit(item_text, lineno, raw):
         target_list().append((lineno, raw, item_text))
 
-    # Pass 1-1: セクションごとに分類
+    # Pass 1-1:セクションに分類
     for lineno, raw in numbered:
         try:
             labels, text = split_labels(strip_comment(raw))
@@ -449,7 +448,7 @@ def main():
                     nbytes = n if directive == '.balign' else (1 << n)
                     if nbytes <= 0 or nbytes & (nbytes - 1):
                         raise ValueError(f"Invalid alignment: {n}")
-                    if nbytes > 4:   # 全アイテムが4バイト単位なので 4 以下は常に満たされる
+                    if nbytes > 4:   # 4 以下は常に真
                         target_list().append(('ALIGN', lineno, raw, nbytes))
                     continue
 
