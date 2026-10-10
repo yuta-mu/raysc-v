@@ -19,7 +19,8 @@ module datapath (
     output logic [31:0] mem_addr,
     output logic [31:0] mem_wdata,
     output logic [3:0]  mem_wstrb,
-    input  logic [31:0] mem_rdata
+    input  logic [31:0] mem_rdata,
+    output logic retire
 );
 
     logic [31:0] pc_next;
@@ -105,10 +106,11 @@ module datapath (
     assign is_div_op = (result_src == RESULT_MDU) && funct3[2];
 
     logic div_start;
-    assign div_start = is_div_op && !div_busy;
+    assign div_start = is_div_op && !div_busy && !div_done;
 
     logic stall;
     assign stall = is_div_op && !div_done;
+    assign retire = rst_n && !stall;
 
     divider u_divider (
         .clk    (clk),

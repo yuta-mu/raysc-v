@@ -20,13 +20,15 @@ module tb_cpu;
         .mem_write (mem_write),
         .mem_addr  (mem_addr),
         .mem_wdata (mem_wdata),
-        .mem_rdata (mem_rdata)
+        .mem_rdata (mem_rdata),
+
+        .retire    (retire)
     );
 
-    logic [31:0] memory [0:16383];
+    logic [31:0] memory [0:65535];
 
-    assign inst = memory[pc[15:2]];
-    assign mem_rdata = mem_read ? memory[mem_addr[15:2]] : 32'h0;
+    assign inst = memory[pc[17:2]];
+    assign mem_rdata = mem_read ? memory[mem_addr[17:2]] : 32'h0;
 
     string  hex_file;
     integer cycle_count = 0;
@@ -42,7 +44,7 @@ module tb_cpu;
         if ($test$plusargs("trace")) trace_en = 1;
 
         // メモリのクリア
-        for (int i = 0; i < 16384; i++) memory[i] = 32'h0;
+        for (int i = 0; i < 65535; i++) memory[i] = 32'h0;
 
         // Load test hex file
         if ($value$plusargs("hex=%s", hex_file)) $readmemh(hex_file, memory);
@@ -62,15 +64,21 @@ module tb_cpu;
                 $write("%c", mem_wdata[7:0]);
                 $fflush();
             end else begin
-                if (u_cpu.mem_wstrb[0]) memory[mem_addr[15:2]][7:0]   <= mem_wdata[7:0];
-                if (u_cpu.mem_wstrb[1]) memory[mem_addr[15:2]][15:8]  <= mem_wdata[15:8];
-                if (u_cpu.mem_wstrb[2]) memory[mem_addr[15:2]][23:16] <= mem_wdata[23:16];
-                if (u_cpu.mem_wstrb[3]) memory[mem_addr[15:2]][31:24] <= mem_wdata[31:24];
+                if (u_cpu.mem_wstrb[0]) memory[mem_addr[17:2]][7:0]   <= mem_wdata[7:0];
+                if (u_cpu.mem_wstrb[1]) memory[mem_addr[17:2]][15:8]  <= mem_wdata[15:8];
+                if (u_cpu.mem_wstrb[2]) memory[mem_addr[17:2]][23:16] <= mem_wdata[23:16];
+                if (u_cpu.mem_wstrb[3]) memory[mem_addr[17:2]][31:24] <= mem_wdata[31:24];
             end
         end
     end
 
+    integer fd;
+    logic   retire;
+    initial fd = $fopen("trace.txt", "w");
+
     always @(posedge clk) begin
+        if (retire)
+            $fwrite(fd, "%08x %08x\n", pc, inst);
         if (rst_n) begin
             cycle_count <= cycle_count + 1;
 

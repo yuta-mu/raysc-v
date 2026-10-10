@@ -30,6 +30,7 @@ RTL_SRCS := hw/rtl/control.sv \
             hw/rtl/branch_unit.sv \
             hw/rtl/datapath.sv \
 			hw/rtl/multiplier.sv \
+			hw/rtl/divider.sv \
             hw/rtl/cpu.sv
 
 TB_CPU_BIN := hw/sim/sim_tb_cpu.out
