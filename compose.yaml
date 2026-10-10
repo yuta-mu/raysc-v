@@ -1,7 +1,7 @@
 services:
-  app:
+  dev:
     build: .
-    image: rv32i-dev
+    image: raysc-v-env
     volumes:
       - .:/workspace:z
     working_dir: /workspace
