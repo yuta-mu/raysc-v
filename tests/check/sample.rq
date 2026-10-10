@@ -1,0 +1,46 @@
+const T_EPS: q16 = 0.0039;
+const NO_HIT: q16 = -1.0;
+const RAMP: [i32; 4] = [' ', '.', '*', '#'];     // グレースケール用 ASCII テーブル
+
+struct Ray    { o: vec3, d: vec3, }
+struct Sphere { c: vec3, r2: q16, }
+
+fn to_byte(q: q16) -> i32 {
+    let v: i32;
+    if (q <= 0.0) { return 0; }
+    if (q >= 1.0) { return 255; }
+    v = i32(q * 256.0);
+    if (v > 255) { v = 255; }
+    return v;
+}
+
+fn write_pixel(c: vec3) -> void {
+    bprint(to_byte(c.x));
+    bprint(to_byte(c.y));
+    bprint(to_byte(c.z));
+}
+
+// Ray (6 ワード) は a0-a5、Sphere (4 ワード) の先頭 2 ワードは a6-a7、残り 2 ワードはスタック
+fn hit_sphere(r: Ray, s: Sphere) -> q16 {
+    let oc: vec3;
+    let b: q16;
+    let k: q16;
+    let disc: q16;
+    oc = r.o - s.c;
+    b = oc <.> r.d;
+    k = (oc <.> oc) - s.r2;
+    disc = (b * b) - k;
+    if (disc < 0.0) { return NO_HIT; }
+    return -b - sqrt(disc);
+}
+
+fn main() -> void {
+    let r: Ray = Ray(vec3(0.0, 0.0, -5.0), vec3(0.0, 0.0, 1.0));
+    let s: Sphere = Sphere(vec3(0.0, 0.0, 0.0), 1.0);
+    let col: vec3;
+
+    print("P6\n1 1\n255\n");
+    if (hit_sphere(r, s) > T_EPS) { col = vec3(1.0, 0.5, 0.0); }
+    else                          { col = vec3(0.0, 0.0, 0.0); }
+    write_pixel(col);
+}

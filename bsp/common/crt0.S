@@ -2,10 +2,10 @@
 .globl _start
 
 _start:
-    # 1. リンカスクリプトで計算したスタック頂点を設定
+    # 1. スタックポインタ初期化
     la sp, _stack_top
 
-    # 2. BSS セクション (__bss_start から __bss_end まで) をゼロクリア
+    # 2. BSS セクションのゼロクリア
     la t0, __bss_start
     la t1, __bss_end
 bss_clear:
@@ -15,14 +15,15 @@ bss_clear:
     j bss_clear
 
 bss_done:
-    # 3. main 関数の実行
+    # 3. main 実行
     call main
 
-loop:
-#ifdef TARGET_QEMU
+    # 4. QEMU virt マシンの正常終了 (sifive_test デバイスへ 0x5555 を書き込む)
     li t0, 0x00100000
     li t1, 0x5555
     sw t1, 0(t0)
+
+loop:
     wfi
-#endif
     j loop
+

@@ -1,31 +1,23 @@
-FILE = parser.mly lexer.mll sim.ml \
-       ast.ml types.ml table.ml semant.ml emitter.ml 
+BUILD_DIR ?= ../build/compiler
+TARGET    := $(BUILD_DIR)/rayqc
 
-simc: $(FILE)
-	ocamlyacc parser.mly
-	ocamllex lexer.mll
-	ocamlc -c ast.ml
-	ocamlc -c parser.mli
-	ocamlc -c lexer.ml
-	ocamlc -c parser.ml
-	ocamlc -c types.ml
-	ocamlc -c table.ml
-	ocamlc -c semant.ml
-	ocamlc -c emitter.ml
-	ocamlc -c sim.ml
-	ocamlc -o simc unix.cma ast.cmo lexer.cmo parser.cmo \
-                  types.cmo table.cmo semant.cmo emitter.cmo sim.cmo
+ML_SRCS := ast.ml numeric.ml semant.ml ir.ml translate.ml emitter.ml main.ml
 
-print_ast: $(FILE) print_ast
-	ocamlyacc parser.mly
-	ocamllex lexer.mll
-	ocamlc -c ast.ml
-	ocamlc -c parser.mli
-	ocamlc -c lexer.ml
-	ocamlc -c parser.ml
-	ocamlc -c print_ast.ml
-	ocamlc -o print_ast unix.cma ast.cmo lexer.cmo parser.cmo print_ast.cmo
+all: $(TARGET)
+
+$(BUILD_DIR)/parser.ml $(BUILD_DIR)/parser.mli: parser.mly
+	@mkdir -p $(BUILD_DIR)
+	ocamlyacc -b $(BUILD_DIR)/parser parser.mly
+
+$(BUILD_DIR)/lexer.ml: lexer.mll $(BUILD_DIR)/parser.mli
+	@mkdir -p $(BUILD_DIR)
+	ocamllex -o $(BUILD_DIR)/lexer.ml lexer.mll
+
+$(TARGET): $(BUILD_DIR)/parser.ml $(BUILD_DIR)/lexer.ml $(ML_SRCS)
+	@mkdir -p $(BUILD_DIR)
+	cp $(ML_SRCS) $(BUILD_DIR)/
+	cd $(BUILD_DIR) && ocamlopt -I . -o rayqc \
+		ast.ml numeric.ml parser.mli parser.ml lexer.ml semant.ml ir.ml translate.ml emitter.ml main.ml
 
 clean:
-	rm  -f *.cmi *.cmo parser.ml lexer.ml parser.mli simc print_ast a.out tmp.s
-
+	rm -rf $(BUILD_DIR)

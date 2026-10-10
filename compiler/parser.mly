@@ -1,135 +1,235 @@
 %{
-
-open Printf
 open Ast
-
-let parse_error msg =
-  Printf.eprintf "syntax error at line %d near '%s'\n" !Lexer.line_number !Lexer.curr_tok
-
+let expr loc desc = { desc; loc }
 %}
 
-/* File parser.mly */
-%token <int> NUM
-%token <string> STR ID
-%token INT IF DO WHILE FOR DOTDOT QUEST COLON SPRINT IPRINT EQ NEQ GT LT GE LE ELSE RETURN
-%token PLUS MINUS TIMES DIV MOD HAT INC PLUS_ASSIGN LB RB LS RS LP RP ASSIGN SEMI COMMA TYPE VOID
-%type <Ast.stmt> prog
+%token <int32> INT QLIT CHAR
+%token <string> IDENT STRING
+%token TRUE FALSE
+%token FN LET CONST STRUCT IF ELSE WHILE FOR IN BREAK CONTINUE RETURN
+%token I32_T Q16_T BOOL_T VEC3_T VOID_T
+%token LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET
+%token COMMA SEMI COLON DOT ARROW DOTDOT
+%token ASSIGN PLUS MINUS STAR SLASH PERCENT
+%token SHL SHR BAND BOR BXOR
+%token EQ NE LT LE GT GE LAND LOR NOT DOTPROD
+%token EOF
 
+%right ASSIGN
+%left LOR
+%left LAND
+%left BOR
+%left BXOR
+%left BAND
+%left EQ NE
+%left LT LE GT GE
+%left SHL SHR
+%left PLUS MINUS
+%left STAR SLASH PERCENT DOTPROD
+%right NOT UMINUS
+%left DOT LBRACKET LPAREN
 
-%nonassoc GT LT EQ NEQ GE LE
-%left PLUS MINUS         /* lowest precedence */
-%left TIMES DIV MOD        /* medium precedence */
-%right HAT
-%nonassoc UMINUS
-%nonassoc INC            /* highest precedence */
-
-
-%start prog           /* the entry point */
+%start program
+%type <Ast.program> program
 
 %%
 
-prog : stmt  {  $1  }
-     ;
+program:
+  decls EOF { $1 }
+;
 
-ty   : INT { IntTyp }
-     | INT LS NUM RS { ArrayTyp ($3, IntTyp) }
-     | ID	     { NameTyp $1 }
-     ;
+decls:
+  /* empty */ { [] }
+| decls decl  { $1 @ [$2] }
+;
 
-decs : decs dec { $1@$2 }
-     |          { [] }
-     ;
+decl:
+  CONST IDENT COLON typ ASSIGN const_init SEMI { Const ($2, $4, $6) }
+| STRUCT IDENT LBRACE fields RBRACE            { StructDecl ($2, $4) }
+| FN IDENT LPAREN params_opt RPAREN ARROW typ_or_void block { Function ($2, $4, $7, $8) }
+;
 
-dec  : ty ids SEMI   { List.map (fun x -> VarDec ($1,x)) $2 }
-     | ty ID ASSIGN expr SEMI { [InitVarDec ($1, $2, $4)] }
-     | TYPE ID ASSIGN ty SEMI { [TypeDec ($2,$4)] }
-     | ty ID LP fargs_opt RP block  { [FuncDec($2, $4, $1, $6)] }
-     | VOID ID LP fargs_opt RP block  { [FuncDec($2, $4, VoidTyp, $6)] }
-     ; 
+fields:
+  IDENT COLON typ COMMA        { [{ field_name = $1; field_type = $3 }] }
+| fields IDENT COLON typ COMMA { $1 @ [{ field_name = $2; field_type = $4 }] }
+;
 
-ids  : ids COMMA ID    { $1@[$3] }
-     | ID              { [$1]  }
-     ;
+params_opt:
+  /* empty */ { [] }
+| params      { $1 }
+;
 
-fargs_opt : /* empty */ { [] }
-     | fargs            { $1 }
-     ;
-     
-fargs: fargs COMMA ty ID     { $1@[($3,$4)] }
-     | ty ID                 { [($1,$2)] }
-     ;
+params:
+  IDENT COLON typ              { [{ param_name = $1; param_type = $3 }] }
+| params COMMA IDENT COLON typ { $1 @ [{ param_name = $3; param_type = $5 }] }
+;
 
-stmts: stmts stmt  { $1@[$2] }
-     | stmt        { [$1] }
-     ;
+typ_or_void:
+  typ    { $1 }
+| VOID_T { Void }
+;
 
-stmt : ID ASSIGN expr SEMI    { Assign (Var $1, $3) }
-     | ID INC SEMI { Assign (Var $1, CallFunc ("+", [VarExp (Var $1); IntExp 1]))}
-     | ID PLUS_ASSIGN expr SEMI { Assign (Var $1, CallFunc ("+", [VarExp (Var $1); $3])) }
-     | ID LS expr RS ASSIGN expr SEMI  { Assign (IndexedVar (Var $1, $3), $6) }
-     | IF LP cond RP stmt     { If ($3, $5, None) }
-     | IF LP cond RP stmt ELSE stmt 
-                              { If ($3, $5, Some $7) }
-     | WHILE LP cond RP stmt  { While ($3, $5) }
-     | DO stmt WHILE LP cond RP SEMI { Block ([], [$2; While ($5, $2)]) }
-     | FOR LP ID ASSIGN expr DOTDOT expr RP stmt {
-        Block ([], [
-           Assign (Var $3, $5);
-           While (
-              CallFunc ("!=", [VarExp (Var $3); $7]),
-              Block ([], [
-                 $9;
-                 Assign (Var $3, CallFunc ("+", [VarExp (Var $3); IntExp 1]))
-              ])
-           )
-        ])
-     }
-     | SPRINT LP STR RP SEMI  { CallProc ("sprint", [StrExp $3]) }
-     | IPRINT LP expr RP SEMI { CallProc ("iprint", [$3]) }
-     | ID LP aargs_opt RP SEMI  { CallProc ($1, $3) }
-     | RETURN expr SEMI    { CallProc ("return", [$2]) }
-     | block { $1 }
-     | SEMI { NilStmt }
-     | error SEMI { 
-          Printf.eprintf "syntax error: skipping to ';'\n";
-          NilStmt 
-          }
-     ;
+typ:
+  I32_T  { I32 }
+| Q16_T  { Q16 }
+| BOOL_T { Bool }
+| VEC3_T { Vec3 }
+| IDENT  { Struct $1 }
+| LBRACKET typ SEMI INT RBRACKET { Array ($2, Int32.to_int $4) }
+;
 
-aargs_opt: /* empty */     { [] }
-        | aargs            { $1 }
-        ;
+block:
+  LBRACE var_decls stmts RBRACE { Block ($2 @ $3) }
+;
 
-aargs : aargs COMMA expr  { $1@[$3] }
-      | expr               { [$1] }
-      ;
+var_decls:
+  /* empty */ { [] }
+| var_decls var_decl { $1 @ [$2] }
+;
 
-block: LB decs stmts RB  { Block ($2, $3) }
-     ;
+var_decl:
+  LET IDENT COLON typ SEMI             { Let ($2, $4, None) }
+| LET IDENT COLON typ ASSIGN expr SEMI { Let ($2, $4, Some $6) }
+;
 
-expr : NUM { IntExp $1  }
-     | ID { VarExp (Var $1) }
-     | ID LP aargs_opt RP { CallFunc ($1, $3) } 
-     | ID LS expr RS  { VarExp (IndexedVar (Var $1, $3)) }
-     | expr PLUS expr { CallFunc ("+", [$1; $3]) }
-     | expr MINUS expr { CallFunc ("-", [$1; $3]) }
-     | expr TIMES expr { CallFunc ("*", [$1; $3]) }
-     | expr DIV expr { CallFunc ("/", [$1; $3]) }
-     | expr MOD expr { CallFunc ("%", [$1; $3]) }
-     | expr HAT expr { CallFunc ("^", [$1; $3]) }
-     | ID INC { PostInc (Var $1) }
-     | cond QUEST expr COLON expr { CondExp ($1, $3, $5) }
-     | ID LS expr RS INC { PostInc (IndexedVar (Var $1, $3)) }
-     | MINUS expr %prec UMINUS { CallFunc("!", [$2]) }
-     | LP expr RP  { $2 }
-     ;
+stmts:
+  /* empty */ { [] }
+| stmts stmt  { $1 @ [$2] }
+;
 
-cond : expr EQ expr  { CallFunc ("==", [$1; $3]) }
-     | expr NEQ expr { CallFunc ("!=", [$1; $3]) }
-     | expr GT expr  { CallFunc (">", [$1; $3]) }
-     | expr LT expr  { CallFunc ("<", [$1; $3]) }
-     | expr GE expr  { CallFunc (">=", [$1; $3]) }
-     | expr LE expr  { CallFunc ("<=", [$1; $3]) }
-     | LP cond RP    { $2 }
-     ;
-%%
+stmt:
+  expr ASSIGN expr SEMI                  { Assign ($1, $3) }
+| IF LPAREN expr RPAREN block            { If ($3, $5, None) }
+| IF LPAREN expr RPAREN block ELSE block { If ($3, $5, Some $7) }
+| WHILE LPAREN expr RPAREN block         { While ($3, $5) }
+| FOR IDENT IN expr DOTDOT expr block    { For ($2, $4, $6, $7) }
+| BREAK SEMI                             { Break }
+| CONTINUE SEMI                          { Continue }
+| RETURN SEMI                            { Return None }
+| RETURN expr SEMI                       { Return (Some $2) }
+| expr SEMI                              { Expr $1 }
+;
+
+const_init:
+  INT                      { expr (Parsing.symbol_start_pos ()) (Literal (LI32 $1)) }
+| MINUS INT                { expr (Parsing.symbol_start_pos ()) (Literal (LI32 (Int32.neg $2))) }
+| QLIT                     { expr (Parsing.symbol_start_pos ()) (Literal (LQ16 $1)) }
+| MINUS QLIT               { expr (Parsing.symbol_start_pos ()) (Literal (LQ16 (Int32.neg $2))) }
+| CHAR                     { expr (Parsing.symbol_start_pos ()) (Literal (LChar $1)) }
+| TRUE                     { expr (Parsing.symbol_start_pos ()) (Literal (LBool true)) }
+| FALSE                    { expr (Parsing.symbol_start_pos ()) (Literal (LBool false)) }
+| VEC3_T LPAREN const_init COMMA const_init COMMA const_init RPAREN
+    { expr (Parsing.symbol_start_pos ()) (Call ("vec3", [$3; $5; $7])) }
+| IDENT LPAREN const_init_list RPAREN { expr (Parsing.symbol_start_pos ()) (Call ($1, $3)) }
+| LBRACKET const_init_list RBRACKET   { expr (Parsing.symbol_start_pos ()) (Call ("__array__", $2)) }
+;
+
+const_init_list:
+  const_init { [$1] }
+| const_init_list COMMA const_init { $1 @ [$3] }
+;
+
+expr:
+  logic_or { $1 }
+;
+
+logic_or:
+  logic_and { $1 }
+| logic_or LOR logic_and { expr (Parsing.symbol_start_pos ()) (Binary (Or, $1, $3)) }
+;
+
+logic_and:
+  bit_or { $1 }
+| logic_and LAND bit_or { expr (Parsing.symbol_start_pos ()) (Binary (And, $1, $3)) }
+;
+
+bit_or:
+  bit_xor { $1 }
+| bit_or BOR bit_xor { expr (Parsing.symbol_start_pos ()) (Binary (BitOr, $1, $3)) }
+;
+
+bit_xor:
+  bit_and { $1 }
+| bit_xor BXOR bit_and { expr (Parsing.symbol_start_pos ()) (Binary (BitXor, $1, $3)) }
+;
+
+bit_and:
+  equality { $1 }
+| bit_and BAND equality { expr (Parsing.symbol_start_pos ()) (Binary (BitAnd, $1, $3)) }
+;
+
+equality:
+  relational { $1 }
+| relational EQ relational { expr (Parsing.symbol_start_pos ()) (Binary (Eq, $1, $3)) }
+| relational NE relational { expr (Parsing.symbol_start_pos ()) (Binary (Ne, $1, $3)) }
+;
+
+relational:
+  shift { $1 }
+| shift LT shift { expr (Parsing.symbol_start_pos ()) (Binary (Lt, $1, $3)) }
+| shift LE shift { expr (Parsing.symbol_start_pos ()) (Binary (Le, $1, $3)) }
+| shift GT shift { expr (Parsing.symbol_start_pos ()) (Binary (Gt, $1, $3)) }
+| shift GE shift { expr (Parsing.symbol_start_pos ()) (Binary (Ge, $1, $3)) }
+;
+
+shift:
+  additive { $1 }
+| shift SHL additive { expr (Parsing.symbol_start_pos ()) (Binary (Shl, $1, $3)) }
+| shift SHR additive { expr (Parsing.symbol_start_pos ()) (Binary (Shr, $1, $3)) }
+;
+
+additive:
+  mul { $1 }
+| additive PLUS mul  { expr (Parsing.symbol_start_pos ()) (Binary (Add, $1, $3)) }
+| additive MINUS mul { expr (Parsing.symbol_start_pos ()) (Binary (Sub, $1, $3)) }
+;
+
+mul:
+  unary { $1 }
+| mul STAR unary    { expr (Parsing.symbol_start_pos ()) (Binary (Mul, $1, $3)) }
+| mul SLASH unary   { expr (Parsing.symbol_start_pos ()) (Binary (Div, $1, $3)) }
+| mul PERCENT unary { expr (Parsing.symbol_start_pos ()) (Binary (Mod, $1, $3)) }
+| mul DOTPROD unary { expr (Parsing.symbol_start_pos ()) (Binary (Dot, $1, $3)) }
+;
+
+unary:
+  MINUS unary { expr (Parsing.symbol_start_pos ()) (Unary (Neg, $2)) }
+| NOT unary   { expr (Parsing.symbol_start_pos ()) (Unary (Not, $2)) }
+| postfix     { $1 }
+;
+
+postfix:
+  primary { $1 }
+| postfix DOT IDENT                 { expr (Parsing.symbol_start_pos ()) (Field ($1, $3)) }
+| postfix LBRACKET expr RBRACKET    { expr (Parsing.symbol_start_pos ()) (Index ($1, $3)) }
+| postfix LPAREN args_opt RPAREN    {
+    match $1.desc with
+    | Variable id -> expr (Parsing.symbol_start_pos ()) (Call (id, $3))
+    | _ -> failwith "invalid function call"
+  }
+;
+
+primary:
+  IDENT  { expr (Parsing.symbol_start_pos ()) (Variable $1) }
+| INT    { expr (Parsing.symbol_start_pos ()) (Literal (LI32 $1)) }
+| QLIT   { expr (Parsing.symbol_start_pos ()) (Literal (LQ16 $1)) }
+| CHAR   { expr (Parsing.symbol_start_pos ()) (Literal (LChar $1)) }
+| STRING { expr (Parsing.symbol_start_pos ()) (Literal (LString $1)) }
+| TRUE   { expr (Parsing.symbol_start_pos ()) (Literal (LBool true)) }
+| FALSE  { expr (Parsing.symbol_start_pos ()) (Literal (LBool false)) }
+| I32_T LPAREN expr RPAREN { expr (Parsing.symbol_start_pos ()) (Call ("i32", [$3])) }
+| Q16_T LPAREN expr RPAREN { expr (Parsing.symbol_start_pos ()) (Call ("q16", [$3])) }
+| VEC3_T LPAREN expr COMMA expr COMMA expr RPAREN { expr (Parsing.symbol_start_pos ()) (Call ("vec3", [$3; $5; $7])) }
+| LPAREN expr RPAREN       { $2 }
+;
+
+args_opt:
+  /* empty */ { [] }
+| args        { $1 }
+;
+
+args:
+  expr            { [$1] }
+| args COMMA expr { $1 @ [$3] }
+;
+
