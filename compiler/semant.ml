@@ -63,8 +63,10 @@ let rec type_dec ast (nest,addr) tenv env =
                                     List.map (fun (typ,_) -> create_ty typ tenv) l; 
                                     result=create_ty rlt tenv; level=nest+1}) env in (tenv, env', addr)
     (* 変数宣言の処理 *)
-    | VarDec (t,s) -> (tenv, 
-              update s (VarEntry {ty= create_ty t tenv; offset=addr-4; level=nest}) env, addr-4)
+    | VarDec (t,s) -> 
+          let ty = create_ty t tenv in
+          let size = calc_size ty in
+            (tenv, update s (VarEntry {ty= ty; offset=addr-size; level=nest}) env, addr-size)
     | InitVarDec (t,s,e) ->
          if (create_ty t tenv) != (type_exp e env) then raise (TypeErr "type error 4")
          else (tenv, update s (VarEntry {ty= create_ty t tenv; offset=addr-4; level=nest}) env, addr-4)
