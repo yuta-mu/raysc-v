@@ -180,6 +180,11 @@ let emit_program (out : out_channel) (p : Ir.program) (ctx : Semant.context) =
           ppr "    jal ra, __q16_sqrt\n";
           Option.iter (fun d -> ppr "    sw a0, %d(sp)\n" (slot_offset d)) dst
 
+      | Call (dst, "rcp", [sa]) ->
+          ppr "    lw a0, %d(sp)\n" (slot_offset sa);
+          ppr "    jal ra, __q16_rcp\n";
+          Option.iter (fun d -> ppr "    sw a0, %d(sp)\n" (slot_offset d)) dst
+
       | Call (dst, name, arg_words) ->
           List.iteri (fun i slot ->
             if i < 8 then
@@ -245,6 +250,45 @@ let emit_program (out : out_channel) (p : Ir.program) (ctx : Semant.context) =
   ppr ".L_sqrt_check:\n    bge t1, t0, .L_sqrt_loop\n";
   ppr "    mv a0, a2\n    jalr x0, ra, 0\n";
   ppr ".L_sqrt_zero:\n    li a0, 0\n    jalr x0, ra, 0\n";
+
+  (* RV32IM 逆数サブルーチン (2^32 / x の 32bit シフト除算) *)
+  ppr "\n.globl __q16_rcp\n__q16_rcp:\n";
+  ppr "    beqz a0, .L_rcp_zero\n";        (* x == 0 -> 0x7FFFFFFF *)
+  ppr "    li t0, 0\n";                   (* 符号フラグ: 0=正, 1=負 *)
+  ppr "    bgez a0, .L_rcp_abs\n";
+  ppr "    li t0, 1\n";
+  ppr "    sub a0, x0, a0\n";             (* a0 = abs(x) *)
+  ppr ".L_rcp_abs:\n";
+  ppr "    li a1, 1\n";                   (* rem_hi = 1 *)
+  ppr "    li a2, 0\n";                   (* rem_lo = 0 (分子 = 2^32) *)
+  ppr "    li a3, 0\n";                   (* quot = 0 *)
+  ppr "    li t1, 32\n";                  (* loop count *)
+  ppr ".L_rcp_loop:\n";
+  ppr "    slli a3, a3, 1\n";             (* quot <<= 1 *)
+  ppr "    srli t2, a2, 31\n";            (* rem_lo の MSB *)
+  ppr "    slli a1, a1, 1\n";             (* rem_hi <<= 1 *)
+  ppr "    or a1, a1, t2\n";
+  ppr "    slli a2, a2, 1\n";             (* rem_lo <<= 1 *)
+  ppr "    bltu a1, a0, .L_rcp_next\n";
+  ppr "    sub a1, a1, a0\n";
+  ppr "    ori a3, a3, 1\n";              (* quot |= 1 *)
+  ppr ".L_rcp_next:\n";
+  ppr "    addi t1, t1, -1\n";
+  ppr "    bnez t1, .L_rcp_loop\n";
+  ppr "    beqz t0, .L_rcp_pos_ret\n";
+  (* 負の分母の floor 補正: 余り(a1|a2) != 0 なら --quot *)
+  ppr "    or t3, a1, a2\n";
+  ppr "    beqz t3, .L_rcp_neg_exact\n";
+  ppr "    addi a3, a3, 1\n";             (* - (quot + 1) *)
+  ppr ".L_rcp_neg_exact:\n";
+  ppr "    sub a0, x0, a3\n";
+  ppr "    jalr x0, ra, 0\n";
+  ppr ".L_rcp_pos_ret:\n";
+  ppr "    mv a0, a3\n";
+  ppr "    jalr x0, ra, 0\n";
+  ppr ".L_rcp_zero:\n";
+  ppr "    lui a0, 0x80000\n    addi a0, a0, -1\n"; (* 0x7FFFFFFF *)
+  ppr "    jalr x0, ra, 0\n";
 
   (* 定数データセクション (.rodata) *)
   ppr "\n.section .rodata\n";
