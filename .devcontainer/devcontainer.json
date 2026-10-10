@@ -1,11 +1,11 @@
 {
-    "name": "RV32I Dev Environment",
+    "name": "RaySC-V Dev Environment",
     "dockerComposeFile": [
-        "../docker-compose.yml",
+        "../compose.yaml",
         "docker-compose.yml"
     ],
-    "service": "app",
-    "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+    "service": "dev",
+    "workspaceFolder": "/workspace",
     "customizations": {
         "vscode": {
             "extensions": [
