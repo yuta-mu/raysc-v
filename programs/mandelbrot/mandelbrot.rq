@@ -1,0 +1,78 @@
+const WIDTH: i32 = 90;
+const HEIGHT: i32 = 30;
+const MAX_ITER: i32 = 64;
+const NUM_CHARS: i32 = 60;
+
+const X_MIN: q16 = -2.1;
+const X_MAX: q16 = 0.9;
+const Y_MIN: q16 = -1.2;
+const Y_MAX: q16 = 1.2;
+const FOUR: q16  = 4.0;
+
+const CHARSET: [i32; 60] = [
+    ' ', '.', '\'', '`', '^', '"', ',', ':', ';', 'I',
+    'l', '!', 'i', '>', '<', '~', '+', '_', '-', '?',
+    ']', '[', '}', '{', '1', ')', '(', '|', '/', 't',
+    'f', 'j', 'r', 'x', 'n', 'u', 'v', 'c', 'z', 'X',
+    'Y', 'U', 'J', 'C', 'L', 'Q', '0', 'O', 'Z', 'm',
+    'w', 'q', 'p', 'd', 'b', 'k', 'h', 'a', 'o', '*'
+];
+
+fn render_mandelbrot() -> void {
+    let dx: q16;
+    let dy: q16;
+    let ci: q16;
+    let cr: q16;
+    let zr: q16;
+    let zi: q16;
+    let zr2: q16;
+    let zi2: q16;
+    let zr_zi: q16;
+    let iter: i32;
+    let char_idx: i32;
+
+    dx = (X_MAX - X_MIN) * rcp(q16(WIDTH));
+    dy = (Y_MAX - Y_MIN) * rcp(q16(HEIGHT));
+
+    for row in 0..HEIGHT {
+        ci = Y_MIN + q16(row) * dy;
+
+        for col in 0..WIDTH {
+            cr = X_MIN + q16(col) * dx;
+
+            zr = 0.0;
+            zi = 0.0;
+            iter = 0;
+
+            while (iter < MAX_ITER) {
+                zr2 = zr * zr;
+                zi2 = zi * zi;
+
+                if (zr2 + zi2 > FOUR) {
+                    break;
+                }
+
+                zr_zi = zr * zi;
+                zi = zr_zi * 2.0 + ci;
+                zr = zr2 - zi2 + cr;
+
+                iter = iter + 1;
+            }
+
+            if (iter == MAX_ITER) {
+                bprint('#');
+            } else {
+                char_idx = (iter * NUM_CHARS) / MAX_ITER;
+                bprint(CHARSET[char_idx]);
+            }
+        }
+        bprint('\n');
+    }
+}
+
+fn main() -> void {
+    print("\n--- RaySC-V Mandelbrot Demo ---\n\n");
+    render_mandelbrot();
+    print("\n--- Done! ---\n");
+}
+
