@@ -16,8 +16,9 @@ let main () =
                             
 let error msg = prerr_string (msg ^ "\n"); exit 1
 let _ = try main () with 
-         Parsing.Parse_error -> error "parser error"
-       | Table.No_such_symbol x -> error ("no such symbol: \""^x^"\"\n")
-       | Semant.TypeErr s -> error s
-       | Semant.Err s -> error s
-       | Table.SymErr s -> error s
+         Parsing.Parse_error -> ()
+       | Table.No_such_symbol x -> print_string ("no such symbol: \""^x^"\"\n")
+       | Semant.TypeErr s -> print_string (s^"\n")
+       | Semant.Err s -> print_string (s^"\n")
+       | Table.SymErr s -> print_string (s^"\n")
+

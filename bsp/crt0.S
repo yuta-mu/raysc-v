@@ -19,5 +19,10 @@ bss_done:
     call main
 
 loop:
+#ifdef TARGET_QEMU
+    li t0, 0x00100000
+    li t1, 0x5555
+    sw t1, 0(t0)
     wfi
+#endif
     j loop

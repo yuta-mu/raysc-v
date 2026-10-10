@@ -3,7 +3,7 @@ ENTRY(_start)
 
 SECTIONS
 {
-  . = 0x80000000;
+  . = 0x00000000;
 
   .text : {
     *(.text.init)
@@ -25,9 +25,7 @@ SECTIONS
     __bss_end = .;
   }
 
-  /* プログラム全体の末尾から64KB空けた位置をスタック頂点とする */
   . = ALIGN(16);
-  . += 0x10000;
+  . += 0x2000; /* 8KB */
   _stack_top = .;
 }
-
