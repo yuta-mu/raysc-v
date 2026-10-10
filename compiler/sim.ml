@@ -8,14 +8,13 @@ let main () =
     else stdin in
     let lexbuf = Lexing.from_channel cin in
        (* 生成コード用ファイルtmp.sをオープン *)
-       let file = open_out "tmp.s" in                           
+                                
           (* コード生成 *)
           let code = Emitter.trans_prog (Parser.prog Lexer.lexer lexbuf) in
              (* 生成コードの書出しとファイルのクローズ *)
-             output_string file code; close_out file;     
-             (* アセンブラとリンカの呼出し *)
-             let _ = Unix.system "gcc tmp.s" in () ;;                
-
+             print_string code   
+                            
+let error msg = prerr_string (msg ^ "\n"); exit 1
 let _ = try main () with 
          Parsing.Parse_error -> ()
        | Table.No_such_symbol x -> print_string ("no such symbol: \""^x^"\"\n")

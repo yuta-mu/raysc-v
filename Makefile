@@ -6,9 +6,8 @@ LD      := $(RISCV_PREFIX)ld
 OBJCOPY := $(RISCV_PREFIX)objcopy
 OBJDUMP := $(RISCV_PREFIX)objdump
 
-QEMU      := qemu-system-riscv32
-IVERILOG  := iverilog -g2012 -Wall -I hw/rtl
-VVP       := vvp
+CFLAGS    := -march=rv32im -mabi=ilp32 -nostdlib -nostartfiles -fno-builtin \
+             -T $(LINKER) -I$(BSP_DIR) -O2 -Wall
 
 BSP_DIR   := bsp
 CRT0      := $(BSP_DIR)/crt0.S

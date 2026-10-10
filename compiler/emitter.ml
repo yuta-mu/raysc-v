@@ -11,31 +11,82 @@ let incLabel() = (label := !label+1; !label)
 let rec nCopyStr n str =
     if n > 0 then str ^ (nCopyStr (pred n) str) else ""
 
+(* 12bit即値に収まらない場合はt6経由で加算する *)
+let addImmTo reg n =
+  if n >= -2048 && n <= 2047 then
+    sprintf "\taddi %s, %s, %d\n" reg reg n
+  else
+    sprintf "\tli t6, %d\n\tadd %s, %s, t6\n" n reg reg
+
 (* 呼出し時にcalleeに渡す静的リンク *)
+(* 64bit(8byte)->32bit(4byte) *)
 let passLink src dst = 
   if src >= dst then 
     let deltaLevel = src-dst+1 in
-      "\tmovq %rbp, %rax\n"
-     ^ nCopyStr deltaLevel "\tmovq 16(%rax), %rax\n"
-     ^ "\tpushq %rax\n"
+      "\tmv t0, s0\n"
+     ^ nCopyStr deltaLevel "\tlw t0, 8(t0)\n"
+     ^ "\taddi sp, sp, -4\n"
+     ^ "\tsw t0, 0(sp)\n"
   else
-    "\tpushq %rbp\n"   
+      "\taddi sp, sp, -4\n"
+    ^ "\tsw s0, 0(sp)\n"
 
 let output = ref ""
 
-(* printfやscanfで使う文字列 *)
-let io =  "IO:\n\t.string \"%lld\"\n"
-            ^ "\t.text\n"
-(* main関数の頭 *)
-let header =  "\t.globl main\n"
-            ^ "main:\n"
-            ^ "\tpushq %rbp\n"        (* フレームポインタの保存 *)
-            ^ "\tmovq %rsp, %rbp\n"   (* フレームポインタをスタックポインタの位置に *)
 (* プロローグとエピローグ *)
-let prologue = "\tpushq %rbp\n"       (* フレームポインタの保存 *)
-             ^ "\tmovq %rsp, %rbp\n"  (* フレームポインタのスタックポインタ位置への移動 *)
-let epilogue = "\tleaveq\n"            (* -> movq %ebp, %esp; popl %ebp *)
-             ^ "\tretq\n"              (* 呼出し位置の次のアドレスへ戻る *)
+let prologue = "\taddi sp, sp, -8\n"
+             ^ "\tsw s0, 0(sp)\n"      (* フレームポインタの保存 *)
+             ^ "\tsw ra, 4(sp)\n"
+             ^ "\tmv s0, sp\n"         (* フレームポインタのスタックポインタ位置への移動 *)
+let epilogue = "\tmv sp, s0\n"
+             ^ "\tlw ra, 4(sp)\n"
+             ^ "\tlw s0, 0(sp)\n"
+             ^ "\taddi sp, sp, 8\n"
+             ^ "\tret\n"               (* 呼出し位置の次のアドレスへ戻る *)
+(* エントリーポイントの頭 *)
+let header = ".section .text\n"
+           ^ ".globl main\n"
+           ^ ".equ UART0_BASE, 0x10000000\n"
+           ^ "main:\n"
+           ^ prologue
+(* iprintのフラグと文字出力コード *)
+let iprint_flag = ref false
+let iprint = "_iprint:\n"
+           ^ "\tli t0, UART0_BASE\n"
+           ^ "\tli t1, 10\n"
+           ^ "\tbgez a0, _iprepare_stack\n"
+           ^ "\tli t2, '-'\n"
+           ^ "\tsb t2, 0(t0)\n"
+           ^ "\tneg a0, a0\n"
+           ^ "_iprepare_stack:\n"
+           ^ "\taddi sp, sp, -1\n"
+           ^ "\tsb zero, 0(sp)\n"
+           ^ "_iconvert_loop:\n"
+           ^ "\tremu t2, a0, t1\n"
+           ^ "\tdivu a0, a0, t1\n"
+           ^ "\taddi t2, t2, '0'\n"
+           ^ "\taddi sp, sp, -1\n"
+           ^ "\tsb t2, 0(sp)\n"
+           ^ "\tbnez a0, _iconvert_loop\n"
+           ^ "_iprint_loop:\n"
+           ^ "\tlb t1, 0(sp)\n"
+           ^ "\taddi sp, sp, 1\n"
+           ^ "\tbeqz t1, _done\n"
+           ^ "\tsb t1, 0(t0)\n"
+           ^ "\tj _iprint_loop\n"
+(* sprintのフラグと文字出力コード *)
+let sprint_flag = ref false
+let sprint = "_sprint:\n"
+           ^ "\tli t0, UART0_BASE\n" 
+           ^ "_sprint_loop:\n"
+           ^ "\tlb t1, 0(a0)\n"
+           ^ "\tbeqz t1, _done\n"
+           ^ "\tsb t1, 0(t0)\n"
+           ^ "\taddi a0, a0, 1\n"
+           ^ "\tj _sprint_loop\n"
+(* iprint, sprintの終了コード *)
+let doneret = "_done:\n"
+            ^ "\tret\n"
 
 (* 宣言部の処理：変数宣言->記号表への格納，関数定義->局所宣言の処理とコード生成 *)
 let rec trans_dec ast nest tenv env = match ast with
@@ -68,56 +119,44 @@ and trans_stmt ast nest tenv env =
                   (* 代入のコード：代入先フレームをsetVarで求める．*)
                      Assign (v, e) -> trans_exp e nest env
                                     ^ trans_var v nest env
-                                    ^ "\tpopq (%rax)\n"
+                                    ^ "\tlw t1, 0(sp)\n"
+                                    ^ "\taddi sp, sp, 4\n"
+                                    ^ "\tsw t1, 0(t0)\n"
                    (* iprintのコード *)
                    | CallProc ("iprint", [arg]) -> 
-                           (trans_exp arg nest env
-                        ^  "\tpopq  %rsi\n"
-                        ^  "\tleaq IO(%rip), %rdi\n"
-                        ^  "\tmovq $0, %rax\n"
-                        ^  "\tcallq printf\n")
+                           (iprint_flag := true;
+                            trans_exp arg nest env
+                        ^  "\tlw a0, 0(sp)\n"
+                        ^  "\taddi sp, sp, 4\n"
+                        ^  "\tcall _iprint\n")
                    (* sprintのコード *)
                    | CallProc ("sprint", [StrExp s]) -> 
-                       (let l = incLabel() in
-                              ("\t.data\n"
+                       (sprint_flag := true;
+                        let l = incLabel() in
+                              (".section .rodata\n"
                             ^ sprintf "L%d:\t.string %s\n" l s
-                            ^ "\t.text\n"
-                            ^ sprintf "\tleaq L%d(%%rip), %%rdi\n" l 
-                            ^  "\tmovq $0, %rax\n"     
-                            ^ "\tcallq printf\n"))
-                   (* scanのコード *)
-                   | CallProc ("scan", [VarExp v]) ->
-                               (trans_var v nest env
-                             ^ "\tmovq %rax, %rsi\n"
-                             ^ "\tleaq IO(%rip), %rdi\n"
-                             ^ "\tmovq $0, %rax\n"
-                             ^ "\tcallq scanf\n")
+                            ^ ".section .text\n"
+                            ^ sprintf "\tla a0, L%d\n" l     
+                            ^ "\tcall _sprint\n"))
                   (* returnのコード *)
                   | CallProc ("return", [arg]) ->
                               trans_exp arg nest env
-                            ^ "\tpopq %rax\n"
-                  | CallProc ("new", [VarExp v]) ->
-                        let size = calc_size (type_var v env) in
-                      sprintf "\tmovq $%d, %%rdi\n" size
-                            ^ "\tcallq malloc\n"
-                            ^ "\tpushq %rax\n"
-                            ^  trans_var v nest env
-                            ^  "\tpopq (%rax)\n"
+                            ^ "\tlw a0, 0(sp)\n"
+                            ^ "\taddi sp, sp, 4\n"
+                            ^ epilogue
                   (* 手続き呼出しのコード *)
                   | CallProc (s, el) -> 
                       let entry = env s in 
                          (match entry with
                              (FunEntry {formals=_; result=_; level=level}) -> 
-                                 (* 実引数のコード *)
-                                 (* 16バイト境界に調整 *)
-                                 (if (List.length el) mod 2 = 1 then "" else "\tpushq $0\n")
-                               ^ List.fold_right  (fun  ast code -> code ^ (trans_exp ast nest env)) el "" 
-                                 (* 静的リンクを渡すコード *)
-                               ^  passLink nest level
-                                 (* 関数の呼出しコード *)
-                               ^  "\tcallq " ^ s ^ "\n"
-                                 (* 積んだ引数+静的リンクを降ろす *)
-                               ^  sprintf "\taddq $%d, %%rsp\n" ((List.length el + 1 + 1) / 2 * 2 * 8) 
+                                 let n = List.length el in
+                                 let used = 4 * (n+1) in (*引数+静的リンク*)(*4の倍数*)
+                                    List.fold_right (fun ast code -> code ^ (trans_exp ast nest env)) el ""
+                                  (*静的リンクを渡すコード*)
+                                  ^ passLink nest level
+                                  (*関数呼び出しコード*)
+                                  ^ "\tcall " ^ s ^ "\n"
+                                  ^ sprintf "\taddi sp, sp, %d\n" used (*積んだ分を戻す*)
                             | _ -> raise (No_such_symbol s)) 
                   (* ブロックのコード：文を表すブロックは，関数定義を無視する．*)
                   | Block (dl, sl) -> 
@@ -130,12 +169,14 @@ and trans_stmt ast nest tenv env =
                                     | _ -> acc
                                 ) dl [] in
                              (* フレームの拡張 *)
-                             let ex_frame = sprintf "\tsubq $%d, %%rsp\n" ((-addr'+16)/16*16) in
+                             let ex_frame_size = (-addr'+16)/16*16 in
                                   (* 本体（文列）のコード生成 *)
                                   let code = List.fold_left 
                                        (fun code ast -> (code ^ trans_stmt ast nest tenv' env')) "" (inits @ sl)
                                   (* 局所変数分のフレーム拡張の付加 *)
-                                  in ex_frame ^ code
+                                  in addImmTo "sp" (-ex_frame_size)
+                                   ^ code
+                                   ^ addImmTo "sp" ex_frame_size
                   (* elseなしif文のコード *)
                   | If (e,s,None) -> let (condCode,l) = trans_cond e nest env in
                                                   condCode
@@ -146,7 +187,7 @@ and trans_stmt ast nest tenv env =
                                             let l2 = incLabel() in 
                                                   condCode
                                                 ^ trans_stmt s1 nest tenv env
-                                                ^ sprintf "\tjmp L%d\n" l2
+                                                ^ sprintf "\tj L%d\n" l2
                                                 ^ sprintf "L%d:\n" l1
                                                 ^ trans_stmt s2 nest tenv env 
                                                 ^ sprintf "L%d:\n" l2
@@ -156,7 +197,7 @@ and trans_stmt ast nest tenv env =
                                          sprintf "L%d:\n" l2 
                                        ^ condCode
                                        ^ trans_stmt s nest tenv env
-                                       ^ sprintf "\tjmp L%d\n" l2
+                                       ^ sprintf "\tj L%d\n" l2
                                        ^ sprintf "L%d:\n" l1
                   (* 空文 *)
                   | NilStmt -> ""
@@ -165,104 +206,124 @@ and trans_var ast nest env = match ast with
                    Var s -> let entry = env s in 
                         (match entry with
                             VarEntry {offset=offset; level=level; ty=_} -> 
-                                  "\tmovq %rbp, %rax\n" 
-                                ^ nCopyStr (nest-level) "\tmovq 16(%rax), %rax\n"
-                                ^ sprintf "\tleaq %d(%%rax), %%rax\n" offset
+                                  "\tmv t0, s0\n" 
+                                ^ nCopyStr (nest-level) "\tlw t0, 8(t0)\n"
+                                ^ addImmTo "t0" offset (* offsetが12bit即値を超える場合も *)
                            | _ -> raise (No_such_symbol s))
-                 | IndexedVar (v, size) -> 
-                            trans_exp (CallFunc("*", [IntExp 8; size])) nest env
+                 | IndexedVar (v, idx) -> 
+                        let elem_size = (match type_var v env with
+                                          ARRAY (_, t, _) -> calc_size (actual_ty t)
+                                        | _ -> raise (Err "internal error")) in
+                            trans_exp (CallFunc("*", [IntExp elem_size; idx])) nest env
                           ^ trans_var v nest env
-                          ^ "\tmovq (%rax), %rax\n"
-                          ^ "\tpopq %rbx\n"
-                          ^ "\tleaq (%rax,%rbx), %rax\n"
+                          ^ "\tlw t1, 0(sp)\n"
+                          ^ "\taddi sp, sp, 4\n"
+                          ^ "\tadd t0, t0, t1\n"
 (* 式の処理 *)
 and trans_exp ast nest env = match ast with
                   (* 整数定数のコード *)
-                    IntExp i -> (sprintf "\tpushq $%d\n" i)
+                    IntExp i -> 
+                             sprintf "\tli t0, %d\n" i
+                           ^ "\taddi sp, sp, -4\n"
+                           ^ "\tsw t0, 0(sp)\n"
                   (* 変数参照のコード：reVarで参照フレームを求める *)
                   | VarExp v -> 
                              trans_var v nest env
-                           ^ "\tmovq (%rax), %rax\n"
-                           ^ "\tpushq %rax\n"
+                           ^ "\tlw t0, 0(t0)\n"
+                           ^ "\taddi sp, sp, -4\n"
+                           ^ "\tsw t0, 0(sp)\n"
                   (* +のコード *)
                   | CallFunc ("+", [left; right]) -> 
                                              trans_exp left nest env
                                            ^ trans_exp right nest env
-                                           ^ "\tpopq %rax\n"
-                                           ^ "\taddq %rax, (%rsp)\n"
+                                           ^ "\tlw t0, 0(sp)\n"
+                                           ^ "\taddi sp, sp, 4\n"
+                                           ^ "\tlw t1, 0(sp)\n"
+                                           ^ "\tadd t0, t1, t0\n" (* のぞき穴的最適化 *)
+                                           ^ "\tsw t0, 0(sp)\n"
                   (* -のコード *)
                   | CallFunc ("-", [left; right]) ->
                                              trans_exp left nest env
                                            ^ trans_exp right nest env
-                                           ^ "\tpopq %rax\n"
-                                           ^ "\tsubq %rax, (%rsp)\n"
+                                           ^ "\tlw t0, 0(sp)\n"
+                                           ^ "\taddi sp, sp, 4\n"
+                                           ^ "\tlw t1, 0(sp)\n"
+                                           ^ "\tsub t0, t1, t0\n" (* のぞき穴的最適化 *)
+                                           ^ "\tsw t0, 0(sp)\n"
                   (* *のコード *)
-                  | CallFunc ("*", [left; right]) ->
+                  | CallFunc ("*", [left; right]) -> 
                                              trans_exp left nest env
                                            ^ trans_exp right nest env
-                                           ^ "\tpopq %rax\n"
-                                           ^ "\timulq (%rsp), %rax\n"
-                                           ^ "\tmovq %rax, (%rsp)\n"
+                                           ^ "\tlw t0, 0(sp)\n"
+                                           ^ "\taddi sp, sp, 4\n"
+                                           ^ "\tlw t1, 0(sp)\n"
+                                           ^ "\tmul t0, t1, t0\n" (* のぞき穴的最適化 *)
+                                           ^ "\tsw t0, 0(sp)\n"
                   (* /のコード *)
-                  | CallFunc ("/", [left; right]) ->
+                  | CallFunc ("/", [left; right]) -> 
                                              trans_exp left nest env
                                            ^ trans_exp right nest env
-                                           ^ "\tpopq %rbx\n"
-                                           ^ "\tpopq %rax\n"
-                                           ^ "\tcqto\n"
-                                           ^ "\tidivq %rbx\n"
-                                           ^ "\tpushq %rax\n"
+                                           ^ "\tlw t0, 0(sp)\n"
+                                           ^ "\taddi sp, sp, 4\n"
+                                           ^ "\tlw t1, 0(sp)\n"
+                                           ^ "\tdiv t0, t1, t0\n" (* のぞき穴的最適化 *)
+                                           ^ "\tsw t0, 0(sp)\n"
                   (* %のコード *)
-                  | CallFunc ("%", [left; right]) ->
+                  | CallFunc ("%", [left; right]) -> 
                                              trans_exp left nest env
                                            ^ trans_exp right nest env
-                                           ^ "\tpopq %rbx\n"
-                                           ^ "\tpopq %rax\n"
-                                           ^ "\tcqto\n"
-                                           ^ "\tidivq %rbx\n"
-                                           ^ "\tpushq %rdx\n"
+                                           ^ "\tlw t0, 0(sp)\n"
+                                           ^ "\taddi sp, sp, 4\n"
+                                           ^ "\tlw t1, 0(sp)\n"
+                                           ^ "\trem t0, t1, t0\n" (* のぞき穴的最適化 *)
+                                           ^ "\tsw t0, 0(sp)\n"
                   (* ^のコード *)
                   | CallFunc ("^", [left; right]) ->
                                            let l_loop = incLabel () in
                                            let l_end  = incLabel () in
                                              trans_exp left nest env
                                            ^ trans_exp right nest env
-                                           ^ "\tpopq %rcx\n" (* 指数 *)
-                                           ^ "\tpopq %rax\n" (* 底 *)
-                                           ^ "\tmovq $1, %rbx\n"
+                                           ^ "\tlw t0, 0(sp)\n" (* 指数 *)
+                                           ^ "\taddi sp, sp, 4\n"
+                                           ^ "\tlw t1, 0(sp)\n" (* 底 *)
+                                           ^ "\tli t2, 1\n"
                                            ^ sprintf "L%d:\n" l_loop
-                                           ^ "\tcmpq $0, %rcx\n"
-                                           ^ sprintf "\tjle L%d\n" l_end
-                                           ^ "\timulq %rax, %rbx\n"
-                                           ^ "\tdecq %rcx\n" (* 指数を1減らす *)
-                                           ^ sprintf "\tjmp L%d\n" l_loop
+                                           ^ sprintf "\tblez t0, L%d\n" l_end
+                                           ^ "\tmul t2, t1, t2\n"
+                                           ^ "\taddi t0, t0, -1\n" (* 指数を1減らす *)
+                                           ^ sprintf "\tj L%d\n" l_loop
                                            ^ sprintf "L%d:\n" l_end
-                                           ^ "\tpushq %rbx\n"
+                                           ^ "\tsw t2, 0(sp)\n"
                   (* 後置インクリメント (v++) のコード生成 *)
                   | PostInc v ->
                                              trans_var v nest env
-                                           ^ "\tmovq (%rax), %rcx\n"
-                                           ^ "\tpushq %rcx\n"
-                                           ^ "\tincq (%rax)\n" (* 1増やす *)
+                                           ^ "\tlw t1, 0(t0)\n"
+                                           ^ "\taddi sp, sp, -4\n"
+                                           ^ "\tsw t1, 0(sp)\n" (* のぞき穴的最適化 *)
+                                           ^ "\taddi t1, t1, 1\n"
+                                           ^ "\tsw t1, 0(t0)\n" (* 1増やす *)
                   (* 三項演算子のコード *)
                   | CondExp (cond, e1, e2) ->
                                            let (condCode, l_else) = trans_cond cond nest env in
                                            let l_end = incLabel () in
                                                condCode 
                                              ^ trans_exp e1 nest env 
-                                             ^ sprintf "\tjmp L%d\n" l_end 
+                                             ^ sprintf "\tj L%d\n" l_end 
                                              ^ sprintf "L%d:\n" l_else 
                                              ^ trans_exp e2 nest env 
                                              ^ sprintf "L%d:\n" l_end 
                   (* 反転のコード *)
                   | CallFunc("!",  arg::_) -> 
                                             trans_exp arg nest env
-                                          ^ "\tnegq (%rsp)\n"
+                                          ^ "\tlw t0, 0(sp)\n"
+                                          ^ "\tneg t0, t0\n"
+                                          ^ "\tsw t0, 0(sp)\n"
                   (* 関数呼出しのコード *)
                   | CallFunc (s, el) -> 
                                 trans_stmt (CallProc(s, el)) nest initTable env 
-                                (* 返戻値は%raxに入れて返す *)
-                              ^ "\tpushq %rax\n"
+                                (* 返戻値はa0に入れて返す *)
+                              ^ "\taddi sp, sp, -4\n"
+                              ^ "\tsw a0, 0(sp)\n"
                   | _ -> raise (Err "internal error")
 (* 関係演算の処理 *)
 and trans_cond ast nest env = match ast with
@@ -271,22 +332,28 @@ and trans_cond ast nest env = match ast with
                        (* オペランドのコード *)
                           trans_exp left nest env
                         ^ trans_exp right nest env
-                       (* オペランドの値を %rax，%rbxへ *)
-                        ^ "\tpopq %rax\n"
-                        ^ "\tpopq %rbx\n"
-                       (* cmp命令 *)                       
-                        ^ "\tcmpq %rax, %rbx\n" in
+                       (* オペランドの値を t1，t0へ *)
+                        ^ "\tlw t1, 0(sp)\n"
+                        ^ "\taddi sp, sp, 4\n"
+                        ^ "\tlw t0, 0(sp)\n"
+                        ^ "\taddi sp, sp, 4\n" in
                           let l = incLabel () in
                              match op with
                                (* 条件と分岐の関係は，逆 *)
-                                "==" -> (code ^ sprintf "\tjne L%d\n" l, l)
-                              | "!=" -> (code ^ sprintf "\tje L%d\n"l, l)
-                              | ">"  -> (code ^ sprintf "\tjle L%d\n" l, l)
-                              | "<"  -> (code ^ sprintf "\tjge L%d\n" l, l)
-                              | ">=" -> (code ^ sprintf "\tjl L%d\n" l, l)
-                              | "<=" -> (code ^ sprintf "\tjg L%d\n" l, l)
-                              | _ -> ("",0))
+                                "==" -> (code ^ sprintf "\tbne t0, t1, L%d\n" l, l)
+                              | "!=" -> (code ^ sprintf "\tbeq t0, t1, L%d\n" l, l)
+                              | ">"  -> (code ^ sprintf "\tble t0, t1, L%d\n" l, l)
+                              | "<"  -> (code ^ sprintf "\tbge t0, t1, L%d\n" l, l)
+                              | ">=" -> (code ^ sprintf "\tblt t0, t1, L%d\n" l, l)
+                              | "<=" -> (code ^ sprintf "\tbgt t0, t1, L%d\n" l, l)
+                              | _ -> raise (Err ("unknown comparison operator: " ^ op)))
                  | _ -> raise (Err "internal error")
 (* プログラム全体の生成 *)
 let trans_prog ast = let code = trans_stmt ast 0 initTable initTable in
-                                io ^ header ^ code ^ epilogue ^ (!output)
+                                if !iprint_flag then output := (!output) ^ iprint else ();
+                                if !sprint_flag then output := (!output) ^ sprint else ();
+                                if !iprint_flag || !sprint_flag then output := (!output) ^ doneret else ();
+                                header ^ code 
+                                ^ "\tli a0, 0\n" (*mainの戻り値0*)
+                                ^ epilogue
+                                ^ (!output)

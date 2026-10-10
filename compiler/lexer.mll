@@ -28,7 +28,6 @@ rule lexer = parse
 | ".."                    { tok DOTDOT lexbuf}
 | "?"                     { tok QUEST lexbuf}
 | ":"                     { tok COLON lexbuf}
-| "scan"                  { tok SCAN lexbuf }
 | "sprint"                { tok SPRINT lexbuf }
 | "iprint"                { tok IPRINT lexbuf }
 | "int"                   { tok INT lexbuf }

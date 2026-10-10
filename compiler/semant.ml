@@ -7,7 +7,7 @@ exception TypeErr of string
 
 let rec calc_size ty = match ty with
                    ARRAY (n, t, _) -> n * (calc_size t)
-                 | INT -> 8
+                 | INT -> 4
                  | _ -> raise (Err "internal error")
 
 let actual_ty ty =
@@ -48,8 +48,9 @@ let rec create_ty ast tenv =
       | IntTyp -> INT 
       | VoidTyp -> UNIT
 
-(* 実引数は，%rbp から +24 のところにある．*)
-let savedARG = 24 (* return address,  static link, old %rbp *)
+(* 実引数は，s0 から +12 のところにある．*)
+(* 64bit(8byte)->32bit(4byte) *)
+let savedARG = 12 (* static link, return address, old s0 *)
 
 let rec type_dec ast (nest,addr) tenv env =
    match ast with
@@ -62,11 +63,13 @@ let rec type_dec ast (nest,addr) tenv env =
                                     List.map (fun (typ,_) -> create_ty typ tenv) l; 
                                     result=create_ty rlt tenv; level=nest+1}) env in (tenv, env', addr)
     (* 変数宣言の処理 *)
-    | VarDec (t,s) -> (tenv, 
-              update s (VarEntry {ty= create_ty t tenv; offset=addr-8; level=nest}) env, addr-8)
+    | VarDec (t,s) -> 
+          let ty = create_ty t tenv in
+          let size = calc_size ty in
+            (tenv, update s (VarEntry {ty= ty; offset=addr-size; level=nest}) env, addr-size)
     | InitVarDec (t,s,e) ->
          if (create_ty t tenv) != (type_exp e env) then raise (TypeErr "type error 4")
-         else (tenv, update s (VarEntry {ty= create_ty t tenv; offset=addr-8; level=nest}) env, addr-8)
+         else (tenv, update s (VarEntry {ty= create_ty t tenv; offset=addr-4; level=nest}) env, addr-4)
     (* 型宣言の処理 *)
     | TypeDec (s,t) -> let tenv' = update s (NAME (s,ref None)) tenv in (tenv', env, addr)
     | _ -> raise (Err "internal error")
@@ -76,22 +79,15 @@ and type_decs dl nest tenv env =
 and type_param_dec args nest tenv env =
          let (env',_) = List.fold_left (fun (env,addr) (t,s) -> 
            (update s (VarEntry {offset=addr; 
-                       level=nest; ty=create_ty t tenv}) env, addr+8)) 
+                       level=nest; ty=create_ty t tenv}) env, addr+4)) 
                                                       (env,savedARG) args in env'
 and type_stmt ast env = 
        match ast with
-            CallProc ("scan", [arg]) ->
-                    if (type_exp arg env) != INT then 
-                          raise (TypeErr "type error 3")
           | CallProc ("iprint", [arg]) -> 
                     if (type_exp arg env) != INT then
                           raise (TypeErr "iprint requires int value")
           | CallProc ("return", [arg]) -> () (* result type should be checked *)
           | CallProc ("sprint", _) -> ()
-          | CallProc ("new", [VarExp (Var s)]) -> let entry = env s in 
-                    (match entry with
-                          VarEntry {ty=ty; _} -> check_array (actual_ty ty)
-                        | _ -> raise (No_such_symbol s))
           | CallProc (s, el) -> 
                     let _ = type_exp (CallFunc (s, el)) env in ()
           | Block (dl, _) -> check_redecl dl [] []
