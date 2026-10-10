@@ -14,7 +14,9 @@ module cpu (
     output logic [31:0] mem_addr,
     output logic [31:0] mem_wdata,
     output logic [3:0]  mem_wstrb,
-    input  logic [31:0] mem_rdata
+    input  logic [31:0] mem_rdata,
+
+    output logic        retire
 );
 
     // Interconnecting control signals
@@ -65,7 +67,9 @@ module cpu (
         .mem_addr   (mem_addr),
         .mem_wdata  (mem_wdata),
         .mem_wstrb  (mem_wstrb),
-        .mem_rdata  (mem_rdata)
+        .mem_rdata  (mem_rdata),
+
+        .retire     (retire)
     );
 
 endmodule
