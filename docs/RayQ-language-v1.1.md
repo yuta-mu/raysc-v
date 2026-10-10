@@ -1,4 +1,4 @@
-# RayQ 言語仕様 v1.0 (最終版)
+# RayQ 言語仕様 v1.1
 
 RaySC-V プロジェクト / 2026-10-10
 
@@ -101,7 +101,7 @@ static inline uint32_t i32_rem(uint32_t a, uint32_t b) {
 | --- | --- | --- |
 | `+ -` | `i32` / `q16` / `vec3` (同型) | 同型 |
 | `*` | `i32*i32`, `q16*q16`, `q16*i32`, `i32*q16` | `i32` または `q16` |
-| `*` | `vec3*q16` | `vec3` |
+| `*` | `vec3*q16`, `q16*vec3` | `vec3` |
 | `/ %` | `i32`, `i32` | `i32` |
 | `<.>` | `vec3`, `vec3` | `q16` |
 | `<< >> & ^ \|` | `i32`, `i32` | `i32` |
@@ -146,10 +146,12 @@ Program     ::= TopLevel* ;
 TopLevel    ::= ConstDecl | StructDecl | FuncDecl ;
 
 ConstDecl   ::= "const" IDENT ":" Type "=" ConstInit ";" ;
-ConstInit   ::= "-"? (INT_LIT | Q16_LIT | CHAR_LIT) | BOOL_LIT
-              | "vec3" "(" ConstInit "," ConstInit "," ConstInit ")"
-              | IDENT "(" ConstInit ("," ConstInit)* ")"        /* 構造体 */
-              | "[" ConstInit ("," ConstInit)* "]" ;            /* 配列 */
+ConstInit       ::= "-"? (INT_LIT | Q16_LIT | CHAR_LIT) | BOOL_LIT
+                  | "vec3" "(" ConstInit "," ConstInit "," ConstInit ","? ")"
+                  | IDENT "(" ConstInitList ")"        /* 構造体 */
+                  | "[" ConstInitList "]" ;            /* 配列 */
+
+ConstInitList   ::= ConstInit ("," ConstInit)* ","? ;
 
 StructDecl  ::= "struct" IDENT "{" (IDENT ":" Type ",")+ "}" ;
 Type        ::= "bool" | "i32" | "q16" | "vec3" | "[" Type ";" INT_LIT "]" | IDENT ;

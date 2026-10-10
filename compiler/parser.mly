@@ -127,6 +127,7 @@ const_init:
 const_init_list:
   const_init { [$1] }
 | const_init_list COMMA const_init { $1 @ [$3] }
+| const_init_list COMMA { $1 }
 ;
 
 expr:

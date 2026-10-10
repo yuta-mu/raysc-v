@@ -182,6 +182,7 @@ let analyze program =
            | Q16, I32 -> Q16
            | I32, Q16 -> Q16
            | Vec3, Q16 -> Vec3
+           | Q16, Vec3 -> Vec3
            | _ -> error (Printf.sprintf "multiplication not supported for %s and %s" (typ_to_string ta) (typ_to_string tb)))
       | Binary (Dot, a, b) ->
           let ta = infer a and tb = infer b in

@@ -61,7 +61,7 @@ help:
 	@echo 'make test                       RTL 単体テスト (hw/tb/tb_*.sv)'
 	@echo 'make ref                        ホスト用 C リファレンスを実行し build/ref/golden.ppm を作る'
 	@echo 'make clean                      build/ を削除'
-	@echo 'オプション: RAYQ_FLAGS="-O2 --accel=math"  MAXCYCLES=N  QEMU_TIMEOUT=sec'
+	@echo 'option: RAYQ_FLAGS="-O2 --accel=math"  MAXCYCLES=N  QEMU_TIMEOUT=sec'
 
 # ---- コンパイラ -----------------------------------------------------------------
 compiler: $(RAYQC)
@@ -125,7 +125,6 @@ ifneq ($(strip $(SRC)),)
 SRC_EXT := $(suffix $(SRC))
 BASE    := $(basename $(SRC))
 
-# SRC に .rq が渡された場合は、C 言語の .c ではなく必ず rayqc の .s から生成する
 ifeq ($(SRC_EXT),.rq)
 $(B)/$(BASE).qemu.elf: $(B)/$(BASE).s $(CRT0) $(QEMU_LD)
 	@mkdir -p $(@D)
@@ -134,23 +133,24 @@ $(B)/$(BASE).qemu.elf: $(B)/$(BASE).s $(CRT0) $(QEMU_LD)
 $(B)/$(BASE).hex: $(B)/$(BASE).s tools/assembler.py
 	@mkdir -p $(@D)
 	$(PYTHON) tools/assembler.py $< -o $@
+
 endif
 
 run: $(B)/$(BASE).rtl.out
-	@echo '出力: $<'
+	@echo 'output: $<'
 qemu: $(B)/$(BASE).qemu.out
-	@echo '出力: $<'
+	@echo 'output: $<'
 else
 run qemu:
-	@echo '使い方: make $@ SRC=programs/raytracer/main.rq' >&2; exit 2
+	@echo 'usage: make $@ SRC=programs/raytracer/main.rq' >&2; exit 2
 endif
 
 # ---- smoke: コアが動くかの最小確認 (QEMU・コンパイラ・アセンブラ不要) -----------------------
 smoke: $(B)/tests/hex/smoke.rtl.out
 	@grep HALT $<.log || true
 	@printf 'OK\n' | cmp - $< \
-	  || { echo 'smoke: FAIL  UART 出力:'; cat $<; echo '(NG<文字>: tests/hex/smoke.s の先頭コメント参照)'; exit 1; }
-	@echo 'smoke: PASS  (自作コアが RV32IM の基本命令を実行できています)'
+	  || { echo 'smoke: FAIL  UART Output:'; cat $<; echo '(NG<文字>: tests/hex/smoke.s の先頭コメント参照)'; exit 1; }
+	@echo 'smoke: PASS  (RV32IM)'
 
 # ---- check: QEMU == RTL (+ golden) ------------------------------------------------
 check: $(CHECK_STAMPS)

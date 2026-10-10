@@ -83,6 +83,10 @@ let compile ctx =
             let d = fresh_slot 3 in
             emit (Ir.Bin (d, Vec3, Mul, sa, sb));
             d
+          end else if ta = Q16 && tb = Vec3 then begin
+            let d = fresh_slot 3 in
+            emit (Ir.Bin (d, Vec3, Mul, sb, sa));
+            d
           end else if ta = Q16 && tb = Q16 then begin
             let d = fresh_slot 1 in
             emit (Ir.Bin (d, Q16, Mul, sa, sb));
