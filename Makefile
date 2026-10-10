@@ -122,9 +122,23 @@ $(B)/%.qemu.out: $(B)/%.qemu.elf
 	    -serial file:$@ -kernel $<
 
 ifneq ($(strip $(SRC)),)
-run: $(B)/$(basename $(SRC)).rtl.out
+SRC_EXT := $(suffix $(SRC))
+BASE    := $(basename $(SRC))
+
+# SRC に .rq が渡された場合は、C 言語の .c ではなく必ず rayqc の .s から生成する
+ifeq ($(SRC_EXT),.rq)
+$(B)/$(BASE).qemu.elf: $(B)/$(BASE).s $(CRT0) $(QEMU_LD)
+	@mkdir -p $(@D)
+	$(CC) $(RVFLAGS) -DTARGET_QEMU -T $(QEMU_LD) $(CRT0) $< -o $@
+
+$(B)/$(BASE).hex: $(B)/$(BASE).s tools/assembler.py
+	@mkdir -p $(@D)
+	$(PYTHON) tools/assembler.py $< -o $@
+endif
+
+run: $(B)/$(BASE).rtl.out
 	@echo '出力: $<'
-qemu: $(B)/$(basename $(SRC)).qemu.out
+qemu: $(B)/$(BASE).qemu.out
 	@echo '出力: $<'
 else
 run qemu:
