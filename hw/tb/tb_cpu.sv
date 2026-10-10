@@ -55,13 +55,9 @@ module tb_cpu;
     assign inst = memory[pc[17:2]];
 
     // 読み出し: メモリ / cycles(下位32bit。更新前の値) / それ以外は 0
-    always @* begin
-        mem_rdata = 32'h0;
-        if (mem_read) begin
-            if (mem_addr < MEM_BYTES)         mem_rdata = memory[mem_addr[17:2]];
-            else if (mem_addr == CYCLE_ADDR)  mem_rdata = cycle_count[31:0];
-        end
-    end
+    assign mem_rdata = !mem_read                ? 32'h0 :
+                       (mem_addr < MEM_BYTES)   ? memory[mem_addr[17:2]] :
+                       (mem_addr == CYCLE_ADDR) ? cycle_count[31:0] : 32'h0;
 
     string           hex_file, uart_file, trace_file, vcd_file;
     longint unsigned cycle_count = 0;      // リセット解除後の経過サイクル
@@ -143,3 +139,4 @@ module tb_cpu;
     end
 
 endmodule
+
