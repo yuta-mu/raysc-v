@@ -48,7 +48,6 @@ OPCODES = {
     'sra':    {'type': 'R', 'opcode': 0x33, 'funct3': 0x5, 'funct7': 0x20},
     'slt':    {'type': 'R', 'opcode': 0x33, 'funct3': 0x2, 'funct7': 0x00},
     'sltu':   {'type': 'R', 'opcode': 0x33, 'funct3': 0x3, 'funct7': 0x00},
-    # RV32M ('mulu' は存在しない。上位ビット符号なし乗算は mulhu)
     'mul':    {'type': 'R', 'opcode': 0x33, 'funct3': 0x0, 'funct7': 0x01},
     'mulh':   {'type': 'R', 'opcode': 0x33, 'funct3': 0x1, 'funct7': 0x01},
     'mulhsu': {'type': 'R', 'opcode': 0x33, 'funct3': 0x2, 'funct7': 0x01},
@@ -59,41 +58,45 @@ OPCODES = {
     'remu':   {'type': 'R', 'opcode': 0x33, 'funct3': 0x7, 'funct7': 0x01},
 
     # I-type
-    'addi':  {'type': 'I', 'opcode': 0x13, 'funct3': 0x0, 'imm_bits': 12},
-    'xori':  {'type': 'I', 'opcode': 0x13, 'funct3': 0x4, 'imm_bits': 12},
-    'ori':   {'type': 'I', 'opcode': 0x13, 'funct3': 0x6, 'imm_bits': 12},
-    'andi':  {'type': 'I', 'opcode': 0x13, 'funct3': 0x7, 'imm_bits': 12},
-    'slli':  {'type': 'I', 'opcode': 0x13, 'funct3': 0x1, 'imm_bits': 5, 'funct7': 0x00},
-    'srli':  {'type': 'I', 'opcode': 0x13, 'funct3': 0x5, 'imm_bits': 5, 'funct7': 0x00},
-    'srai':  {'type': 'I', 'opcode': 0x13, 'funct3': 0x5, 'imm_bits': 5, 'funct7': 0x20},
-    'slti':  {'type': 'I', 'opcode': 0x13, 'funct3': 0x2, 'imm_bits': 12},
-    'sltiu': {'type': 'I', 'opcode': 0x13, 'funct3': 0x3, 'imm_bits': 12},
-    'lb':    {'type': 'I', 'opcode': 0x03, 'funct3': 0x0, 'imm_bits': 12},
-    'lh':    {'type': 'I', 'opcode': 0x03, 'funct3': 0x1, 'imm_bits': 12},
-    'lw':    {'type': 'I', 'opcode': 0x03, 'funct3': 0x2, 'imm_bits': 12},
-    'lbu':   {'type': 'I', 'opcode': 0x03, 'funct3': 0x4, 'imm_bits': 12},
-    'lhu':   {'type': 'I', 'opcode': 0x03, 'funct3': 0x5, 'imm_bits': 12},
-    'jalr':  {'type': 'I', 'opcode': 0x67, 'funct3': 0x0, 'imm_bits': 12},
+    'addi':   {'type': 'I', 'opcode': 0x13, 'funct3': 0x0, 'imm_bits': 12},
+    'xori':   {'type': 'I', 'opcode': 0x13, 'funct3': 0x4, 'imm_bits': 12},
+    'ori':    {'type': 'I', 'opcode': 0x13, 'funct3': 0x6, 'imm_bits': 12},
+    'andi':   {'type': 'I', 'opcode': 0x13, 'funct3': 0x7, 'imm_bits': 12},
+    'slli':   {'type': 'I', 'opcode': 0x13, 'funct3': 0x1, 'imm_bits': 5, 'funct7': 0x00},
+    'srli':   {'type': 'I', 'opcode': 0x13, 'funct3': 0x5, 'imm_bits': 5, 'funct7': 0x00},
+    'srai':   {'type': 'I', 'opcode': 0x13, 'funct3': 0x5, 'imm_bits': 5, 'funct7': 0x20},
+    'slti':   {'type': 'I', 'opcode': 0x13, 'funct3': 0x2, 'imm_bits': 12},
+    'sltiu':  {'type': 'I', 'opcode': 0x13, 'funct3': 0x3, 'imm_bits': 12},
+    'lb':     {'type': 'I', 'opcode': 0x03, 'funct3': 0x0, 'imm_bits': 12},
+    'lh':     {'type': 'I', 'opcode': 0x03, 'funct3': 0x1, 'imm_bits': 12},
+    'lw':     {'type': 'I', 'opcode': 0x03, 'funct3': 0x2, 'imm_bits': 12},
+    'lbu':    {'type': 'I', 'opcode': 0x03, 'funct3': 0x4, 'imm_bits': 12},
+    'lhu':    {'type': 'I', 'opcode': 0x03, 'funct3': 0x5, 'imm_bits': 12},
+    'jalr':   {'type': 'I', 'opcode': 0x67, 'funct3': 0x0, 'imm_bits': 12},
+    'ebreak': {'type': 'I', 'opcode': 0x67, 'funct3': 0x0, 'imm_bits': 12},
 
     # S-type
-    'sb':    {'type': 'S', 'opcode': 0x23, 'funct3': 0x0, 'imm_bits': 12},
-    'sh':    {'type': 'S', 'opcode': 0x23, 'funct3': 0x1, 'imm_bits': 12},
-    'sw':    {'type': 'S', 'opcode': 0x23, 'funct3': 0x2, 'imm_bits': 12},
+    'sb':     {'type': 'S', 'opcode': 0x23, 'funct3': 0x0, 'imm_bits': 12},
+    'sh':     {'type': 'S', 'opcode': 0x23, 'funct3': 0x1, 'imm_bits': 12},
+    'sw':     {'type': 'S', 'opcode': 0x23, 'funct3': 0x2, 'imm_bits': 12},
 
     # B-type
-    'beq':   {'type': 'B', 'opcode': 0x63, 'funct3': 0x0, 'imm_bits': 13},
-    'bne':   {'type': 'B', 'opcode': 0x63, 'funct3': 0x1, 'imm_bits': 13},
-    'blt':   {'type': 'B', 'opcode': 0x63, 'funct3': 0x4, 'imm_bits': 13},
-    'bge':   {'type': 'B', 'opcode': 0x63, 'funct3': 0x5, 'imm_bits': 13},
-    'bltu':  {'type': 'B', 'opcode': 0x63, 'funct3': 0x6, 'imm_bits': 13},
-    'bgeu':  {'type': 'B', 'opcode': 0x63, 'funct3': 0x7, 'imm_bits': 13},
+    'beq':    {'type': 'B', 'opcode': 0x63, 'funct3': 0x0, 'imm_bits': 13},
+    'bne':    {'type': 'B', 'opcode': 0x63, 'funct3': 0x1, 'imm_bits': 13},
+    'blt':    {'type': 'B', 'opcode': 0x63, 'funct3': 0x4, 'imm_bits': 13},
+    'bge':    {'type': 'B', 'opcode': 0x63, 'funct3': 0x5, 'imm_bits': 13},
+    'bltu':   {'type': 'B', 'opcode': 0x63, 'funct3': 0x6, 'imm_bits': 13},
+    'bgeu':   {'type': 'B', 'opcode': 0x63, 'funct3': 0x7, 'imm_bits': 13},
 
     # U-type
-    'lui':   {'type': 'U', 'opcode': 0x37, 'imm_bits': 20},
-    'auipc': {'type': 'U', 'opcode': 0x17, 'imm_bits': 20},
+    'lui':    {'type': 'U', 'opcode': 0x37, 'imm_bits': 20},
+    'auipc':  {'type': 'U', 'opcode': 0x17, 'imm_bits': 20},
 
     # J-type
-    'jal':   {'type': 'J', 'opcode': 0x6f, 'imm_bits': 21},
+    'jal':    {'type': 'J', 'opcode': 0x6f, 'imm_bits': 21},
+
+    # SYSTEM
+    'ebreak': {'type': 'SYS', 'value': 0x00100073},
 }
 
 # 1命令に展開される疑似命令 (li / la / 引数1個の jal, jalr は assembler.py 側で処理)

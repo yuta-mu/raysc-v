@@ -1,9 +1,9 @@
 .section .text
-.globl _start
+.globl main
 
 .equ UART0_BASE, 0x10000000
 
-_start:
+main:
     la a0, msg            # a0 = 出力する文字列のアドレス
     li t0, UART0_BASE     # t0 = UARTのベースアドレス (0x10000000)
 

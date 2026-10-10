@@ -1,0 +1,87 @@
+// tests/hex/smoke.hex -- 自作コアの最小動作確認 (tests/hex/smoke.s から生成)
+// 1 行 1 ワード (readmemh 形式)。行末のコメントは アドレス: 命令。
+// 期待する UART 出力: "OK\n"   (make smoke)
+00040137 // 0000: lui sp,0x40
+10000437 // 0004: lui s0,0x10000
+00600593 // 0008: addi a1,zero,6
+00700613 // 000c: addi a2,zero,7
+02c586b3 // 0010: mul a3,a1,a2
+02a00713 // 0014: addi a4,zero,42
+00100513 // 0018: addi a0,zero,1
+10e69463 // 001c: bne a3,a4,124 <fail>
+06400593 // 0020: addi a1,zero,100
+00700613 // 0024: addi a2,zero,7
+02c5c6b3 // 0028: div a3,a1,a2
+00e00713 // 002c: addi a4,zero,14
+00200513 // 0030: addi a0,zero,2
+0ee69863 // 0034: bne a3,a4,124 <fail>
+02c5e6b3 // 0038: rem a3,a1,a2
+00200713 // 003c: addi a4,zero,2
+00300513 // 0040: addi a0,zero,3
+0ee69063 // 0044: bne a3,a4,124 <fail>
+ffd00593 // 0048: addi a1,zero,-3
+00500613 // 004c: addi a2,zero,5
+02c586b3 // 0050: mul a3,a1,a2
+ff100713 // 0054: addi a4,zero,-15
+00400513 // 0058: addi a0,zero,4
+0ce69463 // 005c: bne a3,a4,124 <fail>
+800005b7 // 0060: lui a1,0x80000
+00158593 // 0064: addi a1,a1,1
+feb12e23 // 0068: sw a1,-4(sp)
+ffc12683 // 006c: lw a3,-4(sp)
+00500513 // 0070: addi a0,zero,5
+0ad59863 // 0074: bne a1,a3,124 <fail>
+ffc14683 // 0078: lbu a3,-4(sp)
+00100713 // 007c: addi a4,zero,1
+00600513 // 0080: addi a0,zero,6
+0ae69063 // 0084: bne a3,a4,124 <fail>
+fff10683 // 0088: lb a3,-1(sp)
+f8000713 // 008c: addi a4,zero,-128
+00700513 // 0090: addi a0,zero,7
+08e69863 // 0094: bne a3,a4,124 <fail>
+00000593 // 0098: addi a1,zero,0
+00100613 // 009c: addi a2,zero,1
+00b00793 // 00a0: addi a5,zero,11
+00c585b3 // 00a4: add a1,a1,a2
+00160613 // 00a8: addi a2,a2,1
+fef61ce3 // 00ac: bne a2,a5,a4 <loop>
+03700713 // 00b0: addi a4,zero,55
+00800513 // 00b4: addi a0,zero,8
+06e59663 // 00b8: bne a1,a4,124 <fail>
+08c000ef // 00bc: jal ra,148 <sub99>
+06300713 // 00c0: addi a4,zero,99
+00900513 // 00c4: addi a0,zero,9
+04e69e63 // 00c8: bne a3,a4,124 <fail>
+ff000593 // 00cc: addi a1,zero,-16
+4025d693 // 00d0: srai a3,a1,0x2
+ffc00713 // 00d4: addi a4,zero,-4
+00a00513 // 00d8: addi a0,zero,10
+04e69463 // 00dc: bne a3,a4,124 <fail>
+200005b7 // 00e0: lui a1,0x20000
+0005a683 // 00e4: lw a3,0(a1)
+00b00513 // 00e8: addi a0,zero,11
+02068c63 // 00ec: beq a3,zero,124 <fail>
+00500593 // 00f0: addi a1,zero,5
+00000613 // 00f4: addi a2,zero,0
+02c5c6b3 // 00f8: div a3,a1,a2
+fff00713 // 00fc: addi a4,zero,-1
+00c00513 // 0100: addi a0,zero,12
+02e69063 // 0104: bne a3,a4,124 <fail>
+04f00313 // 0108: addi t1,zero,79
+00640023 // 010c: sb t1,0(s0)
+04b00313 // 0110: addi t1,zero,75
+00640023 // 0114: sb t1,0(s0)
+00a00313 // 0118: addi t1,zero,10
+00640023 // 011c: sb t1,0(s0)
+00100073 // 0120: ebreak
+04e00313 // 0124: addi t1,zero,78
+00640023 // 0128: sb t1,0(s0)
+04700313 // 012c: addi t1,zero,71
+00640023 // 0130: sb t1,0(s0)
+04050513 // 0134: addi a0,a0,64
+00a40023 // 0138: sb a0,0(s0)
+00a00313 // 013c: addi t1,zero,10
+00640023 // 0140: sb t1,0(s0)
+00100073 // 0144: ebreak
+06300693 // 0148: addi a3,zero,99
+00008067 // 014c: jalr zero,0(ra)

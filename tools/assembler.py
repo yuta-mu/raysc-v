@@ -311,6 +311,11 @@ def assemble_line(line, current_pc=0, symbol_table=None):
         val = (imm_20 << 31) | (imm_10_1 << 21) | (imm_11 << 20) | (imm_19_12 << 12) | (rd << 7) | info['opcode']
         return f"{val:08x}"
 
+    # ebreak
+    elif fmt == 'SYS':
+        check_args(tokens, 0)
+        return f"{info['value']:08x}"
+
     raise ValueError(f"Unknown format '{fmt}'")
 
 
@@ -367,7 +372,7 @@ def main():
         startup_code = [
             f"lui sp, {STARTUP_STACK_LUI:#x}",
             "jal ra, main",
-            "__halt: j __halt",
+            "ebreak",
         ]
         numbered = [(0, l) for l in startup_code] + numbered
 
