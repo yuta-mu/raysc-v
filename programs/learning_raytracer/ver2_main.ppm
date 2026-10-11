@@ -1,0 +1,4 @@
+--- Q16.16 Fixed Point Test ---
+1.5 * 2.0 = 196608 (Integer part: 3)
+Vec3 Add Test: x=5, y=7, z=9
+--- Setup OK! ---
