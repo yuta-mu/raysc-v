@@ -19,18 +19,23 @@ type unop =
 (*平方根,平方根の逆数,逆数*)
 type intrinsic = Sqrt | Rsqrt | Rcp
 
+(*どの配列かを表す型*)
+type region = 
+  | Local of int   (*局所配列*)
+  | Global of string   (*const*)
+
 (*基本ブロック内の命令*)
 type instr =
   | Const of vreg * int32                     (*d=定数*)
-  | Mov   of vreg * vreg                       (*d=a(コピー)*)
+  | Move   of vreg * vreg                       (*d=a(コピー)*)
   | Bin   of binop * vreg * vreg * vreg        (*二項演算*)
   | Un    of unop * vreg * vreg                (*単項*)
   | Intr  of intrinsic * vreg * vreg           (*d=sqrt(a)など*)
   (*メモリの命令 配列を読み書き*)
   | AddrLocal  of vreg * int   (*d = 局所配列の先頭アドレス*)
   | AddrGlobal of vreg * string  (*d = constの先頭アドレス*)
-  | Load  of vreg * vreg * int                 (*d = mem[addr + ofs]*)
-  | Store of vreg * int * vreg                 (*mem[addr + ofs] = src*)
+  | Load  of vreg * region * vreg * int                 (*d = mem[addr + ofs]*)
+  | Store of region * vreg * int * vreg                 (*mem[addr + ofs] = src*)
   (*関数呼び出し*)
   | Call  of vreg list * string * vreg list    (*戻り値を入れる仮想レジスタのリスト,関数名,引数の仮想レジスタ*)
   (* MMIO呼び出し*)
@@ -81,16 +86,20 @@ let v n = "v" ^ string_of_int n
 let l n = "L" ^ string_of_int n
 let vs xs = String.concat ", " (List.map v xs)
 
+let string_of_region = function
+  | Local id -> "array" ^ string_of_int id
+  | Global s -> s
+
 let string_of_instr = function
   | Const (d, n)        -> Printf.sprintf "%s = const %ld" (v d) n
-  | Mov (d, a)          -> Printf.sprintf "%s = %s" (v d) (v a)
+  | Move (d, a)         -> Printf.sprintf "%s = %s" (v d) (v a)
   | Bin (op, d, a, b)   -> Printf.sprintf "%s = %s %s, %s" (v d) (string_of_binop op) (v a) (v b)
   | Un (op, d, a)       -> Printf.sprintf "%s = %s %s" (v d) (string_of_unop op) (v a)
   | Intr (f, d, a)      -> Printf.sprintf "%s = %s %s" (v d) (string_of_intrinsic f) (v a)
   | AddrLocal (d, id)   -> Printf.sprintf "%s = &array%d" (v d) id
   | AddrGlobal (d, s)   -> Printf.sprintf "%s = &%s" (v d) s
-  | Load (d, a, ofs)    -> Printf.sprintf "%s = load [%s + %d]" (v d) (v a) ofs
-  | Store (a, ofs, s)   -> Printf.sprintf "store [%s + %d] = %s" (v a) ofs (v s)
+  | Load (d, r, a, ofs) -> Printf.sprintf "%s = load %s[%s + %d]" (v d) (string_of_region r) (v a) ofs
+  | Store (r, a, ofs, s)-> Printf.sprintf "store %s[%s + %d] = %s" (string_of_region r) (v a) ofs (v s)
   | Call ([], f, args)  -> Printf.sprintf "call %s(%s)" f (vs args)
   | Call (rs, f, args)  -> Printf.sprintf "%s = call %s(%s)" (vs rs) f (vs args)
   | Bprint a            -> Printf.sprintf "bprint %s" (v a)
@@ -155,3 +164,45 @@ let blocks_of_items (items : item list) : block list =
   match items with
   | L _ :: _ -> go None [] items
   | _ -> invalid_arg "blocks_of_items: the item list must start with L"
+
+(*命令が書き込む vreg*)
+let defs = function
+  | Const (d, _) | Move (d, _) | Bin (_, d, _, _) | Un (_, d, _) | Intr (_, d, _)
+  | AddrLocal (d, _) | AddrGlobal (d, _) | Load (d, _, _, _) | Cycles d -> [d]
+  | Call (rs, _, _) -> rs 
+  | Store _ | Bprint _ | Print _ -> []
+
+(*命令が読み込む vreg*)
+let uses = function
+  | Const _ | AddrLocal _ | AddrGlobal _ | Cycles _ | Print _ -> []
+  | Move (_, a) | Un (_, _, a) | Intr (_, _, a) | Load (_, _, a, _) | Bprint a -> [a]
+  | Bin (_, _, a, b) -> [a; b]
+  | Store (_, a, _, s) -> [a; s]
+  | Call (_, _, args) -> args
+
+(*終端が読み込む vreg*)
+let term_uses = function
+  | Jump _ -> []
+  | Branch (c, _, _) -> [c]
+  | Ret vs -> vs
+
+(*終端が指すラベル,次に進むかもしれないブロック*)
+let successors = function
+  | Jump l -> [l]
+  | Branch (_, t, f) -> [t; f]
+  | Ret _ -> []
+
+(*副作用の判定*)
+let has_side_effect = function
+  | Bprint _ | Print _ | Cycles _ | Call _ -> true
+  | _ -> false
+
+(*Storeがどの配列に書き込んでいるか*)
+let writes_mem = function
+  | Store (r, _, _, _) -> Some r
+  | _ -> None
+
+(*Loadがどの配列から読んでいるか*)
+let reads_mem = function
+  | Load (_, r, _, _) -> Some r
+  | _ -> None
