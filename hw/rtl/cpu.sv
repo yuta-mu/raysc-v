@@ -38,6 +38,7 @@ module cpu #(
     logic        mem_write_ctrl;
     logic        mem_read_ctrl;
     logic        is_ebreak;
+    logic        stall;
 
     // Instruction fields for controller
     opcode_t     opcode;
@@ -83,7 +84,7 @@ module cpu #(
             cycles <= cycles + 64'd1;
             if (is_ebreak) begin
                  halted_reg <= 1'b1;
-            end else begin
+            end else if (retire) begin
                 instret <= instret + 64'd1;
             end
         end
