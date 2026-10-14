@@ -38,11 +38,11 @@ module tb_cpu;
     logic [31:0] mem_rdata;
     logic        halted;
     logic [63:0] cycles;
-    logic [63:0] instret_cpu;
+    logic [63:0] instret;
     logic        retire;
 
     cpu u_cpu (
-        .*, .instret(instret_cpu)
+        .*
     );
 
     logic [31:0] bram_rdata;
@@ -59,7 +59,7 @@ module tb_cpu;
         // Port B (データ)
         .b_en    ((mem_read || mem_write) && is_bram_addr),
         .b_we    (mem_write && is_bram_addr),
-        .b_wstrb (u_cpu.mem_wstrb),
+        .b_wstrb (mem_wstrb),
         .b_addr  (mem_addr),
         .b_wdata (mem_wdata),
         .b_rdata (bram_rdata)
@@ -72,7 +72,7 @@ module tb_cpu;
     always_ff @(posedge clk) begin
         mem_addr_d    <= mem_addr;
         mem_read_d    <= mem_read;
-        cycle_rdata_d <= cycle_count[31:0];
+        cycle_rdata_d <= cycles[31:0];
     end
 
     // データバス マルチプレクサ
@@ -81,8 +81,6 @@ module tb_cpu;
                        (mem_addr_d == CYCLE_ADDR)  ? cycle_rdata_d : 32'h0;
 
     string           hex_file, uart_file, trace_file, vcd_file;
-    longint unsigned cycle_count = 0;      // リセット解除後の経過サイクル
-    longint unsigned instret     = 0;      // retire した命令数 (ebreak は数えない)
     longint unsigned max_cycles  = 50000000;
     integer          uart_fd     = 0;
     integer          trace_fd    = 0;
@@ -128,7 +126,7 @@ module tb_cpu;
 
     task automatic finish_sim(input string kind);
         // 最終 cycles は ebreak をコミットしたサイクルまで数える (仕様 §8: 最終 cycles = t_h + 1)
-        $display("[HALT] kind=%s pc=0x%08h cycles=%0d instret=%0d", kind, pc, cycle_count + 1, instret);
+        $display("[HALT] kind=%s pc=0x%08h cycles=%0d instret=%0d", kind, pc, cycles + 1, instret);
         if (uart_fd  != 0) $fclose(uart_fd);
         if (trace_fd != 0) $fclose(trace_fd);
         $finish;
@@ -136,19 +134,17 @@ module tb_cpu;
 
     always @(posedge clk) begin
         if (rst_n) begin
-            if (trace_en) $display("Cycle %0d | PC: 0x%08h | Inst: 0x%08h", cycle_count, pc, inst);
+            if (trace_en) $display("Cycle %0d | PC: 0x%08h | Inst: 0x%08h", cycles, pc, inst);
 
             if (retire && trace_fd != 0) $fwrite(trace_fd, "%08x %08x\n", pc, inst);
-            if (retire && inst != EBREAK) instret <= instret + 1;
-            cycle_count <= cycle_count + 1;
 
             // 単一サイクルコアでは、命令を取り込んだサイクルで ebreak が実行される。
             // (パイプライン化したら、retire 段の pc / 命令で判定するよう置き換える)
             if (u_cpu.inst_valid && inst == EBREAK)    finish_sim("ebreak");
             if (u_cpu.inst_valid && inst == SELF_LOOP) finish_sim("self-loop");
 
-            if (cycle_count > max_cycles) begin
-                $display("[TIMEOUT] Reached maximum cycle limit (%0d cycles).", cycle_count);
+            if (cycles > max_cycles) begin
+                $display("[TIMEOUT] Reached maximum cycle limit (%0d cycles).", cycles);
                 $finish;
             end
         end
