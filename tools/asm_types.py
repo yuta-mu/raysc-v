@@ -73,7 +73,7 @@ OPCODES = {
     'lbu':    {'type': 'I', 'opcode': 0x03, 'funct3': 0x4, 'imm_bits': 12},
     'lhu':    {'type': 'I', 'opcode': 0x03, 'funct3': 0x5, 'imm_bits': 12},
     'jalr':   {'type': 'I', 'opcode': 0x67, 'funct3': 0x0, 'imm_bits': 12},
-    'ebreak': {'type': 'I', 'opcode': 0x67, 'funct3': 0x0, 'imm_bits': 12},
+#    'ebreak': {'type': 'I', 'opcode': 0x67, 'funct3': 0x0, 'imm_bits': 12},
 
     # S-type
     'sb':     {'type': 'S', 'opcode': 0x23, 'funct3': 0x0, 'imm_bits': 12},
@@ -97,6 +97,12 @@ OPCODES = {
 
     # SYSTEM
     'ebreak': {'type': 'SYS', 'value': 0x00100073},
+
+    # custom-0
+    'qmul':   {'type': 'R',  'opcode': 0x0B, 'funct3': 0x0, 'funct7': 0x00},
+    'qsqrt':  {'type': 'R1', 'opcode': 0x0B, 'funct3': 0x2, 'funct7': 0x00},
+    'qrsqrt': {'type': 'R1', 'opcode': 0x0B, 'funct3': 0x3, 'funct7': 0x00},
+    'qrcp':   {'type': 'R1', 'opcode': 0x0B, 'funct3': 0x4, 'funct7': 0x00},
 }
 
 # 1命令に展開される疑似命令 (li / la / 引数1個の jal, jalr は assembler.py 側で処理)
