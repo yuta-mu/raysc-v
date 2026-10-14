@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 RTL_DIR = "../../hw/rtl"
-TB_FILE = "../../hw/tb/tb_riscv_test.v"
+TB_FILE = "../../hw/tb/tb_riscv_test.sv"
 HEX_DIR = "hex"
 TOP_SIM = "sim.vvp"
 

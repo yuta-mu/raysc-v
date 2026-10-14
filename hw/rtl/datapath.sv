@@ -7,6 +7,10 @@ module datapath (
     // H-1: CPU停止状態入力
     input  logic        halted,
 
+    // BRAM
+    input  logic        inst_valid,
+    input  logic        mem_stall,
+
     // Controls from controller
     input  logic        branch_en,
     input  logic        jump,
@@ -57,13 +61,15 @@ module datapath (
     logic        div_done;
 
     logic is_div_op;
-    assign is_div_op = (result_src == RESULT_MDU) && funct3[2];
+    assign is_div_op = inst_valid && (result_src == RESULT_MDU) && funct3[2];
 
     logic div_start;
     assign div_start = is_div_op && !div_busy && !div_done;
 
-    // 除算中かつ未完了なら CPU 全体をストールさせる
-    assign stall = is_div_op && !div_done;
+    logic div_stall;
+    assign div_stall = is_div_op && !div_done;
+
+    assign stall = div_stall|| mem_stall;
 
     divider u_divider (
         .clk    (clk),
