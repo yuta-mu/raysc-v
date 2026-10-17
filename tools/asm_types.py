@@ -73,7 +73,6 @@ OPCODES = {
     'lbu':    {'type': 'I', 'opcode': 0x03, 'funct3': 0x4, 'imm_bits': 12},
     'lhu':    {'type': 'I', 'opcode': 0x03, 'funct3': 0x5, 'imm_bits': 12},
     'jalr':   {'type': 'I', 'opcode': 0x67, 'funct3': 0x0, 'imm_bits': 12},
-#    'ebreak': {'type': 'I', 'opcode': 0x67, 'funct3': 0x0, 'imm_bits': 12},
 
     # S-type
     'sb':     {'type': 'S', 'opcode': 0x23, 'funct3': 0x0, 'imm_bits': 12},
