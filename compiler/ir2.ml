@@ -35,13 +35,13 @@ type instr =
   | AddrLocal  of vreg * int   (*d = 局所配列の先頭アドレス*)
   | AddrGlobal of vreg * string  (*d = constの先頭アドレス*)
   | Load  of vreg * region * vreg * int                 (*d = mem[addr + ofs]*)
-  | Store of region * vreg * int * vreg                 (*mem[addr + ofs] = src*)
+  | Store of int * vreg * int * vreg                    (*mem[addr + ofs] = src(書けるのは局所配列だけ。int は局所配列の番号)*)
   (*関数呼び出し*)
   | Call  of vreg list * string * vreg list    (*戻り値を入れる仮想レジスタのリスト,関数名,引数の仮想レジスタ*)
-  (* MMIO呼び出し*)
-  | Bprint of vreg                            
-  | Cycles of vreg                             
-  | Print  of string                           
+  (*MMIO呼び出し(仕様 §11):消去・並べ替え禁止。他の命令もこの前後を越えて動かさない
+    print("...") は translate で const(1文字1ワード、末尾 0)と Load / Bprint のループに分解する*)
+  | Bprint of vreg                             (*下位8ビットをUARTに送る*)
+  | Cycles of vreg                             (*d = cycles()*)
 
 (*基本ブロックの終端*)
 type terminator =
@@ -99,12 +99,11 @@ let string_of_instr = function
   | AddrLocal (d, id)   -> Printf.sprintf "%s = &array%d" (v d) id
   | AddrGlobal (d, s)   -> Printf.sprintf "%s = &%s" (v d) s
   | Load (d, r, a, ofs) -> Printf.sprintf "%s = load %s[%s + %d]" (v d) (string_of_region r) (v a) ofs
-  | Store (r, a, ofs, s)-> Printf.sprintf "store %s[%s + %d] = %s" (string_of_region r) (v a) ofs (v s)
+  | Store (id, a, ofs, s)-> Printf.sprintf "store array%d[%s + %d] = %s" id (v a) ofs (v s)
   | Call ([], f, args)  -> Printf.sprintf "call %s(%s)" f (vs args)
   | Call (rs, f, args)  -> Printf.sprintf "%s = call %s(%s)" (vs rs) f (vs args)
   | Bprint a            -> Printf.sprintf "bprint %s" (v a)
   | Cycles d            -> Printf.sprintf "%s = cycles" (v d)
-  | Print s             -> Printf.sprintf "print %S" s
 
 let string_of_term = function
   | Jump t              -> Printf.sprintf "jump %s" (l t)
@@ -170,11 +169,11 @@ let defs = function
   | Const (d, _) | Move (d, _) | Bin (_, d, _, _) | Un (_, d, _) | Intr (_, d, _)
   | AddrLocal (d, _) | AddrGlobal (d, _) | Load (d, _, _, _) | Cycles d -> [d]
   | Call (rs, _, _) -> rs 
-  | Store _ | Bprint _ | Print _ -> []
+  | Store _ | Bprint _ -> []
 
 (*命令が読み込む vreg*)
 let uses = function
-  | Const _ | AddrLocal _ | AddrGlobal _ | Cycles _ | Print _ -> []
+  | Const _ | AddrLocal _ | AddrGlobal _ | Cycles _ -> []
   | Move (_, a) | Un (_, _, a) | Intr (_, _, a) | Load (_, _, a, _) | Bprint a -> [a]
   | Bin (_, _, a, b) -> [a; b]
   | Store (_, a, _, s) -> [a; s]
@@ -194,12 +193,12 @@ let successors = function
 
 (*副作用の判定*)
 let has_side_effect = function
-  | Bprint _ | Print _ | Cycles _ | Call _ -> true
+  | Bprint _ | Cycles _ | Call _ | Store _ -> true
   | _ -> false
 
 (*Storeがどの配列に書き込んでいるか*)
 let writes_mem = function
-  | Store (r, _, _, _) -> Some r
+  | Store (id, _, _, _) -> Some (Local id)
   | _ -> None
 
 (*Loadがどの配列から読んでいるか*)
