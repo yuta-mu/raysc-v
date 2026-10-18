@@ -101,7 +101,7 @@ module cpu #(
         end
     end
 
-    assign mem_read  = mem_read_ctrl && (mem_state == S_EXECUTE || mem_state == S_MEM_WAIT)
+    assign mem_read  = mem_read_ctrl && (mem_state == S_EXECUTE)
                        && !is_ebreak && !halted_reg;
     assign mem_write = mem_write_ctrl && (mem_state == S_EXECUTE) && !stall
                        && !is_ebreak && !halted_reg;
