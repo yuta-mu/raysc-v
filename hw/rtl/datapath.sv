@@ -69,7 +69,7 @@ module datapath (
     logic div_stall;
     assign div_stall = is_div_op && !div_done;
 
-    assign stall = div_stall|| mem_stall;
+    assign stall = div_stall || mem_stall;
 
     divider u_divider (
         .clk    (clk),
