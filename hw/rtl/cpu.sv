@@ -39,6 +39,8 @@ module cpu #(
     logic        mem_read_ctrl;
     logic        is_ebreak;
     logic        stall;
+    logic        mem_stall;
+    logic        inst_valid;
 
     // Instruction fields for controller
     opcode_t     opcode;
@@ -48,11 +50,6 @@ module cpu #(
     assign opcode = opcode_t'(inst[6:0]);
     assign funct3 = inst[14:12];
     assign funct7 = inst[31:25];
-
-    assign is_ebreak = (inst == 32'h0010_0073);
-
-    assign mem_read  = mem_read_ctrl  && !is_ebreak && !halted && !stall;
-    assign mem_write = mem_write_ctrl && !is_ebreak && !halted && !stall;
 
     controller u_controller (
         .opcode     (opcode),
@@ -69,10 +66,48 @@ module cpu #(
         .alu_op     (alu_op)
     );
 
-    // H-1: カウンタと停止
-    logic halted_reg;
-    assign halted = halted_reg;
+    typedef enum logic [1:0] {
+        S_FETCH,   // BRAM Port A から inst が出力されるのを1サイクル待つ
+        S_EXECUTE,
+        S_MEM_WAIT // ロード命令時，BRAM Port B から データが出るのを1サイクル待つ
+    } mem_state_t;
 
+    mem_state_t mem_state;
+    logic       halted_reg;
+
+    assign inst_valid = (mem_state != S_FETCH);
+
+    assign is_ebreak = (mem_state == S_EXECUTE) && (inst == 32'h0010_0073);
+
+    // BRAM待ち
+    // 1. 命令がまだ届いていない
+    // 2. 実行中かつロード命令(データが次のS_MEM_WAIT で届く)
+    assign mem_stall = (mem_state == S_FETCH) || (mem_state == S_EXECUTE && mem_read_ctrl);
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            mem_state <= S_FETCH;
+        end else if (!halted_reg) begin
+            case (mem_state)
+                S_FETCH: mem_state <= S_EXECUTE;
+                S_EXECUTE: begin
+                    if      (is_ebreak)     mem_state <= S_EXECUTE;
+                    else if (mem_read_ctrl) mem_state <= S_MEM_WAIT;
+                    else if (!stall)        mem_state <= S_FETCH;
+                end
+                S_MEM_WAIT: mem_state <= S_FETCH;
+                default: mem_state <= S_FETCH;
+            endcase
+        end
+    end
+
+    assign mem_read  = mem_read_ctrl && (mem_state == S_EXECUTE)
+                       && !is_ebreak && !halted_reg;
+    assign mem_write = mem_write_ctrl && (mem_state == S_EXECUTE) && !stall
+                       && !is_ebreak && !halted_reg;
+
+    // H-1: カウンタと停止
+    assign halted = halted_reg;
     assign retire = !stall && !halted_reg && !is_ebreak;
 
     always_ff @(posedge clk or negedge rst_n) begin
@@ -94,6 +129,8 @@ module cpu #(
         .clk        (clk),
         .rst_n      (rst_n),
         .halted     (halted_reg),
+        .inst_valid (inst_valid),
+        .mem_stall  (mem_stall),
         .branch_en  (branch_en),
         .jump       (jump),
         .result_src (result_src),
