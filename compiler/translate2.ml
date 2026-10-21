@@ -383,6 +383,7 @@ let compile (ctx : Semant.context) : Ir2.program =
             init
 
       (* 代入文 (lhs = rhs) *)
+      (* まず lhs を評価してアドレスを決め, その後 rhs を評価し, 最後に格納する *)
       | Assign (lhs, rhs) ->
           let ty = type_of lhs in
           (match ty with
@@ -390,8 +391,8 @@ let compile (ctx : Semant.context) : Ir2.program =
                (* 配列全体への代入はエラー *)
                Semant.fail ~loc:(Some lhs.loc) "whole-array assignment is not supported"
            | _ ->
-               let src = expr rhs in           (* 右辺 rhs の評価 *)
                let dst = place_of lhs in       (* 左辺 lhs は場所として解釈 *)
+               let src = expr rhs in           (* 右辺 rhs の評価 *)
                (match dst with
                 | PMem (Ir2.Global _, _, _) ->
                     (* 定数への代入はエラー *)
