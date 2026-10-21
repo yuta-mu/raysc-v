@@ -208,17 +208,40 @@ def expand_pseudo(line, symbol_table=None):
 
     return [line.strip()]
 
-
+pcrel_hi_pcs = {}
 def resolve_pcrel(line, current_pc, symbol_table=None):
     """%pcrel_hi(sym) / %pcrel_lo(sym) を数値に置換"""
+    global pcrel_hi_pcs
     if symbol_table is None:
         symbol_table = {}
 
+    tokens = tokenize(line)
+
+    rd = None
+    if len(tokens) > 1:
+        try:
+            rd = parse_reg(tokens[1])
+        except ValueError:
+            rd = tokens[1]  # レジスタ名でない場合はそのまま保持
+
     def repl(m):
+        global pcrel_hi_pcs
         kind, sym = m.group(1), m.group(2).strip()
         if sym not in symbol_table:
             raise ValueError(f"Undefined label: '{sym}'")
-        base = current_pc if kind == 'hi' else current_pc - 4
+        
+        key = (rd, sym)
+
+        if kind == 'hi':
+            # {(rd, sym):pc} で記録しておく
+            pcrel_hi_pcs[key] = current_pc
+            base = current_pc
+        else:
+            # loのとき引き出す
+            if key not in pcrel_hi_pcs:
+                raise ValueError(f"%pcrel_lo({sym}) with {rd} used without matching %pcrel_hi({sym}): '{line}'")
+            base = pcrel_hi_pcs[key]
+        
         offset = symbol_table[sym] - base
         if kind == 'hi':
             return str(((offset + 0x800) >> 12) & 0xFFFFF)
