@@ -23,6 +23,8 @@ module datapath (
     output logic retire
 );
 
+    logic        stall;
+
     logic [31:0] pc_next;
     logic [31:0] pc_plus4;
     logic [31:0] pc_target;
@@ -60,6 +62,10 @@ module datapath (
     end
 
     // Submodules
+
+    // custom-0 命令
+    logic is_custom0;
+    assign is_custom0 = (result_src == RESULT_C0);
 
     logic reg_write_effective;
     assign reg_write_effective = reg_write && !stall;
@@ -105,11 +111,26 @@ module datapath (
     logic is_div_op;
     assign is_div_op = (result_src == RESULT_MDU) && funct3[2];
 
+    // custom-0 演算器
+    logic [31:0] c0_result;
+    logic        c0_stall;
+
+    custom0 u_custom0 (
+        .clk    (clk),
+        .rst_n  (rst_n),
+        .valid  (is_custom0),
+        .a      (rs1_data),
+        .b      (rs2_data),
+        .funct3 (funct3),
+        .result (c0_result),
+        .stall  (c0_stall)
+    );
+
+    // divider は M 拡張の DIV/REM 専用 (元のまま)
     logic div_start;
     assign div_start = is_div_op && !div_busy && !div_done;
 
-    logic stall;
-    assign stall = is_div_op && !div_done;
+    assign stall  = (is_div_op && !div_done) || c0_stall;
     assign retire = rst_n && !stall;
 
     divider u_divider (
@@ -225,9 +246,9 @@ module datapath (
             RESULT_PC4: result_data = pc_plus4;
             RESULT_IMM: result_data = imm;
             RESULT_MDU: result_data = mdu_result;
+            RESULT_C0:  result_data = c0_result;
             default:    result_data = alu_result;
         endcase
     end
 
 endmodule
-
