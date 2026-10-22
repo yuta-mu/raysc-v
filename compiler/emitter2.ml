@@ -7,7 +7,7 @@ type frame = {
   out_bytes : int;               (* スタック引数の領域の大きさ *)
   arrays : (int * int) list;     (* 配列の番号 -> sp からのオフセット *)
   ra_off : int;                  (* ra を置く場所 *)
-  size : int;                    (* フレーム全体の大きさ F(16 の倍数) *)
+  size : int;                    (* フレーム全体の大きさ F(4の倍数) *)
 }
 
 let make_frame (f : func) =
@@ -25,7 +25,7 @@ let make_frame (f : func) =
     List.fold_left (fun (acc, off) (id, bytes) -> ((id, off) :: acc, off + bytes))
       ([], arr_base) f.arrays
   in (*配列*)
-  let size = arr_end + 4 in (*16の倍数に切り上げ*)  
+  let size = arr_end + 4 in 
   if size > 2044 then failwith ("emitter: frame too large: " ^ f.name);
   { out_bytes; arrays; ra_off = size - 4; size }
 
@@ -250,13 +250,8 @@ jalr x0, ra, 0
 
 let emit_program (p : program) : string =
   Buffer.clear buf;
-  (*sp=0x0004_0000にしてmainを呼び、戻ったらebreak*)
   Printf.bprintf buf ".section .text\n";
-  Printf.bprintf buf ".globl _start\n";
-  Printf.bprintf buf "_start:\n";
-  Printf.bprintf buf "li sp, 262144\n";
-  Printf.bprintf buf "jal ra, main\n";
-  Printf.bprintf buf "ebreak\n";
+
   List.iter emit_func p.funcs;
   Buffer.add_string buf runtime;
   (*定数データ*)
