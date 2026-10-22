@@ -519,3 +519,4 @@ let compile (ctx : Semant.context) : Ir2.program =
   (* compile 関数の返戻値 (Ir2.program) *)
   (* プログラム全体の構造体を構築 *)
   { Ir2.consts = consts @ List.rev !str_consts; funcs }
+
