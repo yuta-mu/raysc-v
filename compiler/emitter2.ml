@@ -25,8 +25,8 @@ let make_frame (f : func) =
     List.fold_left (fun (acc, off) (id, bytes) -> ((id, off) :: acc, off + bytes))
       ([], arr_base) f.arrays
   in (*配列*)
-  let size = (arr_end + 4 + 15) / 16 * 16 in (*16の倍数に切り上げ*)
-  if size > 2048 then failwith ("emitter: frame too large: " ^ f.name);
+  let size = arr_end + 4 in (*16の倍数に切り上げ*)  
+  if size > 2044 then failwith ("emitter: frame too large: " ^ f.name);
   { out_bytes; arrays; ra_off = size - 4; size }
 
 (*命令*)
