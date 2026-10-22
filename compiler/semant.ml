@@ -138,6 +138,8 @@ let analyze program =
         let rec collect_vars = function
           | Block xs -> List.iter collect_vars xs
           | Let (n, t, _) -> add_var n t
+          | If (_, a, b) -> collect_vars a; Option.iter collect_vars b
+          | While (_, b) -> collect_vars b
           | For (id, _, _, b) -> add_var id I32; collect_vars b
           | _ -> ()
         in
@@ -287,7 +289,7 @@ let infer_expr ctx info e =
     | Binary (Mul, a, b) ->
         let ta = infer a and tb = infer b in
         (match ta, tb with
-         | Vec3, Q16 -> Vec3          (* 修正: Vec3 * Q16 のみ *)
+         | Vec3, Q16 | Q16, Vec3 -> Vec3
          | Q16, Q16 | Q16, I32 | I32, Q16 -> Q16
          | I32, I32 -> I32
          | _ -> assert false)
