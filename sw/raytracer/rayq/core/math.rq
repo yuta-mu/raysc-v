@@ -1,0 +1,83 @@
+fn rt_from_raw(value: i32) -> q16 {
+    return 0.0000152587890625 * value;
+}
+
+fn rt_to_raw(value: q16) -> i32 {
+    return (i32(value) << 16) | (i32(value * 65536) & 65535);
+}
+
+fn rt_shift_right(value: i32, amount: i32) -> i32 {
+    let count: i32 = amount & 31;
+    if (count == 0) { return value; }
+    return (value >> count) & (0x7FFFFFFF >> (count - 1));
+}
+
+fn rt_div_raw(a: i32, b: i32) -> i32 {
+    let numerator: i32 = a;
+    let denominator: i32 = b;
+    let divisor: i32;
+    let shift: i32 = 0;
+    let quotient: i32 = 0;
+    let remainder: i32 = 0;
+    let bit: i32 = 31;
+    let fraction: i32 = 0;
+    if (a < 0) { numerator = -a; }
+    if (b < 0) { denominator = -b; }
+    if (numerator == 0) { return 0; }
+    if ((denominator & (denominator - 1)) == 0) {
+        divisor = denominator;
+        while (divisor != 0 && divisor != 1) {
+            divisor = rt_shift_right(divisor, 1);
+            shift = shift + 1;
+        }
+        if (shift >= 16) {
+            quotient = rt_shift_right(numerator, shift - 16);
+        } else {
+            quotient = numerator << (16 - shift);
+        }
+    } else {
+        while (bit >= 0) {
+            remainder = (remainder << 1) | ((numerator >> bit) & 1);
+            quotient = quotient << 1;
+            if (remainder < 0 || remainder >= denominator) {
+                remainder = remainder - denominator;
+                quotient = quotient | 1;
+            }
+            bit = bit - 1;
+        }
+        while (fraction < 16) {
+            remainder = remainder << 1;
+            quotient = quotient << 1;
+            if (remainder < 0 || remainder >= denominator) {
+                remainder = remainder - denominator;
+                quotient = quotient | 1;
+            }
+            fraction = fraction + 1;
+        }
+    }
+    if ((a < 0) != (b < 0)) { quotient = -quotient; }
+    return quotient;
+}
+
+fn rt_div(a: q16, b: q16) -> q16 {
+    return rt_from_raw(rt_div_raw(rt_to_raw(a), rt_to_raw(b)));
+}
+
+fn rt_rcp(value: q16) -> q16 {
+    let divisor: i32 = rt_to_raw(value);
+    let result: i32;
+    if (divisor == 0 || divisor == 1 || divisor == 2) {
+        return rt_from_raw(0x7FFFFFFF);
+    }
+    if (divisor == -1) { return rt_from_raw(0x80000000); }
+    result = rt_div_raw(65536, divisor);
+    if (divisor < 0 && divisor * result != 0) {
+        result = result - 1;
+    }
+    return rt_from_raw(result);
+}
+
+fn rt_rsqrt(value: q16) -> q16 {
+    if (value <= 0.0) { return 0.0; }
+    return rt_rcp(sqrt(value));
+}

@@ -1,0 +1,41 @@
+# ローカルの画像・レンダリング出力
+*.ppm
+*.pgm
+*.pbm
+*.pnm
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.gif
+*.tif
+*.tiff
+*.webp
+
+# ローカルのテストコード・基準画像
+tests/
+golden/
+
+# ローカルビルド生成物
+build/
+cmake-build-*/
+*.out
+*.exe
+*.obj
+*.d
+*.su
+
+# キャッシュ・検証ログ・一時ファイル
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.log
+*.tmp
+*.bak
+
+# Raytracer の C++ 実行ファイル（拡張子なし）
+/raytracer/cpp/main
+/raytracer/cpp/ppm
+/raytracer/cpp/week1
+/raytracer/cpp/week2

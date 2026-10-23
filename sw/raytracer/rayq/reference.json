@@ -1,0 +1,45 @@
+{
+  "language": {
+    "repository": "yuta-mu/raysc-v",
+    "commit": "c1fc3b1cb2649283d1e2f9fdcef81baafcdaec52",
+    "path": "docs/RayQ-language.md",
+    "blob": "1ac5d334d5d7db557fd49bbb0db49f5c7308712b"
+  },
+  "compiler": {
+    "repository": "yuta-mu/raysc-v",
+    "commit": "c1fc3b1cb2649283d1e2f9fdcef81baafcdaec52",
+    "source_directory": "build/compiler-source",
+    "binary": "build/compiler/rayqc",
+    "files": {
+      "Makefile": "0fa864ab2a4c639ae672d789e0e4f5b5fc5f07b6",
+      "ast.ml": "85685abe655ccfc3b2e1e526f175ea401dd767a9",
+      "emitter.ml": "d242b223913e505ded0172e8609dce200ea0d98b",
+      "ir.ml": "b7112d0b4e9330e71cf356b93027414188f3841f",
+      "lexer.mll": "1f2ce9aa2937737b826cbfbbb8527b829d986210",
+      "main.ml": "e00885e9b1c8b30b806a80b714bdad6ea9e4607f",
+      "numeric.ml": "41953eb9f91f34d96d2251685e634eb43a964f46",
+      "parser.mly": "a2891d83c579765bad90d7bf2e78d4cc761bfc07",
+      "semant.ml": "c2d876d43dbfe55d73cfcb1dcf3c8de78caff9ed",
+      "translate.ml": "444065bb6191b32ce3c8c06bd982f82e6ac4fabf"
+    }
+  },
+  "c_baseline": {
+    "manifest": "../c/golden/manifest.json",
+    "scope": "feat/str-task local baseline",
+    "format": "P3",
+    "profiles": {
+      "micro": [
+        32,
+        18
+      ],
+      "tiny": [
+        80,
+        45
+      ],
+      "full": [
+        160,
+        90
+      ]
+    }
+  }
+}

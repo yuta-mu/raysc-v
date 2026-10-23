@@ -177,7 +177,7 @@ hittable_list simple_light() {
   return objects;
 }
 
-hittable_list earth(const char* earthmap_filename = "sw/raytracer/cpp/earthmap.jpg") {
+hittable_list earth(const char* earthmap_filename = "sw/raytracer/cpp/legacy/earthmap.jpg") {
   auto earth_texture = make_shared<image_texture>(earthmap_filename);
   auto earth_surface = make_shared<lambertian>(earth_texture);
   auto globe = make_shared<sphere>(point3(0,0,0), 2 * f_scale, earth_surface);
@@ -260,12 +260,12 @@ struct render_options {
     int width = 384;
     int samples = 100;
     int depth = 50;
-    std::string earthmap = "sw/raytracer/cpp/earthmap.jpg";
+    std::string earthmap = "sw/raytracer/cpp/legacy/earthmap.jpg";
 };
 
 void print_usage(std::ostream& out) {
     out << "Usage: week2 [--width N] [--samples N] [--depth N] [--earthmap FILE]\n"
-        << "Defaults: width=384, samples=100, depth=50, earthmap=sw/raytracer/cpp/earthmap.jpg\n"
+        << "Defaults: width=384, samples=100, depth=50, earthmap=sw/raytracer/cpp/legacy/earthmap.jpg\n"
         << "Limits: width=4..32767, samples=1..2048, depth=1..256\n";
 }
 
