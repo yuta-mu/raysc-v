@@ -4,9 +4,6 @@
 set_property -dict { PACKAGE_PIN E3    IOSTANDARD LVCMOS33 } [get_ports { CLK100MHZ }];
 create_clock -period 10.000 -name sys_clk_pin -waveform {0.000 5.000} [get_ports { CLK100MHZ }];
 
-# 50MHz 内部生成クロック (BUFG 出力端子に対して制約)
-create_generated_clock -name clk_50m -source [get_ports CLK100MHZ] -divide_by 2 [get_pins u_bufg/O];
-
 # ==============================================================================
 # Reset Button (Active-Low: ボード上の赤い RESET ボタン)
 # ==============================================================================
