@@ -119,8 +119,6 @@ module cpu #(
         end
     end
 
-    logic div_stall;
-
     datapath u_datapath (
         .*,
         .halted     (halted_reg),

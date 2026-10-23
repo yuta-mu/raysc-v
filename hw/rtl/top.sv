@@ -71,9 +71,12 @@ module top (
     end
 
     // SoC バス・周辺回路
-    localparam logic [31:0] MEM_BYTES  = 32'h0004_0000; // 256 KB
-    localparam logic [31:0] UART_ADDR  = 32'h1000_0000;
-    localparam logic [31:0] CYCLE_ADDR = 32'h2000_0000;
+    localparam logic [31:0] MEM_BYTES     = 32'h0004_0000; // 256 KB
+    localparam logic [31:0] UART_ADDR     = 32'h1000_0000;
+    localparam logic [31:0] CYCLE_ADDR    = 32'h2000_0000;
+    localparam logic [31:0] INSTRET_ADDR  = 32'h2000_0004;
+    localparam logic [31:0] CYCLEH_ADDR   = 32'h2000_0008;
+    localparam logic [31:0] INSTRETH_ADDR = 32'h2000_000C;
 
     logic [31:0] pc, inst;
     logic        mem_read, mem_write;
@@ -121,23 +124,28 @@ module top (
 
     logic [31:0] mem_addr_d;
     logic        mem_read_d;
-    logic [31:0] cycle_rdata_d;
+    logic [31:0] mmio_rdata_d;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            mem_addr_d    <= '0;
-            mem_read_d    <= 1'b0;
-            cycle_rdata_d <= '0;
+            mem_addr_d   <= '0;
+            mem_read_d   <= 1'b0;
+            mmio_rdata_d <= '0;
         end else begin
             mem_addr_d    <= mem_addr;
             mem_read_d    <= mem_read;
-            cycle_rdata_d <= cycles[31:0];
+            case (mem_addr)
+                CYCLE_ADDR:    mmio_rdata_d <= cycles[31:0];
+                INSTRET_ADDR:  mmio_rdata_d <= instret[31:0];
+                CYCLEH_ADDR:   mmio_rdata_d <= cycles[63:32];
+                INSTRETH_ADDR: mmio_rdata_d <= instret[63:32];
+                default:       mmio_rdata_d <= 32'h0;
+            endcase
         end
     end
 
-    assign mem_rdata = !mem_read_d                ? 32'h0 :
-                       (mem_addr_d < MEM_BYTES)   ? bram_rdata :
-                       (mem_addr_d == CYCLE_ADDR) ? cycle_rdata_d : 32'h0;
+    assign mem_rdata = !mem_read_d              ? 32'h0 :
+                       (mem_addr_d < MEM_BYTES) ? bram_rdata : mmio_rdata_d;
 
     assign led[0] = halted;     // ebreak 等で正常停止したら点灯 (LED0: H5)
     assign led[1] = uart_stall; // FIFO が満杯になったら点灯 (LED1: J5)
