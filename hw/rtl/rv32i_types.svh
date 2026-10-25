@@ -19,7 +19,8 @@ typedef enum logic [2:0] {
     RESULT_MEM  = 3'b001,
     RESULT_PC4  = 3'b010,
     RESULT_IMM  = 3'b011,
-    RESULT_MDU  = 3'b100
+    RESULT_MDU  = 3'b100,
+    RESULT_C0   = 3'b101
 } result_src_t;
 
 typedef enum logic [1:0] {

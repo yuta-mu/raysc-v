@@ -2,7 +2,7 @@
 
 module cpu #(
     parameter bit ENABLE_M       = 1'b1,
-    parameter bit ENABLE_CUSTOM0 = 1'b0
+    parameter bit ENABLE_CUSTOM0 = 1'b1
 )(
     input  logic        clk,
     input  logic        rst_n,

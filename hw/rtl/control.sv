@@ -99,6 +99,11 @@ module control(
                 alu_op     = ALU_OP_ADD;
             end
 
+            OP_CUSTOM0: begin
+                reg_write  = 1'b1;
+                result_src = RESULT_C0;
+            end
+
             default: ;
         endcase
     end
