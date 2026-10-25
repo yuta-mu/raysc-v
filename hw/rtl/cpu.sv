@@ -2,7 +2,7 @@
 
 module cpu #(
     parameter bit ENABLE_M       = 1'b1,
-    parameter bit ENABLE_CUSTOM0 = 1'b0
+    parameter bit ENABLE_CUSTOM0 = 1'b1
 )(
     input  logic        clk,
     input  logic        rst_n,
@@ -97,7 +97,7 @@ module cpu #(
 
     assign mem_read  = mem_read_ctrl && (mem_state == S_EXECUTE)
                        && !is_ebreak && !halted_reg;
-    assign mem_write = mem_write_ctrl && (mem_state == S_EXECUTE)
+    assign mem_write = mem_write_ctrl && (mem_state == S_EXECUTE) && !stall
                        && !is_ebreak && !halted_reg;
 
     // H-1: カウンタと停止

@@ -84,6 +84,5 @@ bram #(
         $display("RESULT: TIMEOUT (pc=0x%08h, inst=0x%08h)", pc, inst);
         $finish;
     end
-
 endmodule
 

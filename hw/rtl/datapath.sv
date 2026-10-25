@@ -69,8 +69,6 @@ module datapath (
     logic div_stall;
     assign div_stall = is_div_op && !div_done;
 
-    assign stall = div_stall || mem_stall;
-
     divider u_divider (
         .clk    (clk),
         .rst_n  (rst_n),
@@ -82,6 +80,25 @@ module datapath (
         .busy   (div_busy),
         .done   (div_done)
     );
+
+    logic is_custom0;
+    assign is_custom0 = inst_valid && (result_src == RESULT_C0);
+
+    logic [31:0] c0_result;
+    logic        c0_stall;
+
+    custom0 u_custom0 (
+        .clk    (clk),
+        .rst_n  (rst_n),
+        .valid  (is_custom0),
+        .a      (rs1_data),
+        .b      (rs2_data),
+        .funct3 (funct3),
+        .result (c0_result),
+        .stall  (c0_stall)
+    );
+
+    assign stall = div_stall || mem_stall || c0_stall;
 
     assign pc_plus4  = pc + 32'd4;
     assign pc_target = (jump && alu_src_b) ? (alu_result & ~32'd1) : (pc + imm);
@@ -233,6 +250,7 @@ module datapath (
             RESULT_PC4: result_data = pc_plus4;
             RESULT_IMM: result_data = imm;
             RESULT_MDU: result_data = mdu_result;
+            RESULT_C0:  result_data = c0_result;
             default:    result_data = alu_result;
         endcase
     end
