@@ -3,6 +3,7 @@ let () =
   let output_file = ref "" in
   let opt_level = ref 0 in
   let accel_mode = ref "off" in
+  let dump_ir = ref false in
 
   let speclist = [
     ("-o", Arg.Set_string output_file, "Output assembly file (.s)");
@@ -11,6 +12,7 @@ let () =
     ("-O2", Arg.Unit (fun () -> opt_level := 2), "Optimization level 2");
     ("-O3", Arg.Unit (fun () -> opt_level := 3), "Optimization level 3");
     ("--accel", Arg.Set_string accel_mode, "Accelerator mode (off|math|isect)");
+    ("--dump-ir", Arg.Set dump_ir, "Print the IR to stdout");
   ] in
 
   Arg.parse speclist (fun f -> input_file := f) "Usage: rayqc <input.rq> -o <output.s>";
@@ -38,9 +40,17 @@ let () =
     try Semant.analyze ast with
     | Semant.Error msg -> prerr_endline ("semantic error: " ^ msg); exit 1
   in
-  let ir = Translate.compile ctx in
 
+  let ir =
+    try Translate.compile ctx with
+    | Semant.Error msg -> prerr_endline ("semantic error: " ^ msg); exit 1
+  in
+  if !dump_ir then Ir.dump_program stdout ir;   (* --dump-ir のときは IR を表示 *)
+
+  let asm =
+    try Emitter.emit_program ir with
+    | Failure msg -> prerr_endline msg; exit 1    (* frame too large など *)
+  in
   let out = open_out !output_file in
-  Emitter.emit_program out ir ctx;
+  output_string out asm;
   close_out out
-
