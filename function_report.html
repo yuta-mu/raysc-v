@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Raytracer Function Hotspot Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; margin: 40px; background: #f4f4f9; color: #333; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; border: 1px solid #ddd; text-align: left; }
+        th { background-color: #27ae60; color: white; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Raytracer 関数別 実行ホットスポット解析</h1>
+        <p>QEMUの実行ログから抽出した、RISC-Vレイトレーサーの関数別実行回数ランキングです。</p>
+        
+        <div style="width: 100%; max-width: 800px; margin: 30px auto;">
+            <canvas id="funcChart"></canvas>
+        </div>
+
+        <h2>全関数 実行回数一覧</h2>
+        <table>
+            <tr><th>関数名</th><th>実行回数</th></tr>
+            <tr><td>render_image</td><td>809</td></tr>
+            <tr><td>sphere_hit.constprop.0</td><td>489</td></tr>
+            <tr><td>__divdi3</td><td>123</td></tr>
+            <tr><td>fpm_div</td><td>72</td></tr>
+            <tr><td>fpm_mul</td><td>54</td></tr>
+            <tr><td>__muldi3</td><td>51</td></tr>
+            <tr><td>fpm_sqrt</td><td>49</td></tr>
+            <tr><td>fpm_rsqrt</td><td>26</td></tr>
+            <tr><td>fpm_rcp</td><td>23</td></tr>
+            <tr><td>__udivsi3</td><td>22</td></tr>
+            <tr><td>__mulsi3</td><td>14</td></tr>
+            <tr><td>main</td><td>8</td></tr>
+            <tr><td>unknown</td><td>6</td></tr>
+            <tr><td>_start</td><td>6</td></tr>
+            <tr><td>output_putc</td><td>5</td></tr>
+            <tr><td>__umodsi3</td><td>4</td></tr>
+            <tr><td>bss_done</td><td>2</td></tr>
+            <tr><td>__divsi3</td><td>2</td></tr>
+            <tr><td>loop</td><td>2</td></tr>
+            <tr><td>bss_clear</td><td>1</td></tr>
+
+        </table>
+    </div>
+    <script>
+        const ctx = document.getElementById('funcChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['render_image', 'sphere_hit.constprop.0', '__divdi3', 'fpm_div', 'fpm_mul', '__muldi3', 'fpm_sqrt', 'fpm_rsqrt', 'fpm_rcp', '__udivsi3'],
+                datasets: [{
+                    label: '実行回数 (回)',
+                    data: [809, 489, 123, 72, 54, 51, 49, 26, 23, 22],
+                    backgroundColor: 'rgba(39, 174, 96, 0.6)',
+                    borderColor: 'rgba(39, 174, 96, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
