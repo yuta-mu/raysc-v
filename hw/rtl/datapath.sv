@@ -4,6 +4,13 @@ module datapath (
     input  logic        clk,
     input  logic        rst_n,
 
+    // H-1: CPU停止状態入力
+    input  logic        halted,
+
+    // BRAM
+    input  logic        inst_valid,
+    input  logic        mem_stall,
+
     // Controls from controller
     input  logic        branch_en,
     input  logic        jump,
@@ -20,7 +27,8 @@ module datapath (
     output logic [31:0] mem_wdata,
     output logic [3:0]  mem_wstrb,
     input  logic [31:0] mem_rdata,
-    output logic retire
+
+    output logic        stall
 );
 
     logic        stall;
@@ -50,25 +58,48 @@ module datapath (
     assign rd     = inst[11:7];
     assign funct3 = inst[14:12];
 
-    // PC Logic
+    logic [31:0] div_result;
+    logic        div_busy;
+    logic        div_done;
+
+    logic is_div_op;
+    assign is_div_op = inst_valid && (result_src == RESULT_MDU) && funct3[2];
+
+    logic div_start;
+    assign div_start = is_div_op && !div_busy && !div_done;
+
+    logic div_stall;
+    assign div_stall = is_div_op && !div_done;
+
+    assign stall = div_stall|| mem_stall;
+
+    divider u_divider (
+        .clk    (clk),
+        .rst_n  (rst_n),
+        .start  (div_start),
+        .funct3 (funct3),
+        .a      (rs1_data),
+        .b      (rs2_data),
+        .result (div_result),
+        .busy   (div_busy),
+        .done   (div_done)
+    );
+
     assign pc_plus4  = pc + 32'd4;
-    assign pc_target = (jump && alu_src_b) ? (alu_result & ~32'd1) : (pc + imm); // JALR vs Branch/JAL
+    assign pc_target = (jump && alu_src_b) ? (alu_result & ~32'd1) : (pc + imm);
     assign pc_src    = jump | branch_taken;
     assign pc_next   = pc_src ? pc_target : pc_plus4;
 
     always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n)     pc <= 32'h0;
-        else if(!stall) pc <= pc_next;
+        if (!rst_n) begin
+            pc <= 32'h0;
+        end else if (!stall && !halted) begin
+            pc <= pc_next;
+        end
     end
 
-    // Submodules
-
-    // custom-0 命令
-    logic is_custom0;
-    assign is_custom0 = (result_src == RESULT_C0);
-
     logic reg_write_effective;
-    assign reg_write_effective = reg_write && !stall;
+    assign reg_write_effective = reg_write && !stall && !halted;
 
     regfile u_regfile (
         .clk       (clk),
@@ -112,6 +143,8 @@ module datapath (
     assign is_div_op = (result_src == RESULT_MDU) && funct3[2];
 
     // custom-0 演算器
+    logic        is_custom0;
+    assign       is_custom0 = inst_valid && (result_src == RESULT_C0);
     logic [31:0] c0_result;
     logic        c0_stall;
 
@@ -156,8 +189,7 @@ module datapath (
         .branch_taken (branch_taken)
     );
 
-    // Memory & Writeback
-    assign mem_addr  = alu_result;
+    assign mem_addr = alu_result;
 
     logic [1:0] byte_offset;
     assign byte_offset = mem_addr[1:0];
@@ -251,4 +283,8 @@ module datapath (
         endcase
     end
 
+<<<<<<< HEAD
 endmodule
+=======
+endmodule
+>>>>>>> origin/main
