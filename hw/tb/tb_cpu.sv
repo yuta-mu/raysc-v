@@ -41,6 +41,9 @@ module tb_cpu;
     logic [63:0] instret;
     logic        retire;
 
+    logic        uart_stall;
+    assign       uart_stall = 1'b0;
+
     cpu u_cpu (
         .*
     );
