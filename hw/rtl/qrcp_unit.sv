@@ -81,7 +81,16 @@ module qrcp_unit (
     assign t1 = (prod + 66'd8388607)  >> 23;              // (prod + 2^23 - 1) >> 23
     assign t3 = (prod + 66'd33554431) >> 25;              // (prod + 2^25 - 1) >> 25
 
-    // 最終補正
+    // 2 のべき乗時: 2^32 / 2^(31-s) = 2^(s+1)
+    logic [32:0] pow2_result;
+    assign pow2_result = 33'h1_0000_0000 >> (~s_q);
+
+    // 境界判定 (小数部の上位がオール 1、または入力が小さい場合のみ Slow Path へ)
+    // prod[56:24] の小数部下位 8 ビットを検査 (1/256 ulp 判定)
+    logic need_slow_path;
+    assign need_slow_path = (dn_q[31:24] == 8'd0) || (&prod[31:24]);
+
+    // S6: 補正量
     logic [63:0] dn64, dn64_x2, dn64_x3;
     logic [1:0]  k;
     logic [32:0] zf;
@@ -92,7 +101,7 @@ module qrcp_unit (
     assign k       = (rem_q >= dn64) + (rem_q >= dn64_x2) + (rem_q >= dn64_x3);
     assign zf      = z_q + {31'd0, k};
 
-    // 状態の繊維
+    // 状態遷移
     always_ff @(posedge clk or negedge rst_n) begin
         // 初期化
         if (!rst_n) begin
@@ -133,8 +142,16 @@ module qrcp_unit (
                     state <= S4;
                 end
                 S4: begin
-                    z_q   <= prod[56:24];                          // (Z1 * e) >> 24
-                    state <= S5;
+                    if (p2_q) begin
+                        f_q   <= pow2_result;
+                        state <= RES;
+                    end else if (!need_slow_path) begin
+                        f_q   <= (prod[56:24]) >> (~s_q);
+                        state <= RES;
+                    end else begin
+                        z_q   <= prod[56:24];
+                        state <= S5;  // 境界直前のみ 7 サイクルの Slow Path へ
+                    end
                 end
                 S5: begin
                     rem_q <= 64'h8000_0000_0000_0000 - prod[63:0]; // 2^63 - dn*Z2
@@ -154,7 +171,6 @@ module qrcp_unit (
 
     // 符号処理
     logic [33:0] c;
-
     always_comb begin
         c = {1'b0, f_q} + {33'd0, ~p2_q};                 // ceil(2^32 / ax) = f + (ax が 2 のべき乗でない)
         if (zero_q)

@@ -25,13 +25,15 @@ module custom0 (
     logic [31:0] sqrt_result;
     logic        sqrt_done;
 
+    logic sqrt_busy, rsqrt_busy, rcp_busy;
+
     qsqrt_unit #(.STEPS(4)) u_qsqrt (
         .clk    (clk),
         .rst_n  (rst_n),
-        .start  (sel_sqrt),
+        .start  (sel_sqrt && !sqrt_busy),
         .a      (a),
         .result (sqrt_result),
-        .busy   (),
+        .busy   (sqrt_busy),
         .done   (sqrt_done)
     );
 
@@ -39,13 +41,13 @@ module custom0 (
     logic [31:0] rsqrt_result;
     logic        rsqrt_done;
 
-    qrsqrt_unit #(.STEPS(4)) u_qrsqrt (
+    qrsqrt_unit u_qrsqrt (
         .clk    (clk),
         .rst_n  (rst_n),
-        .start  (sel_rsqrt),
+        .start  (sel_rsqrt && !rsqrt_busy),
         .a      (a),
         .result (rsqrt_result),
-        .busy   (),
+        .busy   (rsqrt_busy),
         .done   (rsqrt_done)
     );
 
@@ -56,10 +58,10 @@ module custom0 (
     qrcp_unit u_qrcp (
         .clk    (clk),
         .rst_n  (rst_n),
-        .start  (sel_rcp),
+        .start  (sel_rcp && !rcp_busy),
         .a      (a),
         .result (rcp_result),
-        .busy   (),
+        .busy   (rcp_busy),
         .done   (rcp_done)
     );
 
