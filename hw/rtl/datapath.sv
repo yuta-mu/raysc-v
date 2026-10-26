@@ -31,8 +31,6 @@ module datapath (
     output logic        stall
 );
 
-    logic        stall;
-
     logic [31:0] pc_next;
     logic [31:0] pc_plus4;
     logic [31:0] pc_target;
@@ -152,49 +150,6 @@ module datapath (
         .result (mul_result)
     );
 
-    logic [31:0] div_result;
-    logic        div_busy;
-    logic        div_done;
-
-    logic is_div_op;
-    assign is_div_op = (result_src == RESULT_MDU) && funct3[2];
-
-    // custom-0 演算器
-    logic        is_custom0;
-    assign       is_custom0 = inst_valid && (result_src == RESULT_C0);
-    logic [31:0] c0_result;
-    logic        c0_stall;
-
-    custom0 u_custom0 (
-        .clk    (clk),
-        .rst_n  (rst_n),
-        .valid  (is_custom0),
-        .a      (rs1_data),
-        .b      (rs2_data),
-        .funct3 (funct3),
-        .result (c0_result),
-        .stall  (c0_stall)
-    );
-
-    // divider は M 拡張の DIV/REM 専用 (元のまま)
-    logic div_start;
-    assign div_start = is_div_op && !div_busy && !div_done;
-
-    assign stall  = (is_div_op && !div_done) || c0_stall;
-    assign retire = rst_n && !stall;
-
-    divider u_divider (
-        .clk    (clk),
-        .rst_n  (rst_n),
-        .start  (div_start),
-        .funct3 (funct3),
-        .a      (rs1_data),
-        .b      (rs2_data),
-        .result (div_result),
-        .busy   (div_busy),
-        .done   (div_done)
-    );
-
     logic [31:0] mdu_result;
     assign mdu_result = funct3[2] ? div_result : mul_result;
 
@@ -300,8 +255,4 @@ module datapath (
         endcase
     end
 
-<<<<<<< HEAD
 endmodule
-=======
-endmodule
->>>>>>> origin/main
