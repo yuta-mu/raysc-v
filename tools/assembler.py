@@ -192,7 +192,7 @@ def expand_pseudo(line, symbol_table=None):
         if len(args) != 2:
             raise ValueError("'la' expects 2 operands")
         rd, sym = args
-        return [f"auipc {rd}, %pcrel_hi({sym})", f"addi {rd}, {rd}, %pcrel_lo({sym})"]
+        return [f"lui {rd}, %hi({sym})", f"addi {rd}, {rd}, %lo({sym})"]
 
     if op == 'jal' and len(args) == 1:
         return [f"jal ra, {args[0]}"]
@@ -209,8 +209,8 @@ def expand_pseudo(line, symbol_table=None):
     return [line.strip()]
 
 
-def resolve_pcrel(line, current_pc, symbol_table=None):
-    """%pcrel_hi(sym) / %pcrel_lo(sym) を数値に置換"""
+def resolve_abs(line, symbol_table=None):
+    """%hi(sym) / %lo(sym) を絶対アドレスの数値に置換"""
     if symbol_table is None:
         symbol_table = {}
 
@@ -218,19 +218,20 @@ def resolve_pcrel(line, current_pc, symbol_table=None):
         kind, sym = m.group(1), m.group(2).strip()
         if sym not in symbol_table:
             raise ValueError(f"Undefined label: '{sym}'")
-        base = current_pc if kind == 'hi' else current_pc - 4
-        offset = symbol_table[sym] - base
-        if kind == 'hi':
-            return str(((offset + 0x800) >> 12) & 0xFFFFF)
-        return str(((offset & 0xFFF) ^ 0x800) - 0x800)
-    return re.sub(r'%pcrel_(hi|lo)\(([^)]*)\)', repl, line)
+        addr = symbol_table[sym]
+        lo = ((addr & 0xFFF) ^ 0x800) - 0x800
+        hi = ((addr - lo) >> 12) & 0xFFFFF
+        return str(hi if kind == 'hi' else lo)
+
+    return re.sub(r'%(hi|lo)\(([^)]*)\)', repl, line)
+
 
 def assemble_line(line, current_pc=0, symbol_table=None):
     """基本命令1行 -> 16進数(8桁)"""
     if symbol_table is None:
         symbol_table = {}
 
-    line = resolve_pcrel(line, current_pc, symbol_table)
+    line = resolve_abs(line, symbol_table)
     tokens = tokenize(line)
     if not tokens:
         raise ValueError("Empty instruction")
@@ -548,3 +549,4 @@ if __name__ == "__main__":
 #   python assembler.py prog.s -o prog.hex --no-startup       # スタートアップなし
 #   python assembler.py prog.s --halt loop                    # 停止を ebreak ではなく自己ループにする
 #   python assembler.py prog.s --stack-top 0x10000            # 初期 sp を変える (既定 0x40000)
+
