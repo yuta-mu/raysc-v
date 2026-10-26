@@ -19,6 +19,8 @@ module cpu #(
     output logic [3:0]  mem_wstrb,
     input  logic [31:0] mem_rdata,
 
+    input logic uart_stall,
+
     // H-1: 停止及びパフォーマンスカウンタ
     output logic        halted,
     output logic [63:0] cycles,
@@ -52,18 +54,10 @@ module cpu #(
     assign funct7 = inst[31:25];
 
     controller u_controller (
-        .opcode     (opcode),
-        .funct3     (funct3),
-        .funct7     (funct7),
-        .branch_en  (branch_en),
-        .jump       (jump),
+        .*,
         .mem_read   (mem_read_ctrl),
         .mem_write  (mem_write_ctrl),
-        .result_src (result_src),
-        .alu_src_a  (alu_src_a),
-        .alu_src_b  (alu_src_b),
-        .reg_write  (reg_write_ctrl),
-        .alu_op     (alu_op)
+        .reg_write  (reg_write_ctrl)
     );
 
     typedef enum logic [1:0] {
@@ -79,10 +73,10 @@ module cpu #(
 
     assign is_ebreak = (mem_state == S_EXECUTE) && (inst == 32'h0010_0073);
 
-    // BRAM待ち
     // 1. 命令がまだ届いていない
     // 2. 実行中かつロード命令(データが次のS_MEM_WAIT で届く)
-    assign mem_stall = (mem_state == S_FETCH) || (mem_state == S_EXECUTE && mem_read_ctrl);
+    // 3. UART FIFO 満杯
+    assign mem_stall = (mem_state == S_FETCH) || (mem_state == S_EXECUTE && mem_read_ctrl) || uart_stall;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -126,25 +120,9 @@ module cpu #(
     end
 
     datapath u_datapath (
-        .clk        (clk),
-        .rst_n      (rst_n),
+        .*,
         .halted     (halted_reg),
-        .inst_valid (inst_valid),
-        .mem_stall  (mem_stall),
-        .branch_en  (branch_en),
-        .jump       (jump),
-        .result_src (result_src),
-        .alu_op     (alu_op),
-        .alu_src_a  (alu_src_a),
-        .alu_src_b  (alu_src_b),
-        .reg_write  (reg_write_ctrl),
-        .pc         (pc),
-        .inst       (inst),
-        .mem_addr   (mem_addr),
-        .mem_wdata  (mem_wdata),
-        .mem_wstrb  (mem_wstrb),
-        .mem_rdata  (mem_rdata),
-        .stall      (stall)
+        .reg_write  (reg_write_ctrl)
     );
 
 endmodule
