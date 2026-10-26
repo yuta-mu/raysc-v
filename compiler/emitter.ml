@@ -157,95 +157,209 @@ let emit_func (f : func) =
 
 (*c-7*)
 let runtime = {|
-.globl __q16_sqrt
-__q16_sqrt:
-blez a0, .L_sqrt_zero
-srai t4, a0, 16
-slli t5, a0, 16
-li t0, 0
-li t1, 0x01000000
-li a2, 0
-.L_sqrt_loop:
-add t2, t0, t1
-srli t2, t2, 1
-mul t6, t2, t2
-mulh a1, t2, t2
-blt a1, t4, .L_sqrt_le
-bgt a1, t4, .L_sqrt_gt
-bgeu t5, t6, .L_sqrt_le
-.L_sqrt_gt:
-addi t1, t2, -1
-j .L_sqrt_check
-.L_sqrt_le:
-mv a2, t2
-addi t0, t2, 1
-.L_sqrt_check:
-bge t1, t0, .L_sqrt_loop
-mv a0, a2
-jalr x0, ra, 0
-.L_sqrt_zero:
-li a0, 0
-jalr x0, ra, 0
+.globl q16_rcp
+q16_rcp:
+    beqz    a0, .L50
+    addi    sp, sp, -48
+    sw      ra, 44(sp)
+    sw      s0, 40(sp)
+    sw      s1, 36(sp)
+    mv      a2, a0
+    bltz    a0, .L44
+    li      a3, 0
+    li      a0, 0
+    li      a1, 1
+    call    __divdi3
+    mv      s0, a0
+    blez    a1, .L61
+.L51:
+    lw      ra, 44(sp)
+    lw      s0, 40(sp)
+    lui     a0, 0x80000
+    lw      s1, 36(sp)
+    addi    a0, a0, -1
+    addi    sp, sp, 48
+    ret
+.L44:
+    sw      a0, 12(sp)
+    li      a3, -1
+    li      a0, 0
+    li      a1, 1
+    sw      s2, 32(sp)
+    sw      s3, 28(sp)
+    call    __divdi3
+    lw      a2, 12(sp)
+    mv      s2, a0
+    mv      s3, a1
+    li      a3, -1
+    li      a0, 0
+    li      a1, 1
+    call    __moddi3
+    or      a0, a0, a1
+    mv      s0, s2
+    mv      s1, s3
+    bnez    a0, .L62
+    li      a5, -1
+    blt     s1, a5, .L52
+.L64:
+    beq     s1, a5, .L63
+.L60:
+    lw      s2, 32(sp)
+    lw      s3, 28(sp)
+.L46:
+    mv      a0, s0
+.L65:
+    lw      ra, 44(sp)
+    lw      s0, 40(sp)
+    lw      s1, 36(sp)
+    addi    sp, sp, 48
+    ret
+.L50:
+    lui     a0, 0x80000
+    addi    a0, a0, -1
+    ret
+.L62:
+    seqz    s1, s2
+    sub     s1, s3, s1
+    li      a5, -1
+    addi    s0, s2, -1
+    bge     s1, a5, .L64
+.L52:
+    lw      ra, 44(sp)
+    lw      s0, 40(sp)
+    lw      s2, 32(sp)
+    lw      s3, 28(sp)
+    lw      s1, 36(sp)
+    lui     a0, 0x80000
+    addi    sp, sp, 48
+    ret
+.L63:
+    lui     a5, 0x80000
+    bgeu    s0, a5, .L60
+    j       .L52
+.L61:
+    bnez    a1, .L46
+    bltz    a0, .L51
+    mv      a0, s0
+    j       .L65
 
-.globl __q16_rcp
-__q16_rcp:
-beqz a0, .L_rcp_max
-li t0, 0
-bgez a0, .L_rcp_abs
-li t0, 1
-sub a0, x0, a0
-.L_rcp_abs:
-li t3, 3
-bltu a0, t3, .L_rcp_sat
-li a1, 1
-li a2, 0
-li a3, 0
-li t1, 32
-.L_rcp_loop:
-slli a3, a3, 1
-srli t2, a2, 31
-slli a1, a1, 1
-or a1, a1, t2
-slli a2, a2, 1
-bltu a1, a0, .L_rcp_next
-sub a1, a1, a0
-ori a3, a3, 1
-.L_rcp_next:
-addi t1, t1, -1
-bnez t1, .L_rcp_loop
-beqz t0, .L_rcp_pos_ret
-or t3, a1, a2
-beqz t3, .L_rcp_neg_exact
-addi a3, a3, 1
-.L_rcp_neg_exact:
-sub a0, x0, a3
-jalr x0, ra, 0
-.L_rcp_pos_ret:
-mv a0, a3
-jalr x0, ra, 0
-.L_rcp_sat:
-bnez t0, .L_rcp_min
-.L_rcp_max:
-lui a0, 0x80000
-addi a0, a0, -1
-jalr x0, ra, 0
-.L_rcp_min:
-lui a0, 0x80000
-jalr x0, ra, 0
+.globl q16_sqrt
+q16_sqrt:
+    blez    a0, .L90
+    srli    a7, a0, 0x10
+    slli    a6, a0, 0x10
+    li      a5, 0
+    lui     a4, 0x40000
+.L94:
+    slli    a3, a4, 0x1e
+    srli    a5, a5, 0x2
+    srli    a4, a4, 0x2
+    or      a5, a3, a5
+    bltu    a7, a4, .L94
+    bne     a4, a7, .L91
+    bltu    a6, a5, .L94
+.L91:
+    li      a0, 0
+    li      a1, 0
+.L89:
+    add     t3, a0, a5
+    add     t1, a1, a4
+    sltu    a2, t3, a0
+    slli    t6, a1, 0x1f
+    srli    a3, a0, 0x1
+    or      a3, t6, a3
+    add     a2, a2, t1
+    srli    t1, a1, 0x1
+    slli    t5, a4, 0x1e
+    srli    t4, a5, 0x2
+    mv      a0, a3
+    mv      a1, t1
+    bltu    a7, a2, .L87
+    add     a5, a3, a5
+    sub     t6, a6, t3
+    sltu    t0, a6, t6
+    add     t1, t1, a4
+    sub     t2, a7, a2
+    sltu    a3, a5, a3
+    bne     a2, a7, .L92
+    bltu    a6, t3, .L87
+.L92:
+    mv      a6, t6
+    sub     a7, t2, t0
+    mv      a0, a5
+    add     a1, a3, t1
+.L87:
+    or      a5, t5, t4
+    srli    a4, a4, 0x2
+    or      a3, a5, a4
+    bnez    a3, .L89
+    ret
+.L90:
+    li      a0, 0
+    ret
 
-.globl __q16_rsqrt
-__q16_rsqrt:
-blez a0, .L_rsqrt_zero
-addi sp, sp, -16
-sw ra, 12(sp)
-jal ra, __q16_sqrt
-jal ra, __q16_rcp
-lw ra, 12(sp)
-addi sp, sp, 16
-jalr x0, ra, 0
-.L_rsqrt_zero:
-li a0, 0
-jalr x0, ra, 0
+.globl q16_rsqrt
+q16_rsqrt:
+    blez    a0, .L102
+    addi    sp, sp, -16
+    mv      a2, a0
+    li      a3, 0
+    li      a0, 0
+    lui     a1, 0x10
+    sw      ra, 12(sp)
+    call    __udivdi3
+    mv      t3, a0
+    li      a5, 0
+    lui     a4, 0x40000
+.L106:
+    slli    a3, a4, 0x1e
+    srli    a5, a5, 0x2
+    srli    a4, a4, 0x2
+    or      a5, a3, a5
+    bltu    a1, a4, .L106
+    bne     a4, a1, .L103
+    bltu    t3, a5, .L106
+.L103:
+    li      a0, 0
+    li      a6, 0
+.L101:
+    add     t1, a0, a5
+    add     a7, a6, a4
+    sltu    a2, t1, a0
+    slli    t6, a6, 0x1f
+    srli    a3, a0, 0x1
+    or      a3, t6, a3
+    add     a2, a2, a7
+    srli    a7, a6, 0x1
+    slli    t5, a4, 0x1e
+    srli    t4, a5, 0x2
+    mv      a0, a3
+    mv      a6, a7
+    bltu    a1, a2, .L99
+    add     a5, a3, a5
+    sub     t6, t3, t1
+    sltu    t0, t3, t6
+    add     a7, a7, a4
+    sub     t2, a1, a2
+    sltu    a3, a5, a3
+    bne     a2, a1, .L104
+    bltu    t3, t1, .L99
+.L104:
+    mv      t3, t6
+    sub     a1, t2, t0
+    mv      a0, a5
+    add     a6, a3, a7
+.L99:
+    or      a5, t5, t4
+    srli    a4, a4, 0x2
+    or      a3, a5, a4
+    bnez    a3, .L101
+    lw      ra, 12(sp)
+    addi    sp, sp, 16
+    ret
+.L102:
+    li      a0, 0
+    ret
 |}
 
 let emit_program (p : program) : string =
