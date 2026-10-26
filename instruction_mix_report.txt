@@ -1,0 +1,257 @@
+Function: render_image (Total: 809)
+  mv: 149
+  sw: 137
+  lw: 122
+  auipc: 90
+  jalr: 90
+  addi: 84
+  lui: 44
+  add: 34
+  bne: 8
+  sb: 6
+  lbu: 6
+  bgtu: 6
+  sub: 5
+  beqz: 4
+  srli: 4
+  blez: 4
+  srai: 3
+  ble: 3
+  j: 3
+  slli: 2
+  bnez: 2
+  sh: 1
+  bgtz: 1
+  ret: 1
+
+Function: sphere_hit.constprop.0 (Total: 489)
+  mv: 129
+  lw: 76
+  auipc: 48
+  jalr: 48
+  sw: 46
+  add: 24
+  sub: 16
+  bltz: 16
+  bleu: 13
+  lui: 13
+  bgtu: 12
+  j: 12
+  addi: 8
+  bgez: 5
+  ble: 4
+  neg: 3
+  beqz: 3
+  bnez: 3
+  bgt: 3
+  ret: 2
+  srai: 1
+  xor: 1
+  bgtz: 1
+  srli: 1
+  sb: 1
+
+Function: __divdi3 (Total: 123)
+  mv: 26
+  sw: 13
+  lw: 13
+  addi: 8
+  auipc: 7
+  bleu: 6
+  slli: 6
+  jalr: 6
+  add: 5
+  or: 4
+  srli: 4
+  srl: 3
+  sub: 3
+  sll: 3
+  bgez: 2
+  lui: 2
+  j: 2
+  lbu: 2
+  beq: 2
+  bnez: 1
+  beqz: 1
+  ret: 1
+  sltiu: 1
+  seqz: 1
+  bgtu: 1
+
+Function: fpm_div (Total: 72)
+  addi: 14
+  mv: 11
+  slli: 8
+  bgtu: 4
+  bne: 4
+  bltz: 3
+  srl: 3
+  bnez: 3
+  ret: 3
+  neg: 2
+  andi: 2
+  or: 2
+  sub: 2
+  ori: 2
+  srli: 2
+  and: 1
+  beqz: 1
+  xor: 1
+  bgez: 1
+  bleu: 1
+  ble: 1
+  j: 1
+
+Function: fpm_mul (Total: 54)
+  addi: 9
+  srai: 4
+  auipc: 4
+  jalr: 4
+  lw: 3
+  slli: 3
+  srli: 3
+  or: 3
+  ret: 3
+  sub: 3
+  mv: 2
+  bltz: 2
+  and: 2
+  xor: 2
+  add: 2
+  sltu: 2
+  sw: 1
+  bgez: 1
+  lui: 1
+
+Function: __muldi3 (Total: 51)
+  mv: 14
+  beqz: 5
+  add: 5
+  slli: 4
+  srli: 4
+  addi: 3
+  andi: 2
+  or: 2
+  bnez: 2
+  auipc: 2
+  jalr: 2
+  lw: 2
+  ret: 2
+  sw: 1
+  sltu: 1
+
+Function: fpm_sqrt (Total: 49)
+  addi: 13
+  slli: 10
+  ori: 4
+  mv: 3
+  srl: 3
+  andi: 3
+  ble: 2
+  bgtu: 2
+  sub: 2
+  bne: 2
+  bltz: 1
+  or: 1
+  j: 1
+  bgt: 1
+  ret: 1
+
+Function: fpm_rsqrt (Total: 26)
+  mv: 4
+  addi: 3
+  sw: 3
+  lw: 3
+  blez: 2
+  auipc: 2
+  jalr: 2
+  bltz: 2
+  beqz: 1
+  srai: 1
+  bnez: 1
+  j: 1
+  ret: 1
+
+Function: fpm_rcp (Total: 23)
+  mv: 4
+  addi: 3
+  sw: 3
+  lw: 3
+  bltz: 2
+  beqz: 1
+  srai: 1
+  auipc: 1
+  jalr: 1
+  blez: 1
+  bnez: 1
+  j: 1
+  ret: 1
+
+Function: __udivsi3 (Total: 22)
+  srli: 4
+  mv: 3
+  bgtu: 3
+  addi: 2
+  bnez: 2
+  slli: 2
+  beqz: 1
+  bleu: 1
+  ret: 1
+  blez: 1
+  sub: 1
+  or: 1
+
+Function: __mulsi3 (Total: 14)
+  mv: 2
+  andi: 2
+  beqz: 2
+  srli: 2
+  slli: 2
+  bnez: 2
+  add: 1
+  ret: 1
+
+Function: main (Total: 8)
+  addi: 2
+  sw: 1
+  auipc: 1
+  jalr: 1
+  lw: 1
+  mv: 1
+  ret: 1
+
+Function: unknown (Total: 6)
+  lw: 2
+  auipc: 1
+  addi: 1
+  csrrs: 1
+  jr: 1
+
+Function: _start (Total: 6)
+  auipc: 3
+  addi: 3
+
+Function: output_putc (Total: 5)
+  sb: 2
+  ret: 2
+  lui: 1
+
+Function: __umodsi3 (Total: 4)
+  mv: 2
+  jal: 1
+  jr: 1
+
+Function: bss_done (Total: 2)
+  auipc: 1
+  jalr: 1
+
+Function: __divsi3 (Total: 2)
+  bltz: 2
+
+Function: loop (Total: 2)
+  wfi: 1
+  j: 1
+
+Function: bss_clear (Total: 1)
+  ble: 1
+
