@@ -46,20 +46,29 @@ module datapath (
     logic ex_busy_stall;
     logic ebreak_in_pipe;
 
+    logic        ex_valid;
+    logic        ex_is_ebreak;
+    logic [31:0] ex_pc;
+    logic [31:0] ex_pc_target;
+    logic        ex_pc_src;
+
     // # Stage 1: IF (Instruction Fetch)
     logic [31:0] pc_next;
     logic [31:0] pc_plus4;
-    logic [31:0] ex_pc_target;
-    logic        ex_pc_src;
 
     assign pc_plus4 = pc + 32'd4;
     assign pc_next  = branch_flush ? ex_pc_target : pc_plus4;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            pc <= 32'h0;
-        end else if (!halted && (!stall_if || branch_flush) && !ebreak_in_pipe) begin
-            pc <= pc_next;
+            pc <= 32'h0000_0000;
+        end else if (!halted) begin
+            if (ex_valid && ex_is_ebreak) begin
+                // 規則1 & 3: 有効な ebreak が EX に到達したら停止 PC を ebreak 自身のアドレスに固定
+                pc <= ex_pc;
+            end else if (!ebreak_in_pipe && (!stall_if || branch_flush)) begin
+                pc <= pc_next;
+            end
         end
     end
 
@@ -71,7 +80,6 @@ module datapath (
     logic [31:0] inst_saved_data;
     logic [31:0] id_inst;
 
-    // ストール中は退避した命令を使用し、通常時は BRAM の出力 inst を直接見る
     assign id_inst     = inst_saved_valid ? inst_saved_data : inst;
     assign id_inst_out = id_inst;
 
@@ -86,7 +94,6 @@ module datapath (
             id_valid         <= 1'b0;
             inst_saved_valid <= 1'b0;
         end else if (stall_id) begin
-            // ストール開始サイクルで BRAM の出力を退避レジスタに保存
             if (!inst_saved_valid) begin
                 inst_saved_valid <= 1'b1;
                 inst_saved_data  <= inst;
@@ -114,12 +121,10 @@ module datapath (
     assign id_rs2       = id_inst[24:20];
     assign id_is_ebreak = id_valid && (id_inst == 32'h0010_0073);
 
-    // Load-Use ハザード判定用のソースレジスタ使用フラグ
     assign id_uses_rs1 = (id_opcode != OP_LUI) && (id_opcode != OP_AUIPC) && (id_opcode != OP_JAL);
     assign id_uses_rs2 = (id_opcode == OP_REG) || (id_opcode == OP_STORE) ||
                          (id_opcode == OP_BRANCH) || (id_opcode == OP_CUSTOM0);
 
-    // WBステージからの書き込み信号（後段で定義）
     logic        wb_valid;
     logic        wb_reg_write;
     logic [4:0]  wb_rd;
@@ -142,9 +147,6 @@ module datapath (
     );
 
     // --- ID/EX パイプラインレジスタ ---
-    logic        ex_valid;
-    logic        ex_is_ebreak;
-    logic [31:0] ex_pc;
     logic [31:0] ex_pc_plus4;
     logic [31:0] ex_rs1_data;
     logic [31:0] ex_rs2_data;
@@ -162,7 +164,6 @@ module datapath (
     logic        ex_alu_src_b;
     logic        ex_reg_write;
 
-    // EXステージのフォワーディング解決後の値（後述）
     logic [31:0] rs1_fwd, rs2_fwd;
 
     always_ff @(posedge clk or negedge rst_n) begin
@@ -188,14 +189,11 @@ module datapath (
             ex_alu_src_b  <= 1'b0;
             ex_reg_write  <= 1'b0;
         end else if (stall_ex) begin
-            // EXストール中（DIV/custom0/UART待ち）に先行するMEM/WB命令が完了して消えても
-            // フォワーディング済みの最新オペランドが失われないよう ID/EX 自身にロックする
             ex_rs1_data <= rs1_fwd;
             ex_rs2_data <= rs2_fwd;
             ex_rs1      <= 5'd0;
             ex_rs2      <= 5'd0;
         end else if (halted || branch_flush || load_use_stall || ebreak_in_pipe || !id_valid) begin
-            // フラッシュまたはバブル挿入
             ex_valid      <= 1'b0;
             ex_is_ebreak  <= 1'b0;
             ex_branch_en  <= 1'b0;
@@ -228,13 +226,11 @@ module datapath (
     end
 
     // # Stage 3: EX (Execute & Forwarding & Multi-cycle Units)
-    // MEMステージからのフォワーディング用信号（後段で定義）
     logic        mem_valid;
     logic        mem_reg_write;
     logic [4:0]  mem_rd;
     logic [31:0] mem_exec_result;
 
-    // --- データフォワーディング MUX ---
     always_comb begin
         if (mem_valid && mem_reg_write && (mem_rd != 5'd0) && (mem_rd == ex_rs1)) begin
             rs1_fwd = mem_exec_result;
@@ -279,16 +275,32 @@ module datapath (
     assign ex_pc_target = (ex_jump && ex_alu_src_b) ? (ex_alu_result & ~32'd1) : (ex_pc + ex_imm);
     assign ex_pc_src    = ex_valid && (ex_jump || ex_branch_taken);
 
-    // --- M拡張: 乗算器 & 除算器 ---
-    logic [31:0] ex_mul_result, ex_div_result, ex_mdu_result;
+    // --- M拡張: 乗算器 (DSP直結パス切断のため1サイクルラッチ) & 除算器 ---
+    logic [31:0] ex_mul_comb, ex_mul_q, ex_div_result, ex_mdu_result;
+    logic        is_mul_op, mul_done_q, mul_stall;
     logic        div_busy, div_done, is_div_op, div_start, div_stall;
 
     multiplier u_multiplier (
         .a      (rs1_fwd),
         .b      (rs2_fwd),
         .funct3 (ex_funct3),
-        .result (ex_mul_result)
+        .result (ex_mul_comb)
     );
+
+    assign is_mul_op = ex_valid && (ex_result_src == RESULT_MDU) && !ex_funct3[2] && !halted;
+    assign mul_stall = is_mul_op && !mul_done_q;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            mul_done_q <= 1'b0;
+            ex_mul_q   <= 32'h0;
+        end else if (is_mul_op && !mul_done_q && !stall_mem) begin
+            mul_done_q <= 1'b1;
+            ex_mul_q   <= ex_mul_comb;
+        end else if (!stall_mem) begin
+            mul_done_q <= 1'b0;
+        end
+    end
 
     assign is_div_op = ex_valid && (ex_result_src == RESULT_MDU) && ex_funct3[2] && !halted;
     assign div_start = is_div_op && !div_busy && !div_done && !stall_mem;
@@ -306,9 +318,9 @@ module datapath (
         .done   (div_done)
     );
 
-    assign ex_mdu_result = ex_funct3[2] ? ex_div_result : ex_mul_result;
+    assign ex_mdu_result = ex_funct3[2] ? ex_div_result : ex_mul_q;
 
-    // --- custom-0 演算器 (RayQ: qmul, qsqrt, qrsqrt, qrcp) ---
+    // --- custom-0 演算器 (qmul 含めすべて custom0.sv 内部で FF 出力化済み) ---
     logic        is_custom0, c0_stall;
     logic [31:0] ex_c0_result;
 
@@ -326,7 +338,6 @@ module datapath (
     );
 
     // --- EXステージ演算結果の統合 ---
-    // Load/Store時のメモリアドレス(ex_alu_result)と、非メモリ命令の演算結果を1本に統合
     logic [31:0] ex_exec_result;
     always_comb begin
         case (ex_result_src)
@@ -335,7 +346,7 @@ module datapath (
             RESULT_IMM: ex_exec_result = ex_imm;
             RESULT_MDU: ex_exec_result = ex_mdu_result;
             RESULT_C0:  ex_exec_result = ex_c0_result;
-            default:    ex_exec_result = ex_alu_result; // RESULT_MEM のアドレス計算を含む
+            default:    ex_exec_result = ex_alu_result;
         endcase
     end
 
@@ -362,7 +373,6 @@ module datapath (
         end else if (stall_mem) begin
             // UARTストール中はMEMステージを保持
         end else if (halted || ex_busy_stall || !ex_valid) begin
-            // EXでマルチサイクル演算中または無効時はバブル挿入
             mem_valid      <= 1'b0;
             mem_is_ebreak  <= 1'b0;
             mem_mem_read   <= 1'b0;
@@ -426,7 +436,6 @@ module datapath (
     end
 
     // --- MEM/WB パイプラインレジスタ ---
-    // （BRAMデータ本体とMMIOデータは top.sv / bram.sv 側のレジスタを通って mem_rdata に届く）
     logic        wb_is_ebreak;
     result_src_t wb_result_src;
     logic [31:0] wb_exec_result;
@@ -498,24 +507,23 @@ module datapath (
 
     assign wb_result_data = (wb_result_src == RESULT_MEM) ? load_data : wb_exec_result;
 
-    // カウンタおよび停止信号出力
     assign wb_retire = wb_valid && !wb_is_ebreak && !halted;
     assign wb_ebreak = wb_valid && wb_is_ebreak  && !halted;
 
     // # ハザード制御ユニット（Stall / Flush 統合）
-    assign ex_busy_stall  = div_stall || c0_stall;
+    assign ex_busy_stall  = mul_stall || div_stall || c0_stall;
     assign load_use_stall = ex_valid && (ex_result_src == RESULT_MEM) && (ex_rd != 5'd0) &&
                             id_valid && ((id_uses_rs1 && (id_rs1 == ex_rd)) ||
                                          (id_uses_rs2 && (id_rs2 == ex_rd)));
 
-    // UART FIFO満杯時は MEMステージで書き込み命令が来た時にストール
     assign stall_mem = uart_stall && mem_valid && mem_mem_write;
     assign stall_ex  = stall_mem || ex_busy_stall;
     assign stall_id  = stall_ex  || load_use_stall;
     assign stall_if  = stall_id;
 
     assign branch_flush   = ex_pc_src && !stall_ex;
-    assign ebreak_in_pipe = ex_is_ebreak || mem_is_ebreak || wb_is_ebreak || halted;
+    assign ebreak_in_pipe = (ex_valid && ex_is_ebreak) ||
+                            (mem_valid && mem_is_ebreak) ||
+                            (wb_valid && wb_is_ebreak) || halted;
 
 endmodule
-
