@@ -1,0 +1,87 @@
+# qmul A_raw B_raw Expected_raw
+qmul 80000000 80000000 00000000
+qmul ffffffff 00000001 ffffffff
+qmul ffffffff ffffffff 00000000
+qmul 00000000 00000000 00000000
+qmul 7fffffff 7fffffff ffff0000
+qmul 00010000 00010000 00010000
+
+# qrcp X_raw Expected_raw
+qrcp 00000000 7fffffff
+qrcp 00000001 7fffffff
+qrcp ffffffff 80000000
+qrcp 00000002 7fffffff
+qrcp fffffffe 80000000
+qrcp 80000000 00000002
+qrcp ffff0000 ffff0000
+qrcp 80000000 fffffffe
+qrcp 7fffffff 00000002
+
+# qsqrt X_raw Expected_raw
+qsqrt 80000000 00000000
+qsqrt ffff0000 00000000
+qsqrt ffffffff 00000000
+qsqrt 00000000 00000000
+qsqrt 00000001 00000100
+qsqrt 00000002 0000016a
+qsqrt 00000003 000001bb
+qsqrt 00000004 00000200
+qsqrt 00000005 0000023c
+qsqrt 0000fe00 0000feff
+qsqrt 0000fe01 0000ff00
+qsqrt 0000fe02 0000ff00
+qsqrt 0000ffff 0000ffff
+qsqrt 00010000 00010000
+qsqrt 00010001 00010000
+qsqrt 7ffea80f 00b503ff
+qsqrt 7ffea810 00b50400
+qsqrt 7ffea811 00b50400
+qsqrt 7fffffff 00b504f3
+
+# qrsqrt X_raw Expected_raw
+qrsqrt 80000000 00000000
+qrsqrt ffff0000 00000000
+qrsqrt ffffffff 00000000
+qrsqrt 00000000 00000000
+qrsqrt 00000001 01000000
+qrsqrt 00000002 00b504f3
+qrsqrt 00000003 0093cd3a
+qrsqrt 00000004 00800000
+qrsqrt 00000005 00727c97
+qrsqrt 0000fe00 00010101
+qrsqrt 0000fe01 00010101
+qrsqrt 0000fe02 00010100
+qrsqrt 0000ffff 00010000
+qrsqrt 00010000 00010000
+qrsqrt 00010001 0000ffff
+qrsqrt 7ffea80f 0000016a
+qrsqrt 7ffea810 0000016a
+qrsqrt 7ffea811 0000016a
+qrsqrt 7fffffff 0000016a
+
+# i32_div A_raw B_raw Expected_raw
+# i32_rem A_raw B_raw Expected_raw
+i32_div 0000000a 00000000 ffffffff
+i32_rem 0000000a 00000000 0000000a
+i32_div 80000000 ffffffff 80000000
+i32_rem 80000000 ffffffff 00000000
+i32_div fffffff6 fffffffd 00000003
+i32_rem fffffff6 fffffffd ffffffff
+i32_div fffffff6 00000003 fffffffd
+i32_rem fffffff6 00000003 ffffffff
+i32_div 0000000a fffffffd fffffffd
+i32_rem 0000000a fffffffd 00000001
+i32_div 7fffffff 00000002 3fffffff
+i32_rem 7fffffff 00000002 00000001
+
+# dot3 ax ay az bx by bz Expected_raw
+dot3 7fffffff 7fffffff 7fffffff 00000001 00000001 00000001 00017ffd
+dot3 00010000 00020000 00030000 00010000 00020000 00030000 000e0000
+dot3 ffff0000 fffe0000 00030000 00010000 fffe0000 00030000 000c0000
+
+# i32_abs X_raw Expected_raw
+i32_abs 00000000 00000000
+i32_abs 00000001 00000001
+i32_abs ffffffff 00000001
+i32_abs 7fffffff 7fffffff
+i32_abs 80000000 80000000
