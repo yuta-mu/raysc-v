@@ -192,7 +192,7 @@ def expand_pseudo(line, symbol_table=None):
         if len(args) != 2:
             raise ValueError("'la' expects 2 operands")
         rd, sym = args
-        return [f"auipc {rd}, %pcrel_hi({sym})", f"addi {rd}, {rd}, %pcrel_lo({sym})"]
+        return [f"lui {rd}, %hi({sym})", f"addi {rd}, {rd}, %lo({sym})"]
 
     if op == 'jal' and len(args) == 1:
         return [f"jal ra, {args[0]}"]
@@ -208,52 +208,30 @@ def expand_pseudo(line, symbol_table=None):
 
     return [line.strip()]
 
-pcrel_hi_pcs = {}
-def resolve_pcrel(line, current_pc, symbol_table=None):
-    """%pcrel_hi(sym) / %pcrel_lo(sym) を数値に置換"""
-    global pcrel_hi_pcs
+
+def resolve_abs(line, symbol_table=None):
+    """%hi(sym) / %lo(sym) を絶対アドレスの数値に置換"""
     if symbol_table is None:
         symbol_table = {}
 
-    tokens = tokenize(line)
-
-    rd = None
-    if len(tokens) > 1:
-        try:
-            rd = parse_reg(tokens[1])
-        except ValueError:
-            rd = tokens[1]  # レジスタ名でない場合はそのまま保持
-
     def repl(m):
-        global pcrel_hi_pcs
         kind, sym = m.group(1), m.group(2).strip()
         if sym not in symbol_table:
             raise ValueError(f"Undefined label: '{sym}'")
-        
-        key = (rd, sym)
+        addr = symbol_table[sym]
+        lo = ((addr & 0xFFF) ^ 0x800) - 0x800
+        hi = ((addr - lo) >> 12) & 0xFFFFF
+        return str(hi if kind == 'hi' else lo)
 
-        if kind == 'hi':
-            # {(rd, sym):pc} で記録しておく
-            pcrel_hi_pcs[key] = current_pc
-            base = current_pc
-        else:
-            # loのとき引き出す
-            if key not in pcrel_hi_pcs:
-                raise ValueError(f"%pcrel_lo({sym}) with {rd} used without matching %pcrel_hi({sym}): '{line}'")
-            base = pcrel_hi_pcs[key]
-        
-        offset = symbol_table[sym] - base
-        if kind == 'hi':
-            return str(((offset + 0x800) >> 12) & 0xFFFFF)
-        return str(((offset & 0xFFF) ^ 0x800) - 0x800)
-    return re.sub(r'%pcrel_(hi|lo)\(([^)]*)\)', repl, line)
+    return re.sub(r'%(hi|lo)\(([^)]*)\)', repl, line)
+
 
 def assemble_line(line, current_pc=0, symbol_table=None):
     """基本命令1行 -> 16進数(8桁)"""
     if symbol_table is None:
         symbol_table = {}
 
-    line = resolve_pcrel(line, current_pc, symbol_table)
+    line = resolve_abs(line, symbol_table)
     tokens = tokenize(line)
     if not tokens:
         raise ValueError("Empty instruction")
@@ -571,3 +549,4 @@ if __name__ == "__main__":
 #   python assembler.py prog.s -o prog.hex --no-startup       # スタートアップなし
 #   python assembler.py prog.s --halt loop                    # 停止を ebreak ではなく自己ループにする
 #   python assembler.py prog.s --stack-top 0x10000            # 初期 sp を変える (既定 0x40000)
+
