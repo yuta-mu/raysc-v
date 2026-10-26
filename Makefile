@@ -50,7 +50,7 @@ CHECK_STAMPS := $(addprefix $(B)/,$(addsuffix .check,$(basename $(CHECK_SRCS))))
 UNIT_TB    := $(filter-out $(TB_CPU),$(wildcard hw/tb/tb_*.sv))
 UNIT_TESTS := $(patsubst hw/tb/tb_%.sv,test-%,$(UNIT_TB))
 
-.PHONY: help smoke compiler run qemu check test ref clean $(UNIT_TESTS)
+.PHONY: help smoke compiler run qemu check test ref asm asm-func clean $(UNIT_TESTS)
 
 help:
 	@echo 'make smoke                      最小動作確認: tests/hex/smoke.hex を自作コアで実行し "OK" が出るか見る'
@@ -60,8 +60,10 @@ help:
 	@echo 'make check                      tests/check/ 全件で QEMU 出力 == RTL 出力 (golden があればそれとも比較)'
 	@echo 'make test                       RTL 単体テスト (hw/tb/tb_*.sv)'
 	@echo 'make ref                        ホスト用 C リファレンスを実行し build/ref/golden.ppm を作る'
+	@echo 'make asm [ASM_SRC=ref/qmath.h]  rv32im でコンパイル→逆アセンブル: build/asm/<名前>.s / .dis'
+	@echo 'make asm-func FUNC=q16_mul       1 関数だけ asm と逆アセンブルを表示 (ASM_SRC も指定可)'
 	@echo 'make clean                      build/ を削除'
-	@echo 'option: RAYQ_FLAGS="-O2 --accel=math"  MAXCYCLES=N  QEMU_TIMEOUT=sec'
+	@echo 'option: RAYQ_FLAGS="-O2 --accel=math"  MAXCYCLES=N  QEMU_TIMEOUT=sec  ASM_OPT=-O0'
 
 # ---- コンパイラ -----------------------------------------------------------------
 compiler: $(RAYQC)
@@ -181,6 +183,43 @@ $(B)/ref/golden.ppm: $(B)/ref/raytracer
 	$< $(REF_ARGS) > $@
 
 ref: $(B)/ref/golden.ppm
+
+# ---- asm 取得: C ソース/ヘッダを rv32im でコンパイルし、.s と逆アセンブル(.dis)を得る ----------
+#   make asm                        ref/qmath.h の全関数 -> build/asm/qmath.h.s / .o / .dis
+#   make asm ASM_SRC=ref/main.c     任意の .c / .h
+#   make asm ASM_OPT=-O0            最適化レベル (既定は RVFLAGS の -O2)。ASM_EXTRA=-fverbose-asm なども可
+#   make asm-func FUNC=q16_mul      1 関数だけ .s と逆アセンブルを表示
+# static inline の関数は、参照されないと出力されない。-fkeep-inline-functions で全関数を出す。
+# リンクはしないので、__divdi3 などの libgcc 関数は未解決のまま (逆アセンブルでは -r の再配置として見える)。
+OBJDUMP      := $(CROSS)objdump
+ASM_SRC      ?= ref/qmath.h
+ASM_OPT      ?=
+ASM_EXTRA    ?=
+FUNC         ?=
+OBJDUMP_OPTS ?= -d -r
+ASM_CFLAGS   := $(RVFLAGS) $(ASM_OPT) -fkeep-inline-functions \
+                -fno-asynchronous-unwind-tables -fno-unwind-tables -fno-ident $(ASM_EXTRA)
+ASM_OUT      := $(B)/asm/$(notdir $(ASM_SRC))
+
+$(ASM_OUT).s: $(ASM_SRC)
+	@mkdir -p $(@D)
+	$(CC) $(ASM_CFLAGS) -x c -S $< -o $@
+
+$(ASM_OUT).o: $(ASM_OUT).s
+	$(CC) $(RVFLAGS) -c $< -o $@
+
+$(ASM_OUT).dis: $(ASM_OUT).o
+	$(OBJDUMP) $(OBJDUMP_OPTS) $< > $@
+
+asm: $(ASM_OUT).s $(ASM_OUT).dis
+	@echo 'asm: $(ASM_OUT).s  $(ASM_OUT).dis'
+
+asm-func: $(ASM_OUT).s $(ASM_OUT).o
+	@test -n "$(FUNC)" || { echo 'usage: make asm-func FUNC=q16_mul [ASM_SRC=ref/qmath.h]' >&2; exit 2; }
+	@echo '=== $(FUNC): .s ==='
+	@sed -n '/^$(FUNC):/,/^[[:space:]]*\.size[[:space:]]*$(FUNC),/p' $(ASM_OUT).s
+	@echo '=== $(FUNC): 逆アセンブル ==='
+	@$(OBJDUMP) $(OBJDUMP_OPTS) --disassemble=$(FUNC) $(ASM_OUT).o | sed -n '/>:$$/,$$p'
 
 clean:
 	rm -rf $(B)

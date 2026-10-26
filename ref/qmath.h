@@ -44,3 +44,37 @@ static inline uint32_t q16_rcp(uint32_t x_raw) {
     return 0x80000000U;
   return (uint32_t)(int32_t)q;
 }
+
+/* floor(sqrt(n)) : n は 0 .. 2^64-1 の全域で正確。浮動小数点を使わないビット単位の筆算法 */
+static inline uint32_t isqrt_u64(uint64_t n) {
+  uint64_t res = 0, bit = UINT64_C(1) << 62;
+  while (bit > n)
+    bit >>= 2;
+  while (bit != 0) {
+    if (n >= res + bit) {
+      n -= res + bit;
+      res = (res >> 1) + bit;
+    } else {
+      res >>= 1;
+    }
+    bit >>= 2;
+  }
+  return (uint32_t)res;
+}
+
+/* sqrt: x <= 0 -> 0,  x > 0 -> floor(sqrt((uint64)x << 16)) (x は raw 値) */
+static inline uint32_t q16_sqrt(uint32_t x_raw) {
+  const int64_t x = sx32(x_raw);
+  if (x <= 0)
+    return 0U;
+  return isqrt_u64((uint64_t)x << 16);
+}
+
+/* rsqrt: x <= 0 -> 0,  x > 0 -> floor(2^24 / sqrt(x)) (x は raw 値) */
+static inline uint32_t q16_rsqrt(uint32_t x_raw) {
+  const int64_t x = sx32(x_raw);
+  if (x <= 0)
+    return 0U;
+  return isqrt_u64((UINT64_C(1) << 48) / (uint64_t)x);
+}
+
