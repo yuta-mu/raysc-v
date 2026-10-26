@@ -159,109 +159,48 @@ let emit_func (f : func) =
 let runtime = {|
 .globl q16_rcp
 q16_rcp:
-    beqz    a0, .L50
-    addi    sp, sp, -48
-    sw      ra, 44(sp)
-    sw      s0, 40(sp)
-    sw      s1, 36(sp)
-    mv      a2, a0
-    bltz    a0, .L44
-    li      a3, 0
-    li      a0, 0
-    li      a1, 1
-    call    __divdi3
-    mv      s0, a0
-    blez    a1, .L61
-.L51:
-    lw      ra, 44(sp)
-    lw      s0, 40(sp)
+    beqz    a0, .L40
+    bltz    a0, .L38
+    li      a5, 2
+    bgeu    a5, a0, .L40
+    neg     a5, a0
+    divu    a0, a5, a0
+    addi    a0, a0, 1
+    ret
+.L38:
+    neg     a5, a0
+    li      a4, 2
     lui     a0, 0x80000
-    lw      s1, 36(sp)
-    addi    a0, a0, -1
-    addi    sp, sp, 48
+    bgeu    a4, a5, .L36
+    li      a0, -1
+    divu    a0, a0, a5
+    not     a0, a0
     ret
-.L44:
-    sw      a0, 12(sp)
-    li      a3, -1
-    li      a0, 0
-    li      a1, 1
-    sw      s2, 32(sp)
-    sw      s3, 28(sp)
-    call    __divdi3
-    lw      a2, 12(sp)
-    mv      s2, a0
-    mv      s3, a1
-    li      a3, -1
-    li      a0, 0
-    li      a1, 1
-    call    __moddi3
-    or      a0, a0, a1
-    mv      s0, s2
-    mv      s1, s3
-    bnez    a0, .L62
-    li      a5, -1
-    blt     s1, a5, .L52
-.L64:
-    beq     s1, a5, .L63
-.L60:
-    lw      s2, 32(sp)
-    lw      s3, 28(sp)
-.L46:
-    mv      a0, s0
-.L65:
-    lw      ra, 44(sp)
-    lw      s0, 40(sp)
-    lw      s1, 36(sp)
-    addi    sp, sp, 48
-    ret
-.L50:
+.L40:
     lui     a0, 0x80000
     addi    a0, a0, -1
+.L36:
     ret
-.L62:
-    seqz    s1, s2
-    sub     s1, s3, s1
-    li      a5, -1
-    addi    s0, s2, -1
-    bge     s1, a5, .L64
-.L52:
-    lw      ra, 44(sp)
-    lw      s0, 40(sp)
-    lw      s2, 32(sp)
-    lw      s3, 28(sp)
-    lw      s1, 36(sp)
-    lui     a0, 0x80000
-    addi    sp, sp, 48
-    ret
-.L63:
-    lui     a5, 0x80000
-    bgeu    s0, a5, .L60
-    j       .L52
-.L61:
-    bnez    a1, .L46
-    bltz    a0, .L51
-    mv      a0, s0
-    j       .L65
 
 .globl q16_sqrt
 q16_sqrt:
-    blez    a0, .L90
+    blez    a0, .L66
     srli    a7, a0, 0x10
     slli    a6, a0, 0x10
     li      a5, 0
     lui     a4, 0x40000
-.L94:
+.L70:
     slli    a3, a4, 0x1e
     srli    a5, a5, 0x2
     srli    a4, a4, 0x2
     or      a5, a3, a5
-    bltu    a7, a4, .L94
-    bne     a4, a7, .L91
-    bltu    a6, a5, .L94
-.L91:
+    bltu    a7, a4, .L70
+    bne     a4, a7, .L67
+    bltu    a6, a5, .L70
+.L67:
     li      a0, 0
     li      a1, 0
-.L89:
+.L65:
     add     t3, a0, a5
     add     t1, a1, a4
     sltu    a2, t3, a0
@@ -274,90 +213,64 @@ q16_sqrt:
     srli    t4, a5, 0x2
     mv      a0, a3
     mv      a1, t1
-    bltu    a7, a2, .L87
+    bltu    a7, a2, .L63
     add     a5, a3, a5
     sub     t6, a6, t3
     sltu    t0, a6, t6
     add     t1, t1, a4
     sub     t2, a7, a2
     sltu    a3, a5, a3
-    bne     a2, a7, .L92
-    bltu    a6, t3, .L87
-.L92:
+    bne     a2, a7, .L68
+    bltu    a6, t3, .L63
+.L68:
     mv      a6, t6
     sub     a7, t2, t0
     mv      a0, a5
     add     a1, a3, t1
-.L87:
+.L63:
     or      a5, t5, t4
     srli    a4, a4, 0x2
     or      a3, a5, a4
-    bnez    a3, .L89
+    bnez    a3, .L65
     ret
-.L90:
+.L66:
     li      a0, 0
     ret
 
 .globl q16_rsqrt
 q16_rsqrt:
-    blez    a0, .L102
-    addi    sp, sp, -16
-    mv      a2, a0
-    li      a3, 0
+    mv      a1, a0
+    blez    a0, .L77
+    li      t1, 25
+    lui     a7, 0x1000
     li      a0, 0
-    lui     a1, 0x10
-    sw      ra, 12(sp)
-    call    __udivdi3
-    mv      t3, a0
-    li      a5, 0
-    lui     a4, 0x40000
-.L106:
-    slli    a3, a4, 0x1e
-    srli    a5, a5, 0x2
-    srli    a4, a4, 0x2
-    or      a5, a3, a5
-    bltu    a1, a4, .L106
-    bne     a4, a1, .L103
-    bltu    t3, a5, .L106
-.L103:
-    li      a0, 0
-    li      a6, 0
-.L101:
-    add     t1, a0, a5
-    add     a7, a6, a4
-    sltu    a2, t1, a0
-    slli    t6, a6, 0x1f
-    srli    a3, a0, 0x1
-    or      a3, t6, a3
-    add     a2, a2, a7
-    srli    a7, a6, 0x1
-    slli    t5, a4, 0x1e
-    srli    t4, a5, 0x2
-    mv      a0, a3
-    mv      a6, a7
-    bltu    a1, a2, .L99
-    add     a5, a3, a5
-    sub     t6, t3, t1
-    sltu    t0, t3, t6
-    add     a7, a7, a4
-    sub     t2, a1, a2
-    sltu    a3, a5, a3
-    bne     a2, a1, .L104
-    bltu    t3, t1, .L99
-.L104:
-    mv      t3, t6
-    sub     a1, t2, t0
-    mv      a0, a5
-    add     a6, a3, a7
-.L99:
-    or      a5, t5, t4
-    srli    a4, a4, 0x2
-    or      a3, a5, a4
-    bnez    a3, .L101
-    lw      ra, 12(sp)
-    addi    sp, sp, 16
+    lui     t3, 0x10
+.L76:
+    or      a4, a0, a7
+    mul     a6, a4, a4
+    mulhu   a3, a4, a4
+    mulhu   a2, a6, a1
+    mul     a5, a3, a1
+    mulhu   a3, a3, a1
+    add     a2, a5, a2
+    sltu    a5, a2, a5
+    add     a5, a5, a3
+    mul     a6, a6, a1
+    bnez    a5, .L80
+    bgeu    a2, t3, .L80
+.L79:
+    mv      a0, a4
+.L74:
+    addi    t1, t1, -1
+    srli    a7, a7, 0x1
+    bnez    t1, .L76
     ret
-.L102:
+.L80:
+    bne     a2, t3, .L74
+    bnez    a5, .L74
+    beqz    a6, .L79
+    j       .L74
+.L77:
     li      a0, 0
     ret
 |}
