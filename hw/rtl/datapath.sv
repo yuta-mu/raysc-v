@@ -384,8 +384,8 @@ module datapath (
 
     // # Stage 4: MEM (Memory Access Request to BRAM Port B / MMIO / UART)
     assign mem_addr  = mem_exec_result;
-    assign mem_read  = mem_valid && mem_mem_read  && !stall_mem && !halted;
-    assign mem_write = mem_valid && mem_mem_write && !stall_mem && !halted;
+    assign mem_read  = mem_valid && mem_mem_read  && !halted;
+    assign mem_write = mem_valid && mem_mem_write && !halted;
 
     logic [1:0]  mem_byte_offset;
     logic [7:0]  rs2_b;
