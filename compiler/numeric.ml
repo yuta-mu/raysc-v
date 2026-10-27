@@ -59,7 +59,9 @@ let qsqrt x =
     let n = Int64.shift_left (Int64.logand (Int64.of_int32 x) 0xFFFFFFFFL) 16 in
     wrap_i64 (isqrt n)
 
-let qrsqrt x = if x <= 0l then 0l else q16_rcp (qsqrt x)
+let qrsqrt x =
+  if x <= 0l then 0l
+  else wrap_i64 (isqrt (Int64.div 281474976710656L (Int64.of_int32 x)))   (* 281474976710656 = 2^48 *)
 
 let parse_i32 s =
   let v = Int64.of_string s in
