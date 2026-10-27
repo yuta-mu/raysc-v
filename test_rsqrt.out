@@ -1,6 +1,0 @@
-=== q16_rsqrt Boundary & Random Test on QEMU ===
-[1/2] Running Boundary Value Tests...
-  -> Boundary Tests: PASS
-[2/2] Running Random Tests (1,000,000 iterations)...
-  -> Random Tests: PASS
-SUCCESS: All tests passed successfully!

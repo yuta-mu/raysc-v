@@ -157,50 +157,50 @@ let emit_func (f : func) =
 
 (*c-7*)
 let runtime = {|
-.globl q16_rcp
-q16_rcp:
-    beqz    a0, .L40
-    bltz    a0, .L38
+.globl __q16_rcp
+__q16_rcp:
+    beqz    a0, .L_rcp_zero_or_small
+    bltz    a0, .L_rcp_negative
     li      a5, 2
-    bgeu    a5, a0, .L40
+    bgeu    a5, a0, .L_rcp_zero_or_small
     neg     a5, a0
     divu    a0, a5, a0
     addi    a0, a0, 1
     ret
-.L38:
+.L_rcp_negative:
     neg     a5, a0
     li      a4, 2
     lui     a0, 0x80000
-    bgeu    a4, a5, .L36
+    bgeu    a4, a5, .L_rcp_exit
     li      a0, -1
     divu    a0, a0, a5
     not     a0, a0
     ret
-.L40:
+.L_rcp_zero_or_small:
     lui     a0, 0x80000
     addi    a0, a0, -1
-.L36:
+.L_rcp_exit:
     ret
 
-.globl q16_sqrt
-q16_sqrt:
-    blez    a0, .L66
+.globl __q16_sqrt
+__q16_sqrt:
+    blez    a0, .L_sqrt_zero_or_neg
     srli    a7, a0, 0x10
     slli    a6, a0, 0x10
     li      a5, 0
     lui     a4, 0x40000
-.L70:
+.L_sqrt_scale_loop:
     slli    a3, a4, 0x1e
     srli    a5, a5, 0x2
     srli    a4, a4, 0x2
     or      a5, a3, a5
-    bltu    a7, a4, .L70
-    bne     a4, a7, .L67
-    bltu    a6, a5, .L70
-.L67:
+    bltu    a7, a4, .L_sqrt_scale_loop
+    bne     a4, a7, .L_sqrt_init
+    bltu    a6, a5, .L_sqrt_scale_loop
+.L_sqrt_init:
     li      a0, 0
     li      a1, 0
-.L65:
+.L_sqrt_loop:
     add     t3, a0, a5
     add     t1, a1, a4
     sltu    a2, t3, a0
@@ -213,39 +213,39 @@ q16_sqrt:
     srli    t4, a5, 0x2
     mv      a0, a3
     mv      a1, t1
-    bltu    a7, a2, .L63
+    bltu    a7, a2, .L_sqrt_loop_end
     add     a5, a3, a5
     sub     t6, a6, t3
     sltu    t0, a6, t6
     add     t1, t1, a4
     sub     t2, a7, a2
     sltu    a3, a5, a3
-    bne     a2, a7, .L68
-    bltu    a6, t3, .L63
-.L68:
+    bne     a2, a7, .L_sqrt_update
+    bltu    a6, t3, .L_sqrt_loop_end
+.L_sqrt_update:
     mv      a6, t6
     sub     a7, t2, t0
     mv      a0, a5
     add     a1, a3, t1
-.L63:
+.L_sqrt_loop_end:
     or      a5, t5, t4
     srli    a4, a4, 0x2
     or      a3, a5, a4
-    bnez    a3, .L65
+    bnez    a3, .L_sqrt_loop
     ret
-.L66:
+.L_sqrt_zero_or_neg:
     li      a0, 0
     ret
 
 .globl q16_rsqrt
 q16_rsqrt:
     mv      a1, a0
-    blez    a0, .L77
+    blez    a0, .L_rsqrt_zero_or_neg
     li      t1, 25
     lui     a7, 0x1000
     li      a0, 0
     lui     t3, 0x10
-.L76:
+.L_rsqrt_loop:
     or      a4, a0, a7
     mul     a6, a4, a4
     mulhu   a3, a4, a4
@@ -256,21 +256,21 @@ q16_rsqrt:
     sltu    a5, a2, a5
     add     a5, a5, a3
     mul     a6, a6, a1
-    bnez    a5, .L80
-    bgeu    a2, t3, .L80
-.L79:
+    bnez    a5, .L_rsqrt_branch
+    bgeu    a2, t3, .L_rsqrt_branch
+.L_rsqrt_store:
     mv      a0, a4
-.L74:
+.L_rsqrt_next:
     addi    t1, t1, -1
     srli    a7, a7, 0x1
-    bnez    t1, .L76
+    bnez    t1, .L_rsqrt_loop
     ret
-.L80:
-    bne     a2, t3, .L74
-    bnez    a5, .L74
-    beqz    a6, .L79
-    j       .L74
-.L77:
+.L_rsqrt_branch:
+    bne     a2, t3, .L_rsqrt_next
+    bnez    a5, .L_rsqrt_next
+    beqz    a6, .L_rsqrt_store
+    j       .L_rsqrt_next
+.L_rsqrt_zero_or_neg:
     li      a0, 0
     ret
 |}
