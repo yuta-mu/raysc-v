@@ -11,21 +11,27 @@ type frame = {
 }
 
 let make_frame (f : func) =
-  (* この関数の中の呼び出しで、スタックに積む引数がいちばん多いもの *)
-  let max_stack_args =
+  (* 呼び出し時に必要なスタック引数・戻り値領域の最大ワード数 *)
+  let max_outgoing_words =
     List.fold_left (fun m b ->
       List.fold_left (fun m i ->
         match i with
-        | Call (_, _, args) -> max m (List.length args - 8)
-        | _ -> m) m b.body) 0 f.blocks
+        | Call (rs, _, args) ->
+            let stack_args = max 0 (List.length args - 8) in
+            let stack_results = max 0 (List.length rs - 8) in
+            max m (max stack_args stack_results)
+        | _ -> m
+      ) m b.body
+    ) 0 f.blocks
   in
-  let out_bytes = 4 * max 0 max_stack_args in (*8個を超えた引数のバイト数*)
-  let arr_base = out_bytes + 4 * f.nvregs in (*スロット*)
+  let out_bytes = 4 * max_outgoing_words in
+  let arr_base = out_bytes + 4 * f.nvregs in
   let arrays, arr_end =
-    List.fold_left (fun (acc, off) (id, bytes) -> ((id, off) :: acc, off + bytes))
+    List.fold_left
+      (fun (acc, off) (id, bytes) -> ((id, off) :: acc, off + bytes))
       ([], arr_base) f.arrays
-  in (*配列*)
-  let size = arr_end + 4 in 
+  in
+  let size = arr_end + 4 in
   if size > 2044 then failwith ("emitter: frame too large: " ^ f.name);
   { out_bytes; arrays; ra_off = size - 4; size }
 
@@ -95,17 +101,25 @@ let emit_instr fr (i : instr) =
       Printf.bprintf buf "lw t1, %d(sp)\n" (s src); (*書く値*)
       Printf.bprintf buf "sw t1, %d(t0)\n" ofs
   | Call (rs, name, args) ->
-      (*引数:先頭 8 ワードは a0〜a7、残りは sp+0, sp+4,...*)
+      (* 引数: 先頭8ワードはa0〜a7、残りはsp+0, sp+4,... *)
       List.iteri (fun k v ->
         if k < 8 then
           Printf.bprintf buf "lw a%d, %d(sp)\n" k (s v)
         else begin
           Printf.bprintf buf "lw t0, %d(sp)\n" (s v);
           Printf.bprintf buf "sw t0, %d(sp)\n" (4 * (k - 8))
-        end) args;
+        end
+      ) args;
       Printf.bprintf buf "jal ra, %s\n" name;
-      (*戻り値:a0, a1, ... をスロットへ*)
-      List.iteri (fun k r -> Printf.bprintf buf "sw a%d, %d(sp)\n" k (s r)) rs
+      (* 戻り値: 先頭8ワードはa0〜a7、残りはスタックから取得 *)
+      List.iteri (fun k r ->
+        if k < 8 then
+          Printf.bprintf buf "sw a%d, %d(sp)\n" k (s r)
+        else begin
+          Printf.bprintf buf "lw t0, %d(sp)\n" (4 * (k - 8));
+          Printf.bprintf buf "sw t0, %d(sp)\n" (s r)
+        end
+      ) rs
   | Bprint a ->
       Printf.bprintf buf "lw t0, %d(sp)\n" (s a);
       Printf.bprintf buf "li t1, 0x10000000\n"; (*UART*)
@@ -127,8 +141,16 @@ let emit_term (f : func) fr (t : terminator) =
       Printf.bprintf buf "bnez t0, .L_%s_%d\n" f.name lt;   (*真(0以外)ならlt*)
       Printf.bprintf buf "j .L_%s_%d\n" f.name lf        (*偽ならlf*)
   | Ret vs ->
-      (*戻り値をa0,a1,...に入れる*)
-      List.iteri (fun k v -> Printf.bprintf buf "lw a%d, %d(sp)\n" k (s v)) vs;
+      (* 戻り値: 先頭8ワードはa0〜a7、残りは呼び出し側のスタックへ *)
+      List.iteri (fun k v ->
+        if k < 8 then
+          Printf.bprintf buf "lw a%d, %d(sp)\n" k (s v)
+        else begin
+          Printf.bprintf buf "lw t0, %d(sp)\n" (s v);
+          Printf.bprintf buf "sw t0, %d(sp)\n"
+            (fr.size + 4 * (k - 8))
+        end
+      ) vs;
       Printf.bprintf buf "lw ra, %d(sp)\n" fr.ra_off;
       Printf.bprintf buf "addi sp, sp, %d\n" fr.size;
       Printf.bprintf buf "jalr x0, ra, 0\n"
