@@ -69,16 +69,27 @@ let parse_q16 s =
   let dot = String.index s '.' in
   let whole = String.sub s 0 dot in
   let frac = String.sub s (dot + 1) (String.length s - dot - 1) in
+  if frac = "" then failwith ("invalid q16 literal: " ^ s);
+  let k = String.length frac in
+  if k > 18 then
+    failwith "q16 literals may contain at most 18 fractional digits";
   let w = Int64.of_string whole in
   let f = Int64.of_string frac in
-  let rec pow10 n acc = if n = 0 then acc else pow10 (n - 1) (Int64.mul acc 10L) in
-  let den = pow10 (String.length frac) 1L in
-  let scaled_frac = Int64.mul f 65536L in
-  let q = Int64.div scaled_frac den in
-  let r = Int64.rem scaled_frac den in
+  let rec pow5 n acc = if n = 0 then acc else pow5 (n - 1) (Int64.mul acc 5L) in
+  (* f * 65536 / 10^k, with the powers of two cancelled before multiplying. *)
+  let numerator, denominator =
+    if k <= 16 then
+      (Int64.mul f (Int64.shift_left 1L (16 - k)), pow5 k 1L)
+    else
+      (f, Int64.mul (pow5 k 1L) (Int64.shift_left 1L (k - 16)))
+  in
+  let q = Int64.div numerator denominator in
+  let r = Int64.rem numerator denominator in
   let twice = Int64.mul r 2L in
   let rounded_frac =
-    if twice > den || (twice = den && Int64.logand q 1L = 1L) then Int64.add q 1L else q
+    if twice > denominator ||
+       (twice = denominator && Int64.logand q 1L = 1L)
+    then Int64.add q 1L else q
   in
   let raw = Int64.add (Int64.mul w 65536L) rounded_frac in
   Int64.to_int32 raw
