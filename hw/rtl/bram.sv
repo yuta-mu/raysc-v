@@ -2,7 +2,7 @@
 
 module bram #(
     parameter int MEM_WORDS = 65536,
-    parameter string INIT_FILE = ""
+    parameter string INIT_FILE = "boot.hex"
 )(
     input  logic        clk,
     // Port A: IF

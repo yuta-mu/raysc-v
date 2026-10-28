@@ -105,8 +105,9 @@ module tb_cpu;
         if ($value$plusargs("retire_trace=%s", trace_file)) trace_fd = $fopen(trace_file, "w");
 
         for (int i = 0; i < MEM_WORDS; i++) u_bram.mem[i] = 32'h0;
-        if ($value$plusargs("hex=%s", hex_file)) $readmemh(hex_file, u_bram.mem);
-        else $fatal(1, "+hex=FILE is required");
+
+        if (!$value$plusargs("hex=%s", hex_file)) hex_file = "boot.hex";
+        $readmemh(hex_file, u_bram.mem);
 
         #25;
         rst_n = 1;
@@ -141,10 +142,8 @@ module tb_cpu;
 
             if (retire && trace_fd != 0) $fwrite(trace_fd, "%08x %08x\n", pc, inst);
 
-            // 単一サイクルコアでは、命令を取り込んだサイクルで ebreak が実行される。
-            // (パイプライン化したら、retire 段の pc / 命令で判定するよう置き換える)
-            if (u_cpu.inst_valid && inst == EBREAK)    finish_sim("ebreak");
-            if (u_cpu.inst_valid && inst == SELF_LOOP) finish_sim("self-loop");
+            if (u_cpu.u_datapath.wb_valid && u_cpu.u_datapath.wb_ebreak) finish_sim("ebreak");
+            if (u_cpu.halted) finish_sim("ebreak");
 
             if (cycles > max_cycles) begin
                 $display("[TIMEOUT] Reached maximum cycle limit (%0d cycles).", cycles);
