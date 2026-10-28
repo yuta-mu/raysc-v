@@ -21,6 +21,13 @@ static inline ray reflected_ray_make(ray r, hit_record rec){
     return ray_make(origin, direction);
 }
 
+static inline ray scattered_ray_make(hit_record rec, vec3 direction, bool can_transmit){
+    fpm_t const bias = f_scale / 1000;
+    fpm_t const offset = can_transmit && vec3_dot(direction, rec.normal) < 0 ? fpm_sub(0, bias) : bias;
+    vec3 const origin = vec3_add(rec.p, vec3_scale(rec.normal, offset));
+    return ray_make(origin, direction);
+}
+
 static inline vec3 ray_color(ray r, const sphere* spheres, int32_t sphere_count){
     hit_record rec;
     const vec3 white = vec3_make(f_scale, f_scale, f_scale);
@@ -101,6 +108,40 @@ static inline vec3 ray_color_trace(ray r, const sphere* spheres, int32_t sphere_
             const vec3 background = vec3_add(vec3_scale(white, fpm_sub(f_scale, t)), vec3_scale(blue, t));
             return vec3_mul(weight, background);
             
+        }
+        return vec3_make(0, 0, 0);
+    }
+
+static inline vec3 ray_color_path(ray r, const sphere* spheres, int32_t sphere_count,
+    const path_material *materials, int32_t max_depth, uint32_t *state){
+        hit_record rec = {
+            vec3_make(0, 0, 0),
+            vec3_make(0, 0, 0),
+            0, 0, false
+        };
+        vec3 weight = vec3_make(f_scale, f_scale, f_scale);
+        for (int32_t bounce = 0; bounce < max_depth; ++bounce){
+            if (scene_hit(spheres, sphere_count, r,f_scale / 1000, INT32_MAX, &rec)){
+                const path_material mat = materials[rec.material_id];
+                const path_scatter_result scatter = path_material_scatter(mat, r.dir, rec.normal, rec.front_face, state);
+                if (!scatter.scattered) return vec3_make(0, 0, 0);
+                weight = vec3_mul(weight, scatter.attenuation);
+                r = scattered_ray_make(rec, scatter.direction, mat.kind == material_dielectric);
+                continue;
+            }
+            vec3 direction = r.dir;
+            uint32_t max_abs = sphere_component_scale(direction);
+            if (max_abs == 0) return vec3_make(0, 0, 0);
+            while (max_abs < f_scale / 2){
+                direction = vec3_add(direction, direction);
+                max_abs += max_abs;
+            }
+            const vec3 unit_direction = vec3_unit_vector(direction);
+            const fpm_t t = fpm_add(unit_direction.e[1], f_scale) / 2;
+            const vec3 white = vec3_make(f_scale, f_scale, f_scale);
+            const vec3 blue = vec3_make(f_scale / 2, 7 * f_scale / 10, f_scale);
+            const vec3 background = vec3_add(vec3_scale(white, fpm_sub(f_scale, t)), vec3_scale(blue, t));
+            return vec3_mul(weight, background);
         }
         return vec3_make(0, 0, 0);
     }

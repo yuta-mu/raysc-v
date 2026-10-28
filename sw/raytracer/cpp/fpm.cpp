@@ -5,6 +5,7 @@ static inline uint32_t magnitude(fpm_t value) {
     const uint32_t bits = (uint32_t)value;
     return value < 0 ? 0u - bits : bits;
 }
+
 static inline fpm_t with_sign(uint32_t value, bool negative) {
     const uint32_t bits = negative ? 0u - value : value;
     if (bits <= INT32_MAX) {
@@ -24,8 +25,6 @@ static inline uint32_t multiply_16(uint32_t a, uint32_t b) {
     }
     return product;
 }
-
-
 
 fpm_t fpm_mul(fpm_t a, fpm_t b) {
 
@@ -136,7 +135,6 @@ fpm_t fpm_tan(fpm_t angle) {
     return fpm_div(sine, cosine);
 }
 
-
 static const fpm_t angles[] = {51472, 30386, 16055, 8150, 4091, 2047, 1024, 512, 256, 128, 64, 32, 16, 8, 4, 2, 1};
 
 static void sin_cos(fpm_t angle, fpm_t* sine, fpm_t* cosine) {
@@ -180,8 +178,6 @@ static void sin_cos(fpm_t angle, fpm_t* sine, fpm_t* cosine) {
     }
     if (negative_cosine) *cosine = -*cosine;
 }
-
-
 
 fpm_t fpm_sin(fpm_t angle) {
     fpm_t sine, cosine;
@@ -279,7 +275,6 @@ fpm_t fpm_rcp(fpm_t x){
     }
     return (fpm_t)(q);
 }
-
 
 fpm_t fpm_rsqrt(fpm_t x){
     if (x <= 0) return 0;

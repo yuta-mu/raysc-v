@@ -6,6 +6,7 @@ static inline uint32_t magnitude(fpm_t value) {
     const uint32_t bits = (uint32_t)value;
     return value < 0 ? 0u - bits : bits;
 }
+
 static inline fpm_t with_sign(uint32_t value, bool negative) {
     const uint32_t bits = negative ? 0u - value : value;
     if (bits <= INT32_MAX) {
@@ -103,135 +104,6 @@ fpm_t fpm_tan(fpm_t angle) {
     if (cosine == 0 || magnitude(sine) / magnitude(cosine) >= 32768u)
         return (sine < 0) != (cosine < 0) ? -INT32_MAX : INT32_MAX;
     return fpm_div(sine, cosine);
-}
-
-
-static const fpm_t angles[] = {51472, 30386, 16055, 8150, 4091, 2047, 1024, 512, 256, 128, 64, 32, 16, 8, 4, 2, 1};
-
-static void sin_cos(fpm_t angle, fpm_t* sine, fpm_t* cosine) {
-    const fpm_t half_pi = 102944;
-    angle %= 2 * f_pi;
-    if (angle > f_pi) angle -= 2 * f_pi;
-    if (angle < -f_pi) angle += 2 * f_pi;
-    bool negative_cosine = false;
-    if (angle > half_pi) {
-        angle = f_pi - angle;
-        negative_cosine = true;
-    } else if (angle < -half_pi) {
-        angle = -f_pi - angle;
-        negative_cosine = true;
-    }
-
-    *sine = 0;
-    *cosine = f_scale;      
-    if (angle == half_pi || angle == -half_pi) {
-        *sine = angle < 0 ? -f_scale : f_scale;
-        *cosine = 0;
-    } else if (angle != 0) {
-        *cosine = 39797;
-        for (int i = 0; i < 17; ++i) {
-            const fpm_t dx = *cosine / (1 << i);
-            const fpm_t dy = *sine / (1 << i);
-            if (angle >= 0) {
-                *cosine -= dy;
-                *sine += dx;
-                angle -= angles[i];
-            } else {
-                *cosine += dy;
-                *sine -= dx;
-                angle += angles[i];
-            }
-        }
-        if (*sine > f_scale) *sine = f_scale;
-        if (*sine < -f_scale) *sine = -f_scale;
-        if (*cosine > f_scale) *cosine = f_scale;
-        if (*cosine < -f_scale) *cosine = -f_scale;
-    }
-    if (negative_cosine) *cosine = -*cosine;
-}
-
-
-
-fpm_t fpm_sin(fpm_t angle) {
-    fpm_t sine, cosine;
-    sin_cos(angle, &sine, &cosine);
-    return sine;
-}
-
-fpm_t fpm_cos(fpm_t angle) {
-    fpm_t sine, cosine;
-    sin_cos(angle, &sine, &cosine);
-    return cosine;
-}
-
-fpm_t fpm_atan2(fpm_t y, fpm_t x) {
-    const fpm_t half_pi = 102944;
-    if (x == 0) return y == 0 ? 0 : (y < 0 ? -half_pi : half_pi);
-    if (y == 0) return x < 0 ? f_pi : 0;
-    while (magnitude(x) > (uint32_t)f_scale
-        || magnitude(y) > (uint32_t)f_scale) {
-        x /= 2;
-        y /= 2;
-    }
-    const fpm_t scale = (fpm_t)(magnitude(x) > magnitude(y) ? magnitude(x) : magnitude(y));
-    x = fpm_div(x, scale);
-    y = fpm_div(y, scale);
-    fpm_t angle = 0;
-    if (x < 0) {
-        angle = y < 0 ? -f_pi : f_pi;
-        x = -x;
-        y = -y;
-    }
-    for (int i = 0; i < 17; ++i) {
-        const fpm_t dx = x / (1 << i);
-        const fpm_t dy = y / (1 << i);
-        if (y > 0) {
-            x += dy;
-            y -= dx;
-            angle += angles[i];
-        } else if (y < 0) {
-            x -= dy;
-            y += dx;
-            angle -= angles[i];
-        } else {
-            break;
-        }
-    }
-    return angle;
-}
-
-fpm_t fpm_asin(fpm_t value) {
-    if (value > f_scale) value = f_scale;
-    if (value < -f_scale) value = -f_scale;
-    return fpm_atan2(value, fpm_sqrt(f_scale - fpm_mul(value, value)));
-}
-
-fpm_t fpm_log(fpm_t value) {
-    if (value <= 0) return -INT32_MAX;
-    int exponent = 0;
-    while (value < f_scale) {
-        value *= 2;
-        --exponent;
-    }
-    while (value >= 2 * f_scale) {
-        value /= 2;
-        ++exponent;
-    }
-    const fpm_t x = fpm_div(value - f_scale, value + f_scale);
-    const fpm_t squared = fpm_mul(x, x);
-    fpm_t term = x;
-    fpm_t sum = x;
-    for (int i = 3; i <= 19; i += 2) {
-        term = fpm_mul(term, squared);
-        sum += term / i;
-    }
-    return 2 * sum + exponent * 45426;
-}
-
-fpm_t fpm_div_clamped(fpm_t a, fpm_t b) {
-    if (b == 0 || magnitude(a) / magnitude(b) >= 32768u)
-        return (a < 0) != (b < 0) ? -INT32_MAX : INT32_MAX;
-    return fpm_div(a, b);
 }
 
 fpm_t fpm_rcp(fpm_t x){

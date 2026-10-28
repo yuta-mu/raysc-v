@@ -16,12 +16,6 @@ fpm_t fpm_div(fpm_t a, fpm_t b);
 fpm_t fpm_sqrt(fpm_t a);
 
 fpm_t fpm_tan(fpm_t angle);
-fpm_t fpm_sin(fpm_t angle);
-fpm_t fpm_cos(fpm_t angle);
-fpm_t fpm_atan2(fpm_t y, fpm_t x);
-fpm_t fpm_asin(fpm_t value);
-fpm_t fpm_log(fpm_t value);
-fpm_t fpm_div_clamped(fpm_t a, fpm_t b);
 fpm_t fpm_rcp(fpm_t x);
 fpm_t fpm_rsqrt(fpm_t x);
 

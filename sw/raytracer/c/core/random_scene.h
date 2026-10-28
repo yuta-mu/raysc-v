@@ -4,21 +4,16 @@
 #include "camera.h"
 #include "material.h"
 #include "sphere.h"
+#include "random.h"
 
 enum { random_sphere_capacity = 65 };
 
 static inline uint32_t random_scene_next(uint32_t* state){
-    uint32_t value = *state;
-    value ^= value << 13;
-    value ^= value >> 17;
-    value ^= value << 5;
-    *state = value;
-    return value;
+    return random_next(state);
 }
 
 static inline fpm_t random_scene_range(uint32_t* state, fpm_t minimum, fpm_t maximum){
-    const fpm_t fraction = (fpm_t)(random_scene_next(state) >> 16);
-    return fpm_add(minimum, fpm_mul(fpm_sub(maximum, minimum), fraction));
+    return random_range(state, minimum, maximum);
 }
 
 static inline int32_t random_scene_make(sphere* spheres, material* materials, uint32_t seed){
