@@ -105,8 +105,9 @@ module tb_cpu;
         if ($value$plusargs("retire_trace=%s", trace_file)) trace_fd = $fopen(trace_file, "w");
 
         for (int i = 0; i < MEM_WORDS; i++) u_bram.mem[i] = 32'h0;
-        if ($value$plusargs("hex=%s", hex_file)) $readmemh(hex_file, u_bram.mem);
-        else $fatal(1, "+hex=FILE is required");
+
+        if (!$value$plusargs("hex=%s", hex_file)) hex_file = "boot.hex";
+        $readmemh(hex_file, u_bram.mem);
 
         #25;
         rst_n = 1;
