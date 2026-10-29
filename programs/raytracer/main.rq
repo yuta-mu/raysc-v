@@ -132,7 +132,6 @@ fn q_clamp(x: q16, lo: q16, hi: q16) -> q16 {
     return x;
 }
 
-// Exact fixed-point representation of n/d for nonnegative i32 inputs.
 fn ratio_i32(n: i32, d: i32) -> q16 {
     return ULP * ((n << 16) / d);
 }
@@ -141,7 +140,6 @@ fn degrees_to_radians(degrees: q16) -> q16 {
     return (degrees * Q_PI) * rcp(q16(180));
 }
 
-// tan(x) approximation for the camera's small half-FOV angles.
 fn q_tan_small(x: q16) -> q16 {
     let x2: q16;
     let x3: q16;
@@ -156,28 +154,8 @@ fn q_tan_small(x: q16) -> q16 {
     return x + term1 + term2;
 }
 
-fn vec3_add(a: vec3, b: vec3) -> vec3 {
-    return vec3(a.x + b.x, a.y + b.y, a.z + b.z);
-}
-
-fn vec3_sub(a: vec3, b: vec3) -> vec3 {
-    return vec3(a.x - b.x, a.y - b.y, a.z - b.z);
-}
-
-fn vec3_neg(v: vec3) -> vec3 {
-    return vec3(-v.x, -v.y, -v.z);
-}
-
-fn vec3_scale(v: vec3, s: q16) -> vec3 {
-    return vec3(v.x * s, v.y * s, v.z * s);
-}
-
 fn vec3_mul_elem(a: vec3, b: vec3) -> vec3 {
     return vec3(a.x * b.x, a.y * b.y, a.z * b.z);
-}
-
-fn vec3_dot(a: vec3, b: vec3) -> q16 {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
 fn vec3_cross(a: vec3, b: vec3) -> vec3 {
@@ -188,25 +166,21 @@ fn vec3_cross(a: vec3, b: vec3) -> vec3 {
     );
 }
 
-fn vec3_length_squared(v: vec3) -> q16 {
-    return vec3_dot(v, v);
-}
-
 fn vec3_unit(v: vec3) -> vec3 {
     let lensq: q16;
-    lensq = vec3_length_squared(v);
+    lensq = v <.> v;
     if (lensq <= Q_ZERO) {
         return vec3(0.0, 1.0, 0.0);
     }
-    return vec3_scale(v, rsqrt(lensq));
+    return v * rsqrt(lensq);
 }
 
 fn vec3_unit_big(v: vec3) -> vec3 {
     let s: vec3;
     s = v;
     for k in 0..8 {
-        if (vec3_length_squared(s) > Q_TWO) {
-            s = vec3_scale(s, Q_HALF);
+        if ((s <.> s) > Q_TWO) {
+            s = s * Q_HALF;
         }
     }
     return vec3_unit(s);
@@ -226,9 +200,7 @@ fn vec3_near_zero(v: vec3) -> i32 {
 }
 
 fn vec3_reflect(v: vec3, n: vec3) -> vec3 {
-    let two_dn: q16;
-    two_dn = Q_TWO * vec3_dot(v, n);
-    return vec3_sub(v, vec3_scale(n, two_dn));
+    return v - n * (Q_TWO * (v <.> n));
 }
 
 fn vec3_refract(uv: vec3, n: vec3, ratio: q16) -> vec3 {
@@ -236,13 +208,11 @@ fn vec3_refract(uv: vec3, n: vec3, ratio: q16) -> vec3 {
     let r_out_perp: vec3;
     let perp_len2: q16;
     let parallel_mag: q16;
-    let r_out_parallel: vec3;
-    cos_theta = q_min(vec3_dot(vec3_neg(uv), n), Q_ONE);
-    r_out_perp = vec3_scale(vec3_add(uv, vec3_scale(n, cos_theta)), ratio);
-    perp_len2 = vec3_length_squared(r_out_perp);
+    cos_theta = q_min((-uv) <.> n, Q_ONE);
+    r_out_perp = (uv + n * cos_theta) * ratio;
+    perp_len2 = r_out_perp <.> r_out_perp;
     parallel_mag = sqrt(q_abs(Q_ONE - perp_len2));
-    r_out_parallel = vec3_scale(n, -parallel_mag);
-    return vec3_add(r_out_perp, r_out_parallel);
+    return r_out_perp + n * (-parallel_mag);
 }
 
 fn rng_next_i32(state: i32) -> RandI32 {
@@ -296,10 +266,10 @@ fn random_unit_vector(state: i32) -> RandVec3 {
     for attempt in 0..64 {
         sample = random_vec3_range(current_state, -Q_ONE, Q_ONE);
         current_state = sample.state;
-        lensq = vec3_length_squared(sample.value);
+        lensq = sample.value <.> sample.value;
         if (lensq >= Q_UNIT_MIN_LENSQ && lensq <= Q_ONE) {
             out.state = current_state;
-            out.value = vec3_scale(sample.value, rsqrt(lensq));
+            out.value = sample.value * rsqrt(lensq);
             return out;
         }
     }
@@ -320,7 +290,7 @@ fn random_in_unit_disk(state: i32) -> RandVec3 {
         ry = random_q16_range(rx.state, -Q_ONE, Q_ONE);
         current_state = ry.state;
         p = vec3(rx.value, ry.value, Q_ZERO);
-        if (vec3_length_squared(p) < Q_ONE) {
+        if ((p <.> p) < Q_ONE) {
             out.state = current_state;
             out.value = p;
             return out;
@@ -339,7 +309,7 @@ fn make_ray(origin: vec3, direction: vec3) -> Ray {
 }
 
 fn ray_at(ray: Ray, t: q16) -> vec3 {
-    return vec3_add(ray.o, vec3_scale(ray.d, t));
+    return ray.o + ray.d * t;
 }
 
 fn hit_ground(ray: Ray, t_min: q16, t_max: q16) -> HitRecord {
@@ -351,7 +321,6 @@ fn hit_ground(ray: Ray, t_min: q16, t_max: q16) -> HitRecord {
     let tau: q16;
     let root: q16;
     let p: vec3;
-    let outward_normal: vec3;
 
     rec.hit = 0;
     rec.p = vec3(Q_ZERO, Q_ZERO, Q_ZERO);
@@ -362,14 +331,12 @@ fn hit_ground(ray: Ray, t_min: q16, t_max: q16) -> HitRecord {
     rec.albedo = vec3(Q_HALF, Q_HALF, Q_HALF);
     rec.fuzz_or_ref_idx = Q_ZERO;
 
-    // Ground sphere: center (0,-1000,0), radius 1000.
-    // Algebraically scaled to avoid representing radius^2 = 1,000,000 in Q16.16.
-    os = vec3_scale(ray.o, 0.125);
-    bs = vec3_dot(os, ray.d) + 125.0 * ray.d.y;
+    os = ray.o * 0.125;
+    bs = (os <.> ray.d) + 125.0 * ray.d.y;
     if (bs >= Q_ZERO) {
         return rec;
     }
-    ks = vec3_dot(os, os) + 31.25 * ray.o.y;
+    ks = (os <.> os) + 31.25 * ray.o.y;
     disc = bs * bs - ks;
     if (disc < Q_ZERO) {
         return rec;
@@ -380,15 +347,14 @@ fn hit_ground(ray: Ray, t_min: q16, t_max: q16) -> HitRecord {
         return rec;
     }
     p = ray_at(ray, root);
-    outward_normal = vec3_unit(vec3(
+    rec.hit = 1;
+    rec.t = root;
+    rec.p = p;
+    rec.normal = vec3_unit(vec3(
         p.x * 0.001,
         Q_ONE + p.y * 0.001,
         p.z * 0.001
     ));
-    rec.hit = 1;
-    rec.t = root;
-    rec.p = p;
-    rec.normal = outward_normal;
     return rec;
 }
 
@@ -418,16 +384,16 @@ fn hit_sphere(index: i32, ray: Ray, t_min: q16, t_max: q16) -> HitRecord {
     rec.albedo = vec3(SPHERE_AR[index], SPHERE_AG[index], SPHERE_AB[index]);
     rec.fuzz_or_ref_idx = SPHERE_PARAM[index];
 
-    oc = vec3_sub(ray.o, center);
-    b = vec3_dot(oc, ray.d);
+    oc = ray.o - center;
+    b = oc <.> ray.d;
     if (b >= radius) {
         return rec;
     }
-    perp = vec3_sub(oc, vec3_scale(ray.d, b));
+    perp = oc - ray.d * b;
     if (q_abs(perp.x) > radius || q_abs(perp.y) > radius || q_abs(perp.z) > radius) {
         return rec;
     }
-    disc = radius2 - vec3_length_squared(perp);
+    disc = radius2 - (perp <.> perp);
     if (disc < Q_ZERO) {
         return rec;
     }
@@ -443,16 +409,16 @@ fn hit_sphere(index: i32, ray: Ray, t_min: q16, t_max: q16) -> HitRecord {
         }
     }
 
-    n = vec3_unit(vec3_sub(ray_at(ray, root), center));
+    n = vec3_unit(ray_at(ray, root) - center);
     rec.hit = 1;
     rec.t = root;
-    rec.p = vec3_add(center, vec3_scale(n, radius));
-    if (vec3_dot(ray.d, n) < Q_ZERO) {
+    rec.p = center + n * radius;
+    if ((ray.d <.> n) < Q_ZERO) {
         rec.front_face = 1;
         rec.normal = n;
     } else {
         rec.front_face = 0;
-        rec.normal = vec3_neg(n);
+        rec.normal = vec3(Q_ZERO, Q_ZERO, Q_ZERO) - n;
     }
     return rec;
 }
@@ -502,8 +468,6 @@ fn material_scatter(state: i32, ray_in: Ray, rec: HitRecord) -> ScatterResult {
     let cos_theta: q16;
     let sin_theta: q16;
     let direction: vec3;
-    let scattered: Ray;
-    let cannot_refract: i32;
 
     out.state = state;
     out.did_scatter = 0;
@@ -513,7 +477,7 @@ fn material_scatter(state: i32, ray_in: Ray, rec: HitRecord) -> ScatterResult {
     if (rec.mat_kind == MAT_LAMBERTIAN) {
         random_vec = random_unit_vector(out.state);
         out.state = random_vec.state;
-        scatter_dir = vec3_add(rec.normal, random_vec.value);
+        scatter_dir = rec.normal + random_vec.value;
         if (vec3_near_zero(scatter_dir) != 0) {
             scatter_dir = rec.normal;
         }
@@ -526,9 +490,9 @@ fn material_scatter(state: i32, ray_in: Ray, rec: HitRecord) -> ScatterResult {
         reflected = vec3_reflect(ray_in.d, rec.normal);
         random_vec = random_unit_vector(out.state);
         out.state = random_vec.state;
-        scatter_dir = vec3_add(vec3_unit(reflected), vec3_scale(random_vec.value, rec.fuzz_or_ref_idx));
+        scatter_dir = vec3_unit(reflected) + random_vec.value * rec.fuzz_or_ref_idx;
         out.scattered = make_ray(rec.p, scatter_dir);
-        if (vec3_dot(out.scattered.d, rec.normal) > Q_ZERO) {
+        if ((out.scattered.d <.> rec.normal) > Q_ZERO) {
             out.did_scatter = 1;
         }
         return out;
@@ -539,13 +503,9 @@ fn material_scatter(state: i32, ray_in: Ray, rec: HitRecord) -> ScatterResult {
     } else {
         ratio = rec.fuzz_or_ref_idx;
     }
-    cos_theta = q_min(vec3_dot(vec3_neg(ray_in.d), rec.normal), Q_ONE);
+    cos_theta = q_min((-ray_in.d) <.> rec.normal, Q_ONE);
     sin_theta = sqrt(q_abs(Q_ONE - cos_theta * cos_theta));
-    cannot_refract = 0;
     if (ratio * sin_theta > Q_ONE) {
-        cannot_refract = 1;
-    }
-    if (cannot_refract != 0) {
         direction = vec3_reflect(ray_in.d, rec.normal);
     } else {
         random_scalar = random_q16(out.state);
@@ -590,20 +550,14 @@ fn camera_init() -> Camera {
     aspect = ratio_i32(WIDTH, HEIGHT);
     viewport_width = viewport_height * aspect;
 
-    w = vec3_unit_big(vec3_sub(lookfrom, lookat));
+    w = vec3_unit_big(lookfrom - lookat);
     u = vec3_unit(vec3_cross(vup, w));
     v = vec3_cross(w, u);
 
     cam.center = lookfrom;
-    cam.viewport_u = vec3_scale(u, viewport_width);
-    cam.viewport_v = vec3_scale(vec3_neg(v), viewport_height);
-    cam.viewport_upper_left = vec3_sub(
-        vec3_sub(
-            vec3_sub(cam.center, vec3_scale(w, focus_dist)),
-            vec3_scale(cam.viewport_u, Q_HALF)
-        ),
-        vec3_scale(cam.viewport_v, Q_HALF)
-    );
+    cam.viewport_u = u * viewport_width;
+    cam.viewport_v = (-v) * viewport_height;
+    cam.viewport_upper_left = cam.center - w * focus_dist - cam.viewport_u * Q_HALF - cam.viewport_v * Q_HALF;
 
     if (defocus_angle <= Q_ZERO) {
         cam.use_defocus = 0;
@@ -612,8 +566,8 @@ fn camera_init() -> Camera {
     } else {
         cam.use_defocus = 1;
         defocus_rad = focus_dist * q_tan_small(degrees_to_radians(defocus_angle * Q_HALF));
-        cam.defocus_disk_u = vec3_scale(u, defocus_rad);
-        cam.defocus_disk_v = vec3_scale(v, defocus_rad);
+        cam.defocus_disk_u = u * defocus_rad;
+        cam.defocus_disk_v = v * defocus_rad;
     }
     return cam;
 }
@@ -635,22 +589,16 @@ fn camera_get_ray(state: i32, cam: Camera, i: i32, j: i32) -> RandRay {
     current_state = ry.state;
     fx = ratio_i32(i, WIDTH) + rx.value * rcp(q16(WIDTH));
     fy = ratio_i32(j, HEIGHT) + ry.value * rcp(q16(HEIGHT));
-    pixel_sample = vec3_add(
-        vec3_add(cam.viewport_upper_left, vec3_scale(cam.viewport_u, fx)),
-        vec3_scale(cam.viewport_v, fy)
-    );
+    pixel_sample = cam.viewport_upper_left + cam.viewport_u * fx + cam.viewport_v * fy;
 
     ray_origin = cam.center;
     if (cam.use_defocus != 0) {
         disk = random_in_unit_disk(current_state);
         current_state = disk.state;
-        ray_origin = vec3_add(
-            vec3_add(cam.center, vec3_scale(cam.defocus_disk_u, disk.value.x)),
-            vec3_scale(cam.defocus_disk_v, disk.value.y)
-        );
+        ray_origin = cam.center + cam.defocus_disk_u * disk.value.x + cam.defocus_disk_v * disk.value.y;
     }
     ray.o = ray_origin;
-    ray.d = vec3_unit_big(vec3_sub(pixel_sample, ray_origin));
+    ray.d = vec3_unit_big(pixel_sample - ray_origin);
     out.state = current_state;
     out.value = ray;
     return out;
@@ -733,9 +681,9 @@ fn camera_render(seed: i32, cam: Camera) -> void {
                 state = ray_sample.state;
                 trace = ray_color(state, ray_sample.value);
                 state = trace.state;
-                pixel_acc = vec3_add(pixel_acc, trace.color);
+                pixel_acc = pixel_acc + trace.color;
             }
-            avg_color = vec3_scale(pixel_acc, rcp(q16(SAMPLES_PER_PIXEL)));
+            avg_color = pixel_acc * rcp(q16(SAMPLES_PER_PIXEL));
             write_pixel(avg_color);
         }
     }
@@ -746,4 +694,3 @@ fn main() -> void {
     cam = camera_init();
     camera_render(42, cam);
 }
-

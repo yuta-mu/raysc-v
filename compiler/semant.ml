@@ -173,7 +173,7 @@ let analyze program =
            | Some t -> t
            | None -> (match Hashtbl.find_opt consts n with Some (t, _) -> t | None -> error ("unknown variable '" ^ n ^ "'")))
       | Unary (Neg, x) ->
-          let t = infer x in if t = I32 || t = Q16 then t else error "unary minus requires i32 or q16"
+          let t = infer x in if t = I32 || t = Q16 || t = Vec3 then t else error "unary minus requires i32, q16 or vec3"
       | Unary (Not, x) ->
           let t = infer x in if t = Bool then Bool else error "not requires bool"
       | Binary (Mul, a, b) ->
