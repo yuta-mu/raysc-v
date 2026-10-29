@@ -11,11 +11,15 @@ module regfile (
 
     logic [31:0] rf [31:0];
 
-    assign rs1_data = (rs1_addr == 0) ? 0 : rf[rs1_addr];
-    assign rs2_data = (rs2_addr == 0) ? 0 : rf[rs2_addr];
+    // WBステージとIDステージが同一レジスタにアクセスした際の内部バイパス
+    assign rs1_data = (rs1_addr == 5'd0) ? 32'd0 :
+                      (reg_write && (rd_addr == rs1_addr)) ? wdata : rf[rs1_addr];
+
+    assign rs2_data = (rs2_addr == 5'd0) ? 32'd0 :
+                      (reg_write && (rd_addr == rs2_addr)) ? wdata : rf[rs2_addr];
 
     always_ff @(posedge clk) begin
-        if (reg_write && (rd_addr != 0)) begin
+        if (reg_write && (rd_addr != 5'd0)) begin
             rf[rd_addr] <= wdata;
         end
     end

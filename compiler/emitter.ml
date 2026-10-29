@@ -9,28 +9,36 @@ type frame = {
   ra_off : int;                  (* ra を置く場所 *)
   size : int;                    (* フレーム全体の大きさ F(4の倍数) *)
 }
+(*コンパイラのモード*)
+type mode = Off | Math | Isect
 
 let make_frame (f : func) =
-  (* この関数の中の呼び出しで、スタックに積む引数がいちばん多いもの *)
-  let max_stack_args =
+  (* 呼び出し時に必要なスタック引数・戻り値領域の最大ワード数 *)
+  let max_outgoing_words =
     List.fold_left (fun m b ->
       List.fold_left (fun m i ->
         match i with
-        | Call (_, _, args) -> max m (List.length args - 8)
-        | _ -> m) m b.body) 0 f.blocks
+        | Call (rs, _, args) ->
+            let stack_args = max 0 (List.length args - 8) in
+            let stack_results = max 0 (List.length rs - 8) in
+            max m (max stack_args stack_results)
+        | _ -> m
+      ) m b.body
+    ) 0 f.blocks
   in
-  let out_bytes = 4 * max 0 max_stack_args in (*8個を超えた引数のバイト数*)
-  let arr_base = out_bytes + 4 * f.nvregs in (*スロット*)
+  let out_bytes = 4 * max_outgoing_words in
+  let arr_base = out_bytes + 4 * f.nvregs in
   let arrays, arr_end =
-    List.fold_left (fun (acc, off) (id, bytes) -> ((id, off) :: acc, off + bytes))
+    List.fold_left
+      (fun (acc, off) (id, bytes) -> ((id, off) :: acc, off + bytes))
       ([], arr_base) f.arrays
-  in (*配列*)
-  let size = arr_end + 4 in 
+  in
+  let size = arr_end + 4 in
   if size > 2044 then failwith ("emitter: frame too large: " ^ f.name);
   { out_bytes; arrays; ra_off = size - 4; size }
 
 (*命令*)
-let emit_instr fr (i : instr) =
+let emit_instr (m : mode) fr (i : instr) =
   let s v = fr.out_bytes + 4 * v in (*vreg vのスロットの場所*)
   match i with
   | Const (d, n) ->
@@ -47,11 +55,14 @@ let emit_instr fr (i : instr) =
        | Sub -> Printf.bprintf buf "sub t0, t0, t1\n"
        | Mul -> Printf.bprintf buf "mul t0, t0, t1\n"
        | QMul ->
-           Printf.bprintf buf "mul t2, t0, t1\n";     (*積の下位 32 ビット*)
-           Printf.bprintf buf "mulh t3, t0, t1\n";     (*積の上位 32 ビット*)
-           Printf.bprintf buf "srli t2, t2, 16\n";
-           Printf.bprintf buf "slli t3, t3, 16\n";
-           Printf.bprintf buf "or t0, t2, t3\n"
+          if m = Off then
+            (Printf.bprintf buf "mul t2, t0, t1\n";     (*積の下位 32 ビット*)
+            Printf.bprintf buf "mulh t3, t0, t1\n";     (*積の上位 32 ビット*)
+            Printf.bprintf buf "srli t2, t2, 16\n";
+            Printf.bprintf buf "slli t3, t3, 16\n";
+            Printf.bprintf buf "or t0, t2, t3\n")
+          else
+            Printf.bprintf buf "qmul t0, t0, t1\n"
        | Div -> Printf.bprintf buf "div t0, t0, t1\n"
        | Rem -> Printf.bprintf buf "rem t0, t0, t1\n"
        | Shl -> Printf.bprintf buf "sll t0, t0, t1\n"
@@ -75,11 +86,18 @@ let emit_instr fr (i : instr) =
       Printf.bprintf buf "xori t0, t0, 1\n"; (*boolは0か1*)
       Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
   | Intr (f, d, a) ->
-      let name = match f with
-        | Sqrt -> "__q16_sqrt" | Rsqrt -> "__q16_rsqrt" | Rcp -> "__q16_rcp" in
-      Printf.bprintf buf "lw a0, %d(sp)\n" (s a);
-      Printf.bprintf buf "jal ra, %s\n" name;
-      Printf.bprintf buf "sw a0, %d(sp)\n" (s d)
+      if m = Off then
+        (Printf.bprintf buf "lw a0, %d(sp)\n" (s a);
+        let name = match f with
+          | Sqrt -> "__q16_sqrt" | Rsqrt -> "__q16_rsqrt" | Rcp -> "__q16_rcp" in
+        Printf.bprintf buf "jal ra, %s\n" name;
+        Printf.bprintf buf "sw a0, %d(sp)\n" (s d))
+      else
+        (Printf.bprintf buf "lw t0, %d(sp)\n" (s a);
+        let cmd = match f with
+          | Sqrt -> "qsqrt" | Rsqrt -> "qrsqrt" | Rcp -> "qrcp" in
+        Printf.bprintf buf "%s t0, t0\n" cmd;
+        Printf.bprintf buf "sw t0, %d(sp)\n" (s d))
   | AddrLocal (d, id) ->
       Printf.bprintf buf "addi t0, sp, %d\n" (List.assoc id fr.arrays);
       Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
@@ -95,17 +113,25 @@ let emit_instr fr (i : instr) =
       Printf.bprintf buf "lw t1, %d(sp)\n" (s src); (*書く値*)
       Printf.bprintf buf "sw t1, %d(t0)\n" ofs
   | Call (rs, name, args) ->
-      (*引数:先頭 8 ワードは a0〜a7、残りは sp+0, sp+4,...*)
+      (* 引数: 先頭8ワードはa0〜a7、残りはsp+0, sp+4,... *)
       List.iteri (fun k v ->
         if k < 8 then
           Printf.bprintf buf "lw a%d, %d(sp)\n" k (s v)
         else begin
           Printf.bprintf buf "lw t0, %d(sp)\n" (s v);
           Printf.bprintf buf "sw t0, %d(sp)\n" (4 * (k - 8))
-        end) args;
+        end
+      ) args;
       Printf.bprintf buf "jal ra, %s\n" name;
-      (*戻り値:a0, a1, ... をスロットへ*)
-      List.iteri (fun k r -> Printf.bprintf buf "sw a%d, %d(sp)\n" k (s r)) rs
+      (* 戻り値: 先頭8ワードはa0〜a7、残りはスタックから取得 *)
+      List.iteri (fun k r ->
+        if k < 8 then
+          Printf.bprintf buf "sw a%d, %d(sp)\n" k (s r)
+        else begin
+          Printf.bprintf buf "lw t0, %d(sp)\n" (4 * (k - 8));
+          Printf.bprintf buf "sw t0, %d(sp)\n" (s r)
+        end
+      ) rs
   | Bprint a ->
       Printf.bprintf buf "lw t0, %d(sp)\n" (s a);
       Printf.bprintf buf "li t1, 0x10000000\n"; (*UART*)
@@ -127,14 +153,22 @@ let emit_term (f : func) fr (t : terminator) =
       Printf.bprintf buf "bnez t0, .L_%s_%d\n" f.name lt;   (*真(0以外)ならlt*)
       Printf.bprintf buf "j .L_%s_%d\n" f.name lf        (*偽ならlf*)
   | Ret vs ->
-      (*戻り値をa0,a1,...に入れる*)
-      List.iteri (fun k v -> Printf.bprintf buf "lw a%d, %d(sp)\n" k (s v)) vs;
+      (* 戻り値: 先頭8ワードはa0〜a7、残りは呼び出し側のスタックへ *)
+      List.iteri (fun k v ->
+        if k < 8 then
+          Printf.bprintf buf "lw a%d, %d(sp)\n" k (s v)
+        else begin
+          Printf.bprintf buf "lw t0, %d(sp)\n" (s v);
+          Printf.bprintf buf "sw t0, %d(sp)\n"
+            (fr.size + 4 * (k - 8))
+        end
+      ) vs;
       Printf.bprintf buf "lw ra, %d(sp)\n" fr.ra_off;
       Printf.bprintf buf "addi sp, sp, %d\n" fr.size;
       Printf.bprintf buf "jalr x0, ra, 0\n"
 
 (*関数*)
-let emit_func (f : func) =
+let emit_func (m : mode) (f : func) =
   let fr = make_frame f in
   let s v = fr.out_bytes + 4 * v in (*vreg vのspからの距離*)
   Printf.bprintf buf "\n.globl %s\n" f.name;
@@ -152,7 +186,7 @@ let emit_func (f : func) =
   (*ブロック*)
   List.iter (fun b ->
     Printf.bprintf buf ".L_%s_%d:\n" f.name b.label;
-    List.iter (emit_instr fr) b.body;
+    List.iter (emit_instr m fr) b.body;
     emit_term f fr b.term) f.blocks
 
 (*c-7*)
@@ -235,25 +269,74 @@ jalr x0, ra, 0
 
 .globl __q16_rsqrt
 __q16_rsqrt:
-blez a0, .L_rsqrt_zero
-addi sp, sp, -16
-sw ra, 12(sp)
-jal ra, __q16_sqrt
-jal ra, __q16_rcp
-lw ra, 12(sp)
-addi sp, sp, 16
-jalr x0, ra, 0
+    blez a0, .L_rsqrt_zero
+    addi sp, sp, -64
+    sw a0, 0(sp)             # x_raw
+    sw x0, 4(sp)             # result r = 0
+    li t0, 0x01000000        # bit = 2^24
+    sw t0, 8(sp)
+.L_rsqrt_loop:
+    lw t0, 8(sp)
+    beqz t0, .L_rsqrt_done
+    lw t1, 4(sp)
+    or t2, t1, t0            # candidate c = r | bit
+    sw t2, 12(sp)
+
+    # sq = c*c, as unsigned 64-bit (hi:lo)
+    mul t3, t2, t2
+    mulhu t4, t2, t2
+    sw t3, 16(sp)            # sq_lo
+    sw t4, 20(sp)            # sq_hi
+
+    lw t5, 0(sp)             # x_raw
+    # a = sq_hi * x_raw (64-bit)
+    mul t6, t4, t5
+    mulhu t0, t4, t5
+    sw t6, 24(sp)            # a_lo
+    sw t0, 28(sp)            # a_hi
+    # b = sq_lo * x_raw (64-bit)
+    mul t1, t3, t5
+    mulhu t2, t3, t5
+    sw t1, 32(sp)            # b_lo
+    sw t2, 36(sp)            # b_hi = b >> 32
+
+    # high = a + b_hi; accept iff high < 2^16,
+    # or high == 2^16 and b_lo == 0 (i.e. sq*x <= 2^48).
+    lw t3, 24(sp)             # a_lo
+    lw t4, 36(sp)             # b_hi
+    add t5, t3, t4            # high_lo
+    sltu t6, t5, t3           # carry
+    lw t0, 28(sp)             # a_hi
+    add t0, t0, t6            # high_hi
+    bnez t0, .L_rsqrt_next
+    li t1, 65536
+    bltu t5, t1, .L_rsqrt_accept
+    bne t5, t1, .L_rsqrt_next
+    lw t2, 32(sp)             # b_lo
+    bnez t2, .L_rsqrt_next
+.L_rsqrt_accept:
+    lw t0, 12(sp)
+    sw t0, 4(sp)
+.L_rsqrt_next:
+    lw t0, 8(sp)
+    srli t0, t0, 1
+    sw t0, 8(sp)
+    j .L_rsqrt_loop
+.L_rsqrt_done:
+    lw a0, 4(sp)
+    addi sp, sp, 64
+    jalr x0, ra, 0
 .L_rsqrt_zero:
-li a0, 0
-jalr x0, ra, 0
+    li a0, 0
+    jalr x0, ra, 0
 |}
 
-let emit_program (p : program) : string =
+let emit_program (m : mode) (p : program) : string =
   Buffer.clear buf;
   Printf.bprintf buf ".section .text\n";
 
-  List.iter emit_func p.funcs;
-  Buffer.add_string buf runtime;
+  List.iter (emit_func m) p.funcs;
+  (if m = Off then Buffer.add_string buf runtime);
   (*定数データ*)
   if p.consts <> [] then begin
     Printf.bprintf buf "\n.section .rodata\n";
@@ -264,3 +347,4 @@ let emit_program (p : program) : string =
       List.iter (fun w -> Printf.bprintf buf ".word %ld\n" w) words) p.consts
   end;
   Buffer.contents buf
+

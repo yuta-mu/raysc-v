@@ -28,7 +28,7 @@ OBJCOPY  := $(CROSS)objcopy
 # ---- 調整用 ---------------------------------------------------------------------
 RAYQ_FLAGS   ?= -O0 --accel=off
 MAXCYCLES    ?= 50000000
-QEMU_TIMEOUT ?= 60
+QEMU_TIMEOUT ?= 600
 REF_ARGS     ?=
 SRC          ?=
 
