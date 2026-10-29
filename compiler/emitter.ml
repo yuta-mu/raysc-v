@@ -259,8 +259,8 @@ __q16_sqrt:
     li      a0, 0
     ret
 
-.globl q16_rsqrt
-q16_rsqrt:
+.globl __q16_rsqrt
+__q16_rsqrt:
     mv      a1, a0
     blez    a0, .L_rsqrt_zero_or_neg
     li      t1, 25
