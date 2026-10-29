@@ -48,7 +48,13 @@ let () =
   if !dump_ir then Ir.dump_program stdout ir;   (* --dump-ir のときは IR を表示 *)
 
   let asm =
-    try Emitter.emit_program ir with
+    let m = match !accel_mode with
+      | "off" -> Emitter.Off
+      | "math" -> Emitter.Math
+      | "isect" -> Emitter.Isect
+      | _ -> prerr_endline ("Unknown accelerator mode: " ^ !accel_mode); exit 1
+    in
+    try Emitter.emit_program m ir with
     | Failure msg -> prerr_endline msg; exit 1    (* frame too large など *)
   in
   let out = open_out !output_file in

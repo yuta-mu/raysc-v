@@ -1,0 +1,700 @@
+76,78c76,78
+< lw a0, 240(sp)
+< jal ra, __q16_rcp
+< sw a0, 244(sp)
+---
+> lw t0, 240(sp)
+> qrcp t0, t0
+> sw t0, 244(sp)
+81,85c81
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+107,109c103,105
+< lw a0, 272(sp)
+< jal ra, __q16_rcp
+< sw a0, 276(sp)
+---
+> lw t0, 272(sp)
+> qrcp t0, t0
+> sw t0, 276(sp)
+112,116c108
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+375,379c367
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+390,394c378
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+398,402c382
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+418,422c398
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+654,658c630
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+668,672c640
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+996,998c964,966
+< lw a0, 380(sp)
+< jal ra, __q16_rcp
+< sw a0, 384(sp)
+---
+> lw t0, 380(sp)
+> qrcp t0, t0
+> sw t0, 384(sp)
+1065,1067c1033,1035
+< lw a0, 0(sp)
+< jal ra, __q16_sqrt
+< sw a0, 24(sp)
+---
+> lw t0, 0(sp)
+> qsqrt t0, t0
+> sw t0, 24(sp)
+1108,1112c1076
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+1122,1124c1086,1088
+< lw a0, 20(sp)
+< jal ra, __q16_rcp
+< sw a0, 24(sp)
+---
+> lw t0, 20(sp)
+> qrcp t0, t0
+> sw t0, 24(sp)
+1127,1131c1091
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+1253,1257c1213
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+1312,1316c1268
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+1326,1330c1278
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+1375,1377c1323,1325
+< lw a0, 108(sp)
+< jal ra, __q16_sqrt
+< sw a0, 312(sp)
+---
+> lw t0, 108(sp)
+> qsqrt t0, t0
+> sw t0, 312(sp)
+1388,1392c1336
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+1467,1471c1411
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+1479,1483c1419
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+1493,1497c1429
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+2006,2008c1938,1940
+< lw a0, 140(sp)
+< jal ra, __q16_sqrt
+< sw a0, 540(sp)
+---
+> lw t0, 140(sp)
+> qsqrt t0, t0
+> sw t0, 540(sp)
+2761,2763c2693,2695
+< lw a0, 80(sp)
+< jal ra, __q16_rcp
+< sw a0, 428(sp)
+---
+> lw t0, 80(sp)
+> qrcp t0, t0
+> sw t0, 428(sp)
+2799,2803c2731
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+2812,2814c2740,2742
+< lw a0, 468(sp)
+< jal ra, __q16_sqrt
+< sw a0, 472(sp)
+---
+> lw t0, 468(sp)
+> qsqrt t0, t0
+> sw t0, 472(sp)
+2823,2827c2751
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+3083,3087c3007
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+3093,3097c3013
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+3103,3107c3019
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+3119,3121c3031,3033
+< lw a0, 44(sp)
+< jal ra, __q16_rcp
+< sw a0, 48(sp)
+---
+> lw t0, 44(sp)
+> qrcp t0, t0
+> sw t0, 48(sp)
+3124,3128c3036
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+3136,3140c3044
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+3150,3152c3054,3056
+< lw a0, 72(sp)
+< jal ra, __q16_rcp
+< sw a0, 76(sp)
+---
+> lw t0, 72(sp)
+> qrcp t0, t0
+> sw t0, 76(sp)
+3155,3159c3059
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+3387,3391c3287
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+3495,3497c3391,3393
+< lw a0, 24(sp)
+< jal ra, __q16_rsqrt
+< sw a0, 116(sp)
+---
+> lw t0, 24(sp)
+> qrsqrt t0, t0
+> sw t0, 116(sp)
+3969,3973c3865
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+3987,3991c3879
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+3997,4001c3885
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4017,4021c3901
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4027,4031c3907
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4047,4051c3923
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4057,4061c3929
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4226,4228c4094,4096
+< lw a0, 44(sp)
+< jal ra, __q16_rcp
+< sw a0, 48(sp)
+---
+> lw t0, 44(sp)
+> qrcp t0, t0
+> sw t0, 48(sp)
+4231,4235c4099
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4241,4245c4105
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4259,4263c4119
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4269,4273c4125
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4279,4283c4131
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4295,4299c4143
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4359,4363c4203
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4367,4371c4207
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4379,4383c4215
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4387,4391c4219
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4399,4403c4227
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4407,4411c4231
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4443,4447c4263
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4451,4455c4267
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4463,4467c4275
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4512,4516c4320
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4520,4524c4324
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4528,4532c4328
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4678,4682c4474
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4794,4796c4586,4588
+< lw a0, 136(sp)
+< jal ra, __q16_sqrt
+< sw a0, 140(sp)
+---
+> lw t0, 136(sp)
+> qsqrt t0, t0
+> sw t0, 140(sp)
+4844,4848c4636
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4852,4856c4640
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4860,4864c4644
+< mul t2, t0, t1
+< mulh t3, t0, t1
+< srli t2, t2, 16
+< slli t3, t3, 16
+< or t0, t2, t3
+---
+> qmul t0, t0, t1
+4960,4962c4740,4742
+< lw a0, 12(sp)
+< jal ra, __q16_rsqrt
+< sw a0, 52(sp)
+---
+> lw t0, 12(sp)
+> qrsqrt t0, t0
+> sw t0, 52(sp)
+5337,5475d5116
+< 
+< .globl __q16_sqrt
+< __q16_sqrt:
+< blez a0, .L_sqrt_zero
+< srai t4, a0, 16
+< slli t5, a0, 16
+< li t0, 0
+< li t1, 0x01000000
+< li a2, 0
+< .L_sqrt_loop:
+< add t2, t0, t1
+< srli t2, t2, 1
+< mul t6, t2, t2
+< mulh a1, t2, t2
+< blt a1, t4, .L_sqrt_le
+< bgt a1, t4, .L_sqrt_gt
+< bgeu t5, t6, .L_sqrt_le
+< .L_sqrt_gt:
+< addi t1, t2, -1
+< j .L_sqrt_check
+< .L_sqrt_le:
+< mv a2, t2
+< addi t0, t2, 1
+< .L_sqrt_check:
+< bge t1, t0, .L_sqrt_loop
+< mv a0, a2
+< jalr x0, ra, 0
+< .L_sqrt_zero:
+< li a0, 0
+< jalr x0, ra, 0
+< 
+< .globl __q16_rcp
+< __q16_rcp:
+< beqz a0, .L_rcp_max
+< li t0, 0
+< bgez a0, .L_rcp_abs
+< li t0, 1
+< sub a0, x0, a0
+< .L_rcp_abs:
+< li t3, 3
+< bltu a0, t3, .L_rcp_sat
+< li a1, 1
+< li a2, 0
+< li a3, 0
+< li t1, 32
+< .L_rcp_loop:
+< slli a3, a3, 1
+< srli t2, a2, 31
+< slli a1, a1, 1
+< or a1, a1, t2
+< slli a2, a2, 1
+< bltu a1, a0, .L_rcp_next
+< sub a1, a1, a0
+< ori a3, a3, 1
+< .L_rcp_next:
+< addi t1, t1, -1
+< bnez t1, .L_rcp_loop
+< beqz t0, .L_rcp_pos_ret
+< or t3, a1, a2
+< beqz t3, .L_rcp_neg_exact
+< addi a3, a3, 1
+< .L_rcp_neg_exact:
+< sub a0, x0, a3
+< jalr x0, ra, 0
+< .L_rcp_pos_ret:
+< mv a0, a3
+< jalr x0, ra, 0
+< .L_rcp_sat:
+< bnez t0, .L_rcp_min
+< .L_rcp_max:
+< lui a0, 0x80000
+< addi a0, a0, -1
+< jalr x0, ra, 0
+< .L_rcp_min:
+< lui a0, 0x80000
+< jalr x0, ra, 0
+< 
+< .globl __q16_rsqrt
+< __q16_rsqrt:
+<     blez a0, .L_rsqrt_zero
+<     addi sp, sp, -64
+<     sw a0, 0(sp)             # x_raw
+<     sw x0, 4(sp)             # result r = 0
+<     li t0, 0x01000000        # bit = 2^24
+<     sw t0, 8(sp)
+< .L_rsqrt_loop:
+<     lw t0, 8(sp)
+<     beqz t0, .L_rsqrt_done
+<     lw t1, 4(sp)
+<     or t2, t1, t0            # candidate c = r | bit
+<     sw t2, 12(sp)
+< 
+<     # sq = c*c, as unsigned 64-bit (hi:lo)
+<     mul t3, t2, t2
+<     mulhu t4, t2, t2
+<     sw t3, 16(sp)            # sq_lo
+<     sw t4, 20(sp)            # sq_hi
+< 
+<     lw t5, 0(sp)             # x_raw
+<     # a = sq_hi * x_raw (64-bit)
+<     mul t6, t4, t5
+<     mulhu t0, t4, t5
+<     sw t6, 24(sp)            # a_lo
+<     sw t0, 28(sp)            # a_hi
+<     # b = sq_lo * x_raw (64-bit)
+<     mul t1, t3, t5
+<     mulhu t2, t3, t5
+<     sw t1, 32(sp)            # b_lo
+<     sw t2, 36(sp)            # b_hi = b >> 32
+< 
+<     # high = a + b_hi; accept iff high < 2^16,
+<     # or high == 2^16 and b_lo == 0 (i.e. sq*x <= 2^48).
+<     lw t3, 24(sp)             # a_lo
+<     lw t4, 36(sp)             # b_hi
+<     add t5, t3, t4            # high_lo
+<     sltu t6, t5, t3           # carry
+<     lw t0, 28(sp)             # a_hi
+<     add t0, t0, t6            # high_hi
+<     bnez t0, .L_rsqrt_next
+<     li t1, 65536
+<     bltu t5, t1, .L_rsqrt_accept
+<     bne t5, t1, .L_rsqrt_next
+<     lw t2, 32(sp)             # b_lo
+<     bnez t2, .L_rsqrt_next
+< .L_rsqrt_accept:
+<     lw t0, 12(sp)
+<     sw t0, 4(sp)
+< .L_rsqrt_next:
+<     lw t0, 8(sp)
+<     srli t0, t0, 1
+<     sw t0, 8(sp)
+<     j .L_rsqrt_loop
+< .L_rsqrt_done:
+<     lw a0, 4(sp)
+<     addi sp, sp, 64
+<     jalr x0, ra, 0
+< .L_rsqrt_zero:
+<     li a0, 0
+<     jalr x0, ra, 0
