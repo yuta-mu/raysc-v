@@ -46,7 +46,8 @@ let () =
     | Semant.Error msg -> prerr_endline ("semantic error: " ^ msg); exit 1
   in
   let ir = if !opt_level >= 1 then Fold.run ir else ir in
-
+  let ir = if !opt_level >= 1 then Dce.run ir else ir in
+  (*let ir = if !opt_level >= 1 then Inline.run ir else ir in*)
   if !dump_ir then Ir.dump_program stdout ir;   (* --dump-ir のときは IR を表示 *)
 
   let asm =
