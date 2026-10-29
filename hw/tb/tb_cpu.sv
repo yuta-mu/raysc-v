@@ -34,34 +34,56 @@ module tb_cpu;
     logic        mem_write;
     logic [31:0] mem_addr;
     logic [31:0] mem_wdata;
+    logic [3:0]  mem_wstrb;
     logic [31:0] mem_rdata;
+    logic        halted;
+    logic [63:0] cycles;
+    logic [63:0] instret;
     logic        retire;
 
+    logic        uart_stall;
+    assign       uart_stall = 1'b0;
+
     cpu u_cpu (
-        .clk       (clk),
-        .rst_n     (rst_n),
-        .pc        (pc),
-        .inst      (inst),
-        .mem_read  (mem_read),
-        .mem_write (mem_write),
-        .mem_addr  (mem_addr),
-        .mem_wdata (mem_wdata),
-        .mem_rdata (mem_rdata),
-        .retire    (retire)
+        .*
     );
 
-    logic [31:0] memory [0:MEM_WORDS-1];
+    logic [31:0] bram_rdata;
+    logic        is_bram_addr;
+    assign is_bram_addr = (mem_addr < MEM_BYTES);
 
-    assign inst = memory[pc[17:2]];
+    bram #(
+        .MEM_WORDS(MEM_WORDS)
+    ) u_bram (
+        .clk     (clk),
+        // Port A (命令)
+        .a_addr  (pc),
+        .a_rdata (inst),
+        // Port B (データ)
+        .b_en    ((mem_read || mem_write) && is_bram_addr),
+        .b_we    (mem_write && is_bram_addr),
+        .b_wstrb (mem_wstrb),
+        .b_addr  (mem_addr),
+        .b_wdata (mem_wdata),
+        .b_rdata (bram_rdata)
+    );
+    // MMIOの読み出しもBRAMと同じ1サイクル遅延に合わせる
+    logic [31:0] mem_addr_d;
+    logic        mem_read_d;
+    logic [31:0] cycle_rdata_d;
 
-    // 読み出し: メモリ / cycles(下位32bit。更新前の値) / それ以外は 0
-    assign mem_rdata = !mem_read                ? 32'h0 :
-                       (mem_addr < MEM_BYTES)   ? memory[mem_addr[17:2]] :
-                       (mem_addr == CYCLE_ADDR) ? cycle_count[31:0] : 32'h0;
+    always_ff @(posedge clk) begin
+        mem_addr_d    <= mem_addr;
+        mem_read_d    <= mem_read;
+        cycle_rdata_d <= cycles[31:0];
+    end
+
+    // データバス マルチプレクサ
+    assign mem_rdata = !mem_read_d                 ? 32'h0 :
+                       (mem_addr_d < MEM_BYTES)    ? bram_rdata :
+                       (mem_addr_d == CYCLE_ADDR)  ? cycle_rdata_d : 32'h0;
 
     string           hex_file, uart_file, trace_file, vcd_file;
-    longint unsigned cycle_count = 0;      // リセット解除後の経過サイクル
-    longint unsigned instret     = 0;      // retire した命令数 (ebreak は数えない)
     longint unsigned max_cycles  = 50000000;
     integer          uart_fd     = 0;
     integer          trace_fd    = 0;
@@ -82,9 +104,10 @@ module tb_cpu;
         if ($value$plusargs("uart=%s", uart_file))        uart_fd  = $fopen(uart_file, "w");
         if ($value$plusargs("retire_trace=%s", trace_file)) trace_fd = $fopen(trace_file, "w");
 
-        for (int i = 0; i < MEM_WORDS; i++) memory[i] = 32'h0;
-        if ($value$plusargs("hex=%s", hex_file)) $readmemh(hex_file, memory);
-        else $fatal(1, "+hex=FILE is required");
+        for (int i = 0; i < MEM_WORDS; i++) u_bram.mem[i] = 32'h0;
+
+        if (!$value$plusargs("hex=%s", hex_file)) hex_file = "boot.hex";
+        $readmemh(hex_file, u_bram.mem);
 
         #25;
         rst_n = 1;
@@ -99,12 +122,7 @@ module tb_cpu;
                     $write("%c", mem_wdata[7:0]);
                     $fflush();
                 end
-            end else if (mem_addr < MEM_BYTES) begin
-                if (u_cpu.mem_wstrb[0]) memory[mem_addr[17:2]][7:0]   <= mem_wdata[7:0];
-                if (u_cpu.mem_wstrb[1]) memory[mem_addr[17:2]][15:8]  <= mem_wdata[15:8];
-                if (u_cpu.mem_wstrb[2]) memory[mem_addr[17:2]][23:16] <= mem_wdata[23:16];
-                if (u_cpu.mem_wstrb[3]) memory[mem_addr[17:2]][31:24] <= mem_wdata[31:24];
-            end else begin
+             end else if (mem_addr >= MEM_BYTES) begin
                 $display("[WARN] store to unmapped address 0x%08h (pc=0x%08h)", mem_addr, pc);
             end
         end
@@ -112,7 +130,7 @@ module tb_cpu;
 
     task automatic finish_sim(input string kind);
         // 最終 cycles は ebreak をコミットしたサイクルまで数える (仕様 §8: 最終 cycles = t_h + 1)
-        $display("[HALT] kind=%s pc=0x%08h cycles=%0d instret=%0d", kind, pc, cycle_count + 1, instret);
+        $display("[HALT] kind=%s pc=0x%08h cycles=%0d instret=%0d", kind, pc, cycles + 1, instret);
         if (uart_fd  != 0) $fclose(uart_fd);
         if (trace_fd != 0) $fclose(trace_fd);
         $finish;
@@ -120,19 +138,15 @@ module tb_cpu;
 
     always @(posedge clk) begin
         if (rst_n) begin
-            if (trace_en) $display("Cycle %0d | PC: 0x%08h | Inst: 0x%08h", cycle_count, pc, inst);
+            if (trace_en) $display("Cycle %0d | PC: 0x%08h | Inst: 0x%08h", cycles, pc, inst);
 
             if (retire && trace_fd != 0) $fwrite(trace_fd, "%08x %08x\n", pc, inst);
-            if (retire && inst != EBREAK) instret <= instret + 1;
-            cycle_count <= cycle_count + 1;
 
-            // 単一サイクルコアでは、命令を取り込んだサイクルで ebreak が実行される。
-            // (パイプライン化したら、retire 段の pc / 命令で判定するよう置き換える)
-            if (inst == EBREAK)    finish_sim("ebreak");
-            if (inst == SELF_LOOP) finish_sim("self-loop");
+            if (u_cpu.u_datapath.wb_valid && u_cpu.u_datapath.wb_ebreak) finish_sim("ebreak");
+            if (u_cpu.halted) finish_sim("ebreak");
 
-            if (cycle_count > max_cycles) begin
-                $display("[TIMEOUT] Reached maximum cycle limit (%0d cycles).", cycle_count);
+            if (cycles > max_cycles) begin
+                $display("[TIMEOUT] Reached maximum cycle limit (%0d cycles).", cycles);
                 $finish;
             end
         end

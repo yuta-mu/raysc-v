@@ -7,8 +7,8 @@ from asm_types import REG_MAP, OPCODES, PSEUDO_INSTRUCTIONS
 
 NOP = "addi x0, x0, 0"
 
-# sp 初期値: コアのメモリ構成に合わせて決める
-STARTUP_STACK_LUI = 0x40
+# sp 初期値: RayQ仕様
+DEFAULT_STACK_TOP = 0x0004_0000
 
 # バイト/ハーフ単位のデータは未対応
 UNSUPPORTED_DATA_DIRECTIVES = {
@@ -192,7 +192,7 @@ def expand_pseudo(line, symbol_table=None):
         if len(args) != 2:
             raise ValueError("'la' expects 2 operands")
         rd, sym = args
-        return [f"auipc {rd}, %pcrel_hi({sym})", f"addi {rd}, {rd}, %pcrel_lo({sym})"]
+        return [f"lui {rd}, %hi({sym})", f"addi {rd}, {rd}, %lo({sym})"]
 
     if op == 'jal' and len(args) == 1:
         return [f"jal ra, {args[0]}"]
@@ -209,8 +209,8 @@ def expand_pseudo(line, symbol_table=None):
     return [line.strip()]
 
 
-def resolve_pcrel(line, current_pc, symbol_table=None):
-    """%pcrel_hi(sym) / %pcrel_lo(sym) を数値に置換"""
+def resolve_abs(line, symbol_table=None):
+    """%hi(sym) / %lo(sym) を絶対アドレスの数値に置換"""
     if symbol_table is None:
         symbol_table = {}
 
@@ -218,19 +218,20 @@ def resolve_pcrel(line, current_pc, symbol_table=None):
         kind, sym = m.group(1), m.group(2).strip()
         if sym not in symbol_table:
             raise ValueError(f"Undefined label: '{sym}'")
-        base = current_pc if kind == 'hi' else current_pc - 4
-        offset = symbol_table[sym] - base
-        if kind == 'hi':
-            return str(((offset + 0x800) >> 12) & 0xFFFFF)
-        return str(((offset & 0xFFF) ^ 0x800) - 0x800)
-    return re.sub(r'%pcrel_(hi|lo)\(([^)]*)\)', repl, line)
+        addr = symbol_table[sym]
+        lo = ((addr & 0xFFF) ^ 0x800) - 0x800
+        hi = ((addr - lo) >> 12) & 0xFFFFF
+        return str(hi if kind == 'hi' else lo)
+
+    return re.sub(r'%(hi|lo)\(([^)]*)\)', repl, line)
+
 
 def assemble_line(line, current_pc=0, symbol_table=None):
     """基本命令1行 -> 16進数(8桁)"""
     if symbol_table is None:
         symbol_table = {}
 
-    line = resolve_pcrel(line, current_pc, symbol_table)
+    line = resolve_abs(line, symbol_table)
     tokens = tokenize(line)
     if not tokens:
         raise ValueError("Empty instruction")
@@ -247,6 +248,13 @@ def assemble_line(line, current_pc=0, symbol_table=None):
         check_args(tokens, 3)
         rd, rs1, rs2 = parse_reg(tokens[1]), parse_reg(tokens[2]), parse_reg(tokens[3])
         val = (info['funct7'] << 25) | (rs2 << 20) | (rs1 << 15) | (info['funct3'] << 12) | (rd << 7) | info['opcode']
+        return f"{val:08x}"
+
+    # R1-type qmul以外のcustom-0(rs2はx0)
+    elif fmt == 'R1':
+        check_args(tokens, 2)
+        rd, rs1 = parse_reg(tokens[1]), parse_reg(tokens[2])
+        val = (info['funct7'] << 25) | (0 << 20) | (rs1 << 15) | (info['funct3'] << 12) | (rd << 7) | info['opcode']
         return f"{val:08x}"
 
     # I-type
@@ -350,13 +358,20 @@ def report_errors(input_file, errors):
         print(f"{input_file}:{lineno or '(startup)'}: error: {e}\n    {raw.strip()}")
     sys.exit(1)
 
+def auto_int(s):
+    return int(s, 0)
 
 def main():
-    ap = argparse.ArgumentParser(description="RV32I(+M) assembler")
+    ap = argparse.ArgumentParser(description="RV32IM + custom-0 assembler")
     ap.add_argument("input", help="input .s file")
     ap.add_argument("-o", "--output", default="output.hex", help="output .hex file")
     ap.add_argument("--no-startup", action="store_true", help="startup code なし")
+    ap.add_argument("--halt", choices=["ebreak", "loop"], default="ebreak", help="main 復帰後の停止方法 (既定: ebreak)")
+    ap.add_argument("--stack-top", type=auto_int, default=DEFAULT_STACK_TOP, help="スタートアップの初期 sp (既定: 0x40000)")
     args = ap.parse_args()
+
+    if args.stack_top % 4 or not 0 <= args.stack_top < (1 << 32):
+        ap.error("--stack-top must be 4-byte aligned and within 32 bits")
 
     input_file = args.input
     output_file = args.output
@@ -369,10 +384,11 @@ def main():
     # mainあるときだけ挿入
     has_main = any(re.match(r'^\s*main\s*:', l) for l in lines)
     if has_main and not args.no_startup:
+        halt = "ebreak" if args.halt == "ebreak" else "j __halt"
         startup_code = [
-            f"lui sp, {STARTUP_STACK_LUI:#x}",
+            f"li sp, {args.stack_top}",
             "jal ra, main",
-            "ebreak",
+            f"__halt: {halt}",
         ]
         numbered = [(0, l) for l in startup_code] + numbered
 
@@ -529,8 +545,8 @@ def main():
 if __name__ == "__main__":
     main()
 
-# asm:
-# 	python ../tools/assembler.py ../tools/test.s -o ../tools/test.hex
+#   python assembler.py prog.s -o prog.hex                    # main があればスタートアップ付き
+#   python assembler.py prog.s -o prog.hex --no-startup       # スタートアップなし
+#   python assembler.py prog.s --halt loop                    # 停止を ebreak ではなく自己ループにする
+#   python assembler.py prog.s --stack-top 0x10000            # 初期 sp を変える (既定 0x40000)
 
-# python assembler.py prog.s -o prog.hex                # main があれば付く
-# python assembler.py prog.s -o prog.hex --no-startup   # 付けない
