@@ -9,6 +9,8 @@ type frame = {
   ra_off : int;                  (* ra を置く場所 *)
   size : int;                    (* フレーム全体の大きさ F(4の倍数) *)
 }
+(*コンパイラのモード*)
+type mode = Off | Math | Isect
 
 let make_frame (f : func) =
   (* 呼び出し時に必要なスタック引数・戻り値領域の最大ワード数 *)
@@ -36,7 +38,7 @@ let make_frame (f : func) =
   { out_bytes; arrays; ra_off = size - 4; size }
 
 (*命令*)
-let emit_instr fr (i : instr) =
+let emit_instr (m : mode) fr (i : instr) =
   let s v = fr.out_bytes + 4 * v in (*vreg vのスロットの場所*)
   match i with
   | Const (d, n) ->
@@ -53,11 +55,14 @@ let emit_instr fr (i : instr) =
        | Sub -> Printf.bprintf buf "sub t0, t0, t1\n"
        | Mul -> Printf.bprintf buf "mul t0, t0, t1\n"
        | QMul ->
-           Printf.bprintf buf "mul t2, t0, t1\n";     (*積の下位 32 ビット*)
-           Printf.bprintf buf "mulh t3, t0, t1\n";     (*積の上位 32 ビット*)
-           Printf.bprintf buf "srli t2, t2, 16\n";
-           Printf.bprintf buf "slli t3, t3, 16\n";
-           Printf.bprintf buf "or t0, t2, t3\n"
+          if m = Off then
+            (Printf.bprintf buf "mul t2, t0, t1\n";     (*積の下位 32 ビット*)
+            Printf.bprintf buf "mulh t3, t0, t1\n";     (*積の上位 32 ビット*)
+            Printf.bprintf buf "srli t2, t2, 16\n";
+            Printf.bprintf buf "slli t3, t3, 16\n";
+            Printf.bprintf buf "or t0, t2, t3\n")
+          else
+            Printf.bprintf buf "qmul t0, t0, t1\n"
        | Div -> Printf.bprintf buf "div t0, t0, t1\n"
        | Rem -> Printf.bprintf buf "rem t0, t0, t1\n"
        | Shl -> Printf.bprintf buf "sll t0, t0, t1\n"
@@ -81,11 +86,18 @@ let emit_instr fr (i : instr) =
       Printf.bprintf buf "xori t0, t0, 1\n"; (*boolは0か1*)
       Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
   | Intr (f, d, a) ->
-      let name = match f with
-        | Sqrt -> "__q16_sqrt" | Rsqrt -> "__q16_rsqrt" | Rcp -> "__q16_rcp" in
-      Printf.bprintf buf "lw a0, %d(sp)\n" (s a);
-      Printf.bprintf buf "jal ra, %s\n" name;
-      Printf.bprintf buf "sw a0, %d(sp)\n" (s d)
+      if m = Off then
+        (Printf.bprintf buf "lw a0, %d(sp)\n" (s a);
+        let name = match f with
+          | Sqrt -> "__q16_sqrt" | Rsqrt -> "__q16_rsqrt" | Rcp -> "__q16_rcp" in
+        Printf.bprintf buf "jal ra, %s\n" name;
+        Printf.bprintf buf "sw a0, %d(sp)\n" (s d))
+      else
+        (Printf.bprintf buf "lw t0, %d(sp)\n" (s a);
+        let cmd = match f with
+          | Sqrt -> "qsqrt" | Rsqrt -> "qrsqrt" | Rcp -> "qrcp" in
+        Printf.bprintf buf "%s t0, t0\n" cmd;
+        Printf.bprintf buf "sw t0, %d(sp)\n" (s d))
   | AddrLocal (d, id) ->
       Printf.bprintf buf "addi t0, sp, %d\n" (List.assoc id fr.arrays);
       Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
@@ -156,7 +168,7 @@ let emit_term (f : func) fr (t : terminator) =
       Printf.bprintf buf "jalr x0, ra, 0\n"
 
 (*関数*)
-let emit_func (f : func) =
+let emit_func (m : mode) (f : func) =
   let fr = make_frame f in
   let s v = fr.out_bytes + 4 * v in (*vreg vのspからの距離*)
   Printf.bprintf buf "\n.globl %s\n" f.name;
@@ -174,7 +186,7 @@ let emit_func (f : func) =
   (*ブロック*)
   List.iter (fun b ->
     Printf.bprintf buf ".L_%s_%d:\n" f.name b.label;
-    List.iter (emit_instr fr) b.body;
+    List.iter (emit_instr m fr) b.body;
     emit_term f fr b.term) f.blocks
 
 (*c-7*)
@@ -319,12 +331,12 @@ __q16_rsqrt:
     jalr x0, ra, 0
 |}
 
-let emit_program (p : program) : string =
+let emit_program (m : mode) (p : program) : string =
   Buffer.clear buf;
   Printf.bprintf buf ".section .text\n";
 
-  List.iter emit_func p.funcs;
-  Buffer.add_string buf runtime;
+  List.iter (emit_func m) p.funcs;
+  (if m = Off then Buffer.add_string buf runtime);
   (*定数データ*)
   if p.consts <> [] then begin
     Printf.bprintf buf "\n.section .rodata\n";
@@ -335,3 +347,4 @@ let emit_program (p : program) : string =
       List.iter (fun w -> Printf.bprintf buf ".word %ld\n" w) words) p.consts
   end;
   Buffer.contents buf
+

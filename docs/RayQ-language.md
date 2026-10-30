@@ -1,6 +1,6 @@
-# RayQ 言語仕様 v1.1
+# RayQ 言語仕様 v1.2
 
-RaySC-V プロジェクト / 2026-10-10
+RaySC-V プロジェクト / 2026-10-29
 
 コンパイラ: `rayqc` / ターゲット: RV32IM + custom-0 (Artix-7, ベアメタル)
 
@@ -108,11 +108,11 @@ static inline uint32_t i32_rem(uint32_t a, uint32_t b) {
 | `< <= > >=` | `i32` または `q16` (同型) | `bool` |
 | `== !=` | `bool` / `i32` / `q16` (同型) | `bool` |
 | `&& \|\|`, `!` | `bool` | `bool` |
-| 単項 `-` | `i32` / `q16` | 同型 |
+| 単項 `-` | `i32` / `q16` / `vec3` | 同型 |
 
 - `if` と `while` の条件は `bool` のみ。
 - 配列の添字は `i32` のみ。添字アクセスの結果型は要素の型。
-- `vec3` の単項 `-`、構造体・配列・`vec3` の比較は存在しない。
+- 構造体・配列・`vec3` の比較は存在しない。
 
 ## 5. 字句
 
@@ -264,7 +264,7 @@ static inline uint32_t q16_rcp(uint32_t x_raw) {
     if (q < -INT64_C(2147483648))  return 0x80000000U;
     return (uint32_t)(int32_t)q;
 }
-/* rsqrt: x <= 0 -> 0,  それ以外は rcp(sqrt(x)) */
+/* rsqrt: x <= 0 -> 0,  それ以外は floor(2^24 / sqrt(x)) */
 ```
 
 | 命令 (opcode `0x0B`, R-type) | funct3 | funct7 | rs2 | 動作 |
