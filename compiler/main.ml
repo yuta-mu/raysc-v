@@ -4,6 +4,8 @@ let () =
   let opt_level = ref 0 in
   let accel_mode = ref "off" in
   let dump_ir = ref false in
+  let inline_flag = ref false in
+  let fold_flag = ref false in
 
   let speclist = [
     ("-o", Arg.Set_string output_file, "Output assembly file (.s)");
@@ -13,6 +15,8 @@ let () =
     ("-O3", Arg.Unit (fun () -> opt_level := 3), "Optimization level 3");
     ("--accel", Arg.Set_string accel_mode, "Accelerator mode (off|math|isect)");
     ("--dump-ir", Arg.Set dump_ir, "Print the IR to stdout");
+    ("--inline", Arg.Set inline_flag, "Inline all function calls");
+    ("--fold", Arg.Set fold_flag, "Constant folding / propagation");
   ] in
 
   Arg.parse speclist (fun f -> input_file := f) "Usage: rayqc <input.rq> -o <output.s>";
@@ -45,6 +49,11 @@ let () =
     try Translate.compile ctx with
     | Semant.Error msg -> prerr_endline ("semantic error: " ^ msg); exit 1
   in
+   let do_inline = !inline_flag || !opt_level >= 1 in
+  let do_fold = !fold_flag || !opt_level >= 1 in
+  let ir = if do_inline then Inline.run ir else ir in   (* 先に関数を展開して *)
+  let ir = if do_fold then Fold.run ir else ir in       (* 見えた定数を畳みこみ *)
+  let ir = if do_inline || do_fold then Dce.run ir else ir in   (* 使われなくなったものを消す *)
   if !dump_ir then Ir.dump_program stdout ir;   (* --dump-ir のときは IR を表示 *)
 
   let asm =
