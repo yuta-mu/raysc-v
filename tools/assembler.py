@@ -368,6 +368,13 @@ def main():
     ap.add_argument("--no-startup", action="store_true", help="startup code なし")
     ap.add_argument("--halt", choices=["ebreak", "loop"], default="ebreak", help="main 復帰後の停止方法 (既定: ebreak)")
     ap.add_argument("--stack-top", type=auto_int, default=DEFAULT_STACK_TOP, help="スタートアップの初期 sp (既定: 0x40000)")
+    ap.add_argument(
+        "--dump-perf",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="main 終了後に 16B カウンタを UART 出力する (既定: 有効)"
+    )
+
     args = ap.parse_args()
 
     if args.stack_top % 4 or not 0 <= args.stack_top < (1 << 32):
@@ -388,7 +395,28 @@ def main():
         startup_code = [
             f"li sp, {args.stack_top}",
             "jal ra, main",
+        ]
+        if args.dump_perf:
+            startup_code += [
+                # --- main 終了後、64bit カウンタ (計 16 バイト) を UART へ自動送信 ---
+                "li t0, 0x10000000",        # UART TX
+                "li t1, 0x20000000",        # 0x0: cyc_l, 0x4: cyc_h, 0x8: inst_l, 0xC: inst_h
+                "addi t2, t1, 16",          # 終了アドレス
+                "__dump_perf_loop:",
+                "lw t3, 0(t1)",             # 32bit カウンタ値をロード
+                "sb t3, 0(t0)",             # Byte 0 (LSB)
+                "srli t3, t3, 8",
+                "sb t3, 0(t0)",             # Byte 1
+                "srli t3, t3, 8",
+                "sb t3, 0(t0)",             # Byte 2
+                "srli t3, t3, 8",
+                "sb t3, 0(t0)",             # Byte 3 (MSB)
+                "addi t1, t1, 4",
+                "bne t1, t2, __dump_perf_loop",
+            ]
+        startup_code += [
             f"__halt: {halt}",
+            "j __halt",
         ]
         numbered = [(0, l) for l in startup_code] + numbered
 
