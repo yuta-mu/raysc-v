@@ -250,11 +250,12 @@ def assemble_line(line, current_pc=0, symbol_table=None):
         val = (info['funct7'] << 25) | (rs2 << 20) | (rs1 << 15) | (info['funct3'] << 12) | (rd << 7) | info['opcode']
         return f"{val:08x}"
 
-    # R1-type qmul以外のcustom-0(rs2はx0)
+    # R1-type
     elif fmt == 'R1':
         check_args(tokens, 2)
         rd, rs1 = parse_reg(tokens[1]), parse_reg(tokens[2])
-        val = (info['funct7'] << 25) | (0 << 20) | (rs1 << 15) | (info['funct3'] << 12) | (rd << 7) | info['opcode']
+        rs2_code = info.get('rs2', 0)
+        val = (info['funct7'] << 25) | (rs2_code << 20) | (rs1 << 15) | (info['funct3'] << 12) | (rd << 7) | info['opcode']
         return f"{val:08x}"
 
     # I-type

@@ -74,8 +74,8 @@ module top (
     localparam logic [31:0] MEM_BYTES     = 32'h0004_0000; // 256 KB
     localparam logic [31:0] UART_ADDR     = 32'h1000_0000;
     localparam logic [31:0] CYCLE_ADDR    = 32'h2000_0000;
-    localparam logic [31:0] INSTRET_ADDR  = 32'h2000_0004;
-    localparam logic [31:0] CYCLEH_ADDR   = 32'h2000_0008;
+    localparam logic [31:0] CYCLEH_ADDR   = 32'h2000_0004;
+    localparam logic [31:0] INSTRET_ADDR  = 32'h2000_0008;
     localparam logic [31:0] INSTRETH_ADDR = 32'h2000_000C;
 
     logic [31:0] pc, inst;
