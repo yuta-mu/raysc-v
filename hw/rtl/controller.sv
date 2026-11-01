@@ -36,7 +36,7 @@ module controller (
     alu_control u_alu_control (
         .alu_op   (alu_op_mode),
         .funct3   (funct3),
-        .funct7_5 (funct7[5]),
+        .funct7   (funct7),
         .alu_ctrl (alu_op)
     );
 
