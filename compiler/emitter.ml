@@ -197,17 +197,31 @@ let emit_instr (md : mode) (mrc : march) fr (i : instr) =
       Printf.bprintf buf "lw t0, 0(t1)\n";
       Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
   | Qabs (d, a) ->
-      Printf.bprintf buf "lw t0, %d(sp)\n" (s a);
-      Printf.bprintf buf "neg t1, t0\n";
-      Printf.bprintf buf "max t0, t1, t0\n";
-      Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
+      if mrc = Im_zbb then
+        (Printf.bprintf buf "lw t0, %d(sp)\n" (s a);
+        Printf.bprintf buf "neg t1, t0\n";
+        Printf.bprintf buf "max t0, t1, t0\n";
+        Printf.bprintf buf "sw t0, %d(sp)\n" (s d))
+      else
+        (Printf.bprintf buf "lw a0, %d(sp)\n" (s a);
+        Printf.bprintf buf "neg a1, a0\n";
+        Printf.bprintf buf "jal ra, __max\n";
+        Printf.bprintf buf "sw a0, %d(sp)\n" (s d))
   | Qclamp (d, a, b, c) ->
-      Printf.bprintf buf "lw t0, %d(sp)\n" (s a);
-      Printf.bprintf buf "lw t1, %d(sp)\n" (s b);
-      Printf.bprintf buf "lw t2, %d(sp)\n" (s c);
-      Printf.bprintf buf "max t0, t0, t1\n";
-      Printf.bprintf buf "min t0, t0, t2\n";
-      Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
+      if mrc = Im_zbb then
+        (Printf.bprintf buf "lw t0, %d(sp)\n" (s a);
+        Printf.bprintf buf "lw t1, %d(sp)\n" (s b);
+        Printf.bprintf buf "lw t2, %d(sp)\n" (s c);
+        Printf.bprintf buf "max t0, t0, t1\n";
+        Printf.bprintf buf "min t0, t0, t2\n";
+        Printf.bprintf buf "sw t0, %d(sp)\n" (s d))
+      else
+        (Printf.bprintf buf "lw a0, %d(sp)\n" (s a);
+        Printf.bprintf buf "lw a1, %d(sp)\n" (s b);
+        Printf.bprintf buf "jal ra, __max\n";
+        Printf.bprintf buf "lw a1, %d(sp)\n" (s c);
+        Printf.bprintf buf "jal ra, __min\n";
+        Printf.bprintf buf "sw t0, %d(sp)\n" (s d))
 
 (*終端*)
 (*ブロックのラベルは .L_関数名_番号*)

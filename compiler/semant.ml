@@ -26,7 +26,8 @@ type context = {
   global_names : (string, string) Hashtbl.t;
 }
 
-let builtins = ["print"; "bprint"; "cycles"; "q16"; "i32"; "vec3"; "sqrt"; "rsqrt"; "rcp"]
+let builtins = ["print"; "bprint"; "cycles"; "qmin"; "qmax"; "qabs"; "qclamp";
+                "q16"; "i32"; "vec3"; "sqrt"; "rsqrt"; "rcp"]
 
 let rec type_words structs = function
   | I32 | Q16 | Bool -> 1
@@ -204,6 +205,16 @@ let analyze program =
           (match x.desc with Literal (LString _) -> Void | _ -> error "print takes a string literal directly")
       | Call ("bprint", [x]) -> if infer x = I32 then Void else error "bprint expects i32"
       | Call ("cycles", []) -> I32
+      | Call ("qmin", [x; y]) ->
+          let tx = infer x and ty = infer y in
+          if tx = Q16 && ty = Q16 then Q16 else error "qmin expects two q16 arguments"
+      | Call ("qmax", [x; y]) ->
+          let tx = infer x and ty = infer y in
+          if tx = Q16 && ty = Q16 then Q16 else error "qmax expects two q16 arguments"
+      | Call ("qabs", [x]) -> if infer x = Q16 then Q16 else error "qabs expects q16"
+      | Call ("qclamp", [x; y; z]) ->
+          let tx = infer x and ty = infer y and tz = infer z in
+          if tx = Q16 && ty = Q16 && tz = Q16 then Q16 else error "qclamp expects three q16 arguments"
       | Call ("q16", [x]) -> if infer x = I32 then Q16 else error "q16 expects i32"
       | Call ("i32", [x]) -> if infer x = Q16 then I32 else error "i32 expects q16"
       | Call ("vec3", [x; y; z]) ->
