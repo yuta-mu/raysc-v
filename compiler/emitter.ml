@@ -11,6 +11,8 @@ type frame = {
 }
 (*コンパイラのモード*)
 type mode = Off | Math | Isect
+(*アーキテクチャ指定*)
+type march = I | Im | Im_zbb
 
 let make_frame (f : func) =
   (* 呼び出し時に必要なスタック引数・戻り値領域の最大ワード数 *)
@@ -38,7 +40,7 @@ let make_frame (f : func) =
   { out_bytes; arrays; ra_off = size - 4; size }
 
 (*命令*)
-let emit_instr (m : mode) fr (i : instr) =
+let emit_instr (m : mode) (a : march) fr (i : instr) =
   let s v = fr.out_bytes + 4 * v in (*vreg vのスロットの場所*)
   match i with
   | Const (d, n) ->
@@ -180,7 +182,7 @@ let emit_term (f : func) fr (t : terminator) =
       Printf.bprintf buf "jalr x0, ra, 0\n"
 
 (*関数*)
-let emit_func (m : mode) (f : func) =
+let emit_func (m : mode) (a : march) (f : func) =
   let fr = make_frame f in
   let s v = fr.out_bytes + 4 * v in (*vreg vのspからの距離*)
   Printf.bprintf buf "\n.globl %s\n" f.name;
@@ -198,11 +200,11 @@ let emit_func (m : mode) (f : func) =
   (*ブロック*)
   List.iter (fun b ->
     Printf.bprintf buf ".L_%s_%d:\n" f.name b.label;
-    List.iter (emit_instr m fr) b.body;
+    List.iter (emit_instr m a fr) b.body;
     emit_term f fr b.term) f.blocks
 
 (*c-7*)
-let runtime = {|
+let runtime_math = {|
 .globl __q16_sqrt
 __q16_sqrt:
 blez a0, .L_sqrt_zero
@@ -343,12 +345,23 @@ __q16_rsqrt:
     jalr x0, ra, 0
 |}
 
-let emit_program (m : mode) (p : program) : string =
+let runtime_m = {|
+|}
+
+let runtime_zbb = {|
+|}
+
+let emit_program (m : mode) (a : march) (p : program) : string =
   Buffer.clear buf;
   Printf.bprintf buf ".section .text\n";
 
-  List.iter (emit_func m) p.funcs;
-  (if m = Off then Buffer.add_string buf runtime);
+  List.iter (emit_func m a) p.funcs;
+  (if m = Off then Buffer.add_string buf runtime_math);
+  (match a with
+    | I -> (Buffer.add_string buf runtime_m;
+            Buffer.add_string buf runtime_zbb)
+    | Im -> (Buffer.add_string buf runtime_zbb)
+    | _ -> ());
   (*定数データ*)
   if p.consts <> [] then begin
     Printf.bprintf buf "\n.section .rodata\n";

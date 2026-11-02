@@ -5,7 +5,7 @@
 #   tests/rayq/foo.rq -> build/tests/rayq/foo.s / .hex / .qemu.elf / .rtl.out ...
 #
 # 約束事 (docs 参照):
-#   rayqc IN.rq [-O0..-O3] [--accel=off|math|isect] -o OUT.s   ... main: と定数データだけを出力
+#   rayqc IN.rq [-O0..-O3] [--accel=off|math|isect] [--march=rv32i|rv32im|rv32im_zbb] -o OUT.s   ... main: と定数データだけを出力
 #   tools/assembler.py IN.s -o OUT.hex                         ... 起動コード付き (PC=0, sp=0x40000, jal main, ebreak)
 #   hw/tb/tb_cpu.sv  +hex=FILE +uart=FILE +maxcycles=N          ... UART の 1 バイトごとに 2 桁 16 進 1 行を FILE へ書く。ebreak で $finish、超過で TIMEOUT を表示
 # =============================================================================
@@ -61,7 +61,7 @@ help:
 	@echo 'make test                       RTL 単体テスト (hw/tb/tb_*.sv)'
 	@echo 'make ref                        ホスト用 C リファレンスを実行し build/ref/golden.ppm を作る'
 	@echo 'make clean                      build/ を削除'
-	@echo 'option: RAYQ_FLAGS="-O2 --accel=math"  MAXCYCLES=N  QEMU_TIMEOUT=sec'
+	@echo 'option: RAYQ_FLAGS="-O2 --accel=math --march=rv32im_zbb"  MAXCYCLES=N  QEMU_TIMEOUT=sec'
 
 # ---- コンパイラ -----------------------------------------------------------------
 compiler: $(RAYQC)
