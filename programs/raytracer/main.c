@@ -1,7 +1,7 @@
 // gcc -O3 main.c -o render_c && ./render_c > golden_c.ppm
 // gcc -DGENERATE_SCENE main.c -o gen_scene && ./gen_scene <seed_num>
 
-#include "/home/lyra/raysc-v/ref/qmath.h"
+#include "../../ref/qmath.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
