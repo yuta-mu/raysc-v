@@ -138,7 +138,7 @@ let emit_instr (m : mode) fr (i : instr) =
       Printf.bprintf buf "sb t0, 0(t1)\n" (*下位 8 ビットを送る*)
   | Cycles d ->
       Printf.bprintf buf "li t1, 0x20000000\n"; (* cycle_lo *)
-      Printf.bprintf buf "lw t0, 0(t1)\n";
+      (*Printf.bprintf buf "lw t0, 0(t1)\n";
       Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
   | CyclesH d ->
       Printf.bprintf buf "li t1, 0x20000004\n"; (* cycle_hi *)
@@ -149,7 +149,7 @@ let emit_instr (m : mode) fr (i : instr) =
       Printf.bprintf buf "lw t0, 0(t1)\n";
       Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
   | InstretH d ->
-      Printf.bprintf buf "li t1, 0x2000000C\n"; (* instret_hi *)
+      Printf.bprintf buf "li t1, 0x2000000C\n"; (* instret_hi *)*)
       Printf.bprintf buf "lw t0, 0(t1)\n";
       Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
 
