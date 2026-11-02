@@ -19,6 +19,15 @@ type unop =
 (*平方根,平方根の逆数,逆数*)
 type intrinsic = Sqrt | Rsqrt | Rcp
 
+(*zbb二項演算*)
+type zbb_binop =
+  | Min | Max | Minu | Maxu
+  | Andn | Orn | Xnor
+
+(*zbb単項演算*)
+type zbb_unop =
+  | Clz | Sext_b | Sext_h
+
 (*どの配列かを表す型*)
 type region = 
   | Local of int   (*局所配列*)
@@ -31,6 +40,9 @@ type instr =
   | Bin   of binop * vreg * vreg * vreg        (*二項演算*)
   | Un    of unop * vreg * vreg                (*単項*)
   | Intr  of intrinsic * vreg * vreg           (*d=sqrt(a)など*)
+  (*zbb*)
+  | Zbb_b of zbb_binop * vreg * vreg * vreg
+  | Zbb_u of zbb_unop * vreg * vreg
   (*メモリの命令 配列を読み書き*)
   | AddrLocal  of vreg * int   (*d = 局所配列の先頭アドレス*)
   | AddrGlobal of vreg * string  (*d = constの先頭アドレス*)
@@ -82,6 +94,12 @@ let string_of_unop = function Neg -> "neg" | Not -> "not"
 
 let string_of_intrinsic = function Sqrt -> "sqrt" | Rsqrt -> "rsqrt" | Rcp -> "rcp"
 
+let string_of_zbb_b = function
+  | Min -> "min" | Max -> "max" | Minu -> "minu" | Maxu -> "maxu"
+  | Andn -> "andn" | Orn -> "orn" | Xnor -> "xnor"
+
+let string_of_zbb_u = function Clz -> "clz" | Sext_b -> "sext.b" | Sext_h -> "sext.h"
+
 let v n = "v" ^ string_of_int n
 let l n = "L" ^ string_of_int n
 let vs xs = String.concat ", " (List.map v xs)
@@ -96,6 +114,8 @@ let string_of_instr = function
   | Bin (op, d, a, b)   -> Printf.sprintf "%s = %s %s, %s" (v d) (string_of_binop op) (v a) (v b)
   | Un (op, d, a)       -> Printf.sprintf "%s = %s %s" (v d) (string_of_unop op) (v a)
   | Intr (f, d, a)      -> Printf.sprintf "%s = %s %s" (v d) (string_of_intrinsic f) (v a)
+  | Zbb_b (op, d, a, b) -> Printf.sprintf "%s = %s %s, %s" (v d) (string_of_zbb_b op) (v a) (v b)
+  | Zbb_u (op, d, a)    -> Printf.sprintf "%s = %s %s" (v d) (string_of_zbb_u op) (v a)
   | AddrLocal (d, id)   -> Printf.sprintf "%s = &array%d" (v d) id
   | AddrGlobal (d, s)   -> Printf.sprintf "%s = &%s" (v d) s
   | Load (d, r, a, ofs) -> Printf.sprintf "%s = load %s[%s + %d]" (v d) (string_of_region r) (v a) ofs
@@ -167,6 +187,7 @@ let blocks_of_items (items : item list) : block list =
 (*命令が書き込む vreg*)
 let defs = function
   | Const (d, _) | Move (d, _) | Bin (_, d, _, _) | Un (_, d, _) | Intr (_, d, _)
+  | Zbb_b (_, d, _, _) | Zbb_u (_, d, _)
   | AddrLocal (d, _) | AddrGlobal (d, _) | Load (d, _, _, _) | Cycles d -> [d]
   | Call (rs, _, _) -> rs 
   | Store _ | Bprint _ -> []
@@ -174,8 +195,9 @@ let defs = function
 (*命令が読み込む vreg*)
 let uses = function
   | Const _ | AddrLocal _ | AddrGlobal _ | Cycles _ -> []
-  | Move (_, a) | Un (_, _, a) | Intr (_, _, a) | Load (_, _, a, _) | Bprint a -> [a]
-  | Bin (_, _, a, b) -> [a; b]
+  | Move (_, a) | Un (_, _, a) | Intr (_, _, a) | Zbb_u (_, _, a)
+  | Load (_, _, a, _) | Bprint a -> [a]
+  | Bin (_, _, a, b) | Zbb_b (_, _, a, b) -> [a; b]
   | Store (_, a, _, s) -> [a; s]
   | Call (_, _, args) -> args
 

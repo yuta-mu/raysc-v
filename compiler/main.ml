@@ -50,19 +50,19 @@ let () =
   if !dump_ir then Ir.dump_program stdout ir;   (* --dump-ir のときは IR を表示 *)
 
   let asm =
-    let m = match !accel_mode with
+    let md = match !accel_mode with
       | "off" -> Emitter.Off
       | "math" -> Emitter.Math
       | "isect" -> Emitter.Isect
       | _ -> prerr_endline ("Unknown accelerator mode: " ^ !accel_mode); exit 1
     in
-    let a = match !march with
+    let mrc = match !march with
       | "rv32i" -> Emitter.I
       | "rv32im" -> Emitter.Im
       | "rv32im_zbb" -> Emitter.Im_zbb
       | _ -> prerr_endline ("Unknown target architecture: " ^ !march); exit 1
     in
-    try Emitter.emit_program m a ir with
+    try Emitter.emit_program md mrc ir with
     | Failure msg -> prerr_endline msg; exit 1    (* frame too large など *)
   in
   let out = open_out !output_file in

@@ -40,7 +40,7 @@ let make_frame (f : func) =
   { out_bytes; arrays; ra_off = size - 4; size }
 
 (*命令*)
-let emit_instr (m : mode) (a : march) fr (i : instr) =
+let emit_instr (md : mode) (mrc : march) fr (i : instr) =
   let s v = fr.out_bytes + 4 * v in (*vreg vのスロットの場所*)
   match i with
   | Const (d, n) ->
@@ -57,7 +57,7 @@ let emit_instr (m : mode) (a : march) fr (i : instr) =
        | Sub -> Printf.bprintf buf "sub t0, t0, t1\n"
        | Mul -> Printf.bprintf buf "mul t0, t0, t1\n"
        | QMul ->
-          if m = Off then
+          if md = Off then
             (Printf.bprintf buf "mul t2, t0, t1\n";     (*積の下位 32 ビット*)
             Printf.bprintf buf "mulh t3, t0, t1\n";     (*積の上位 32 ビット*)
             Printf.bprintf buf "srli t2, t2, 16\n";
@@ -88,7 +88,7 @@ let emit_instr (m : mode) (a : march) fr (i : instr) =
       Printf.bprintf buf "xori t0, t0, 1\n"; (*boolは0か1*)
       Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
   | Intr (f, d, a) ->
-      if m = Off then
+      if md = Off then
         (Printf.bprintf buf "lw a0, %d(sp)\n" (s a);
         let name = match f with
           | Sqrt -> "__q16_sqrt" | Rsqrt -> "__q16_rsqrt" | Rcp -> "__q16_rcp" in
@@ -100,6 +100,48 @@ let emit_instr (m : mode) (a : march) fr (i : instr) =
           | Sqrt -> "qsqrt" | Rsqrt -> "qrsqrt" | Rcp -> "qrcp" in
         Printf.bprintf buf "%s t0, t0\n" cmd;
         Printf.bprintf buf "sw t0, %d(sp)\n" (s d))
+  | Zbb_b (op, d, a, b) ->
+      if mrc = Im_zbb then
+        (Printf.bprintf buf "lw t0, %d(sp)\n" (s a);
+        Printf.bprintf buf "lw t1, %d(sp)\n" (s b);
+        (match op with
+          | Min  -> Printf.bprintf buf "min t0, t0, t1\n"
+          | Max  -> Printf.bprintf buf "max t0, t0, t1\n"
+          | Minu -> Printf.bprintf buf "minu t0, t0, t1\n"
+          | Maxu -> Printf.bprintf buf "maxu t0, t0, t1\n"
+          | Andn -> Printf.bprintf buf "andn t0, t0, t1\n"
+          | Orn  -> Printf.bprintf buf "orn t0, t0, t1\n"
+          | Xnor -> Printf.bprintf buf "xnor t0, t0, t1\n");
+        Printf.bprintf buf "sw t0, %d(sp)\n" (s d))
+      else
+        (Printf.bprintf buf "lw a0, %d(sp)\n" (s a);
+        Printf.bprintf buf "lw a1, %d(sp)\n" (s b);
+        let name = match op with
+          | Min  -> "__min"
+          | Max  -> "__max"
+          | Minu -> "__minu"
+          | Maxu -> "__maxu"
+          | Andn -> "__andn"
+          | Orn  -> "__orn"
+          | Xnor -> "__xnor" in
+        Printf.bprintf buf "jal ra, %s\n" name;
+        Printf.bprintf buf "sw a0, %d(sp)\n" (s d))
+  | Zbb_u (op, d, a) ->
+      if mrc = Im_zbb then
+        (Printf.bprintf buf "lw t0, %d(sp)\n" (s a);
+        (match op with
+          | Clz -> Printf.bprintf buf "clz t0, t0\n"
+          | Sext_b -> Printf.bprintf buf "sext.b t0, t0\n"
+          | Sext_h -> Printf.bprintf buf "sext.h t0, t0\n");
+        Printf.bprintf buf "sw t0, %d(sp)\n" (s d))
+      else
+        (Printf.bprintf buf "lw a0, %d(sp)\n" (s a);
+        let name = match op with
+          | Clz -> "_clz"
+          | Sext_b -> "__sext_b"
+          | Sext_h -> "__sext_h" in
+        Printf.bprintf buf "jal ra, %s\n" name;
+        Printf.bprintf buf "sw a0, %d(sp)\n" (s d))
   | AddrLocal (d, id) ->
       Printf.bprintf buf "addi t0, sp, %d\n" (List.assoc id fr.arrays);
       Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
@@ -182,7 +224,7 @@ let emit_term (f : func) fr (t : terminator) =
       Printf.bprintf buf "jalr x0, ra, 0\n"
 
 (*関数*)
-let emit_func (m : mode) (a : march) (f : func) =
+let emit_func (md : mode) (mrc : march) (f : func) =
   let fr = make_frame f in
   let s v = fr.out_bytes + 4 * v in (*vreg vのspからの距離*)
   Printf.bprintf buf "\n.globl %s\n" f.name;
@@ -200,7 +242,7 @@ let emit_func (m : mode) (a : march) (f : func) =
   (*ブロック*)
   List.iter (fun b ->
     Printf.bprintf buf ".L_%s_%d:\n" f.name b.label;
-    List.iter (emit_instr m a fr) b.body;
+    List.iter (emit_instr md mrc fr) b.body;
     emit_term f fr b.term) f.blocks
 
 (*c-7*)
@@ -349,15 +391,89 @@ let runtime_m = {|
 |}
 
 let runtime_zbb = {|
+.globl __min
+__min:
+    blt a0, a1, .L_min_ret
+    mv  a0, a1
+.L_min_ret:
+    jalr x0, ra, 0
+
+.globl __max
+__max:
+    bge a0, a1, .L_max_ret
+    mv  a0, a1
+.L_max_ret:
+    jalr x0, ra, 0
+
+.globl __minu
+__minu:
+    bltu a0, a1, .L_minu_ret
+    mv   a0, a1
+.L_minu_ret:
+    jalr x0, ra, 0
+
+.globl __maxu
+__maxu:
+    bgeu a0, a1, .L_maxu_ret
+    mv   a0, a1
+.L_maxu_ret:
+    jalr x0, ra, 0
+
+.globl __andn
+__andn:
+    not  a1, a1
+    and  a0, a0, a1
+    jalr x0, ra, 0
+
+.globl __orn
+__orn:
+    not  a1, a1
+    or   a0, a0, a1
+    jalr x0, ra, 0
+
+.globl __xnor
+__xnor:
+    xor  a0, a0, a1
+    not  a0, a0
+    jalr x0, ra, 0
+
+.globl __sext_b
+__sext_b:
+    slli a0, a0, 24
+    srai a0, a0, 24
+    jalr x0, ra, 0
+
+.globl __sext_h
+__sext_h:
+    slli a0, a0, 16
+    srai a0, a0, 16
+    jalr x0, ra, 0
+
+.globl __clz
+__clz:
+    li      a1, 31
+    li      t0, 1
+    slli    t0, t0, 31
+.L_highest_set_bit_loop:
+    and     t1, a0, t0
+    bnez    t1, .L_highest_set_bit_found
+    srli    t0, t0, 1
+    addi    a1, a1, -1
+    bgez    a1, .L_highest_set_bit_loop
+    li      a1, -1
+.L_highest_set_bit_found:
+    li      a0, 31
+    sub     a0, a0, a1
+    jalr x0, ra, 0
 |}
 
-let emit_program (m : mode) (a : march) (p : program) : string =
+let emit_program (md : mode) (mrc : march) (p : program) : string =
   Buffer.clear buf;
   Printf.bprintf buf ".section .text\n";
 
-  List.iter (emit_func m a) p.funcs;
-  (if m = Off then Buffer.add_string buf runtime_math);
-  (match a with
+  List.iter (emit_func md mrc) p.funcs;
+  (if md = Off then Buffer.add_string buf runtime_math);
+  (match mrc with
     | I -> (Buffer.add_string buf runtime_m;
             Buffer.add_string buf runtime_zbb)
     | Im -> (Buffer.add_string buf runtime_zbb)
