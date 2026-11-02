@@ -262,6 +262,29 @@ let compile (ctx : Semant.context) : Ir.program =
           let d = fresh 1 in
           emit_i (Ir.Cycles d);
           d
+      | Call ("qmin", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Min, d, sx, sy));
+          d
+      | Call ("qmax", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Max, d, sx, sy));
+          d
+      | Call ("qabs", [x]) ->
+          let d = fresh 1 in
+          emit_i (Ir.Qabs (d, expr x));
+          d
+      | Call ("qclamp", [x; y; z]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          let sz = expr z in
+          emit_i (Ir.Qclamp (d, sx, sy, sz));
+          d
       (* キャスト *)
       | Call ("q16", [x]) -> let sx = expr x in bin Ir.Shl sx (const_i32 16l)
       | Call ("i32", [x]) -> let sx = expr x in bin Ir.Sra sx (const_i32 16l)

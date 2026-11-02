@@ -53,7 +53,10 @@ type instr =
   (*MMIO呼び出し(仕様 §11):消去・並べ替え禁止。他の命令もこの前後を越えて動かさない
     print("...") は translate で const(1文字1ワード、末尾 0)と Load / Bprint のループに分解する*)
   | Bprint of vreg                             (*下位8ビットをUARTに送る*)
+  (*組み込み関数*)
   | Cycles of vreg                             (*d = cycles()*)
+  | Qabs of vreg * vreg
+  | Qclamp of vreg * vreg * vreg * vreg
 
 (*基本ブロックの終端*)
 type terminator =
@@ -124,6 +127,8 @@ let string_of_instr = function
   | Call (rs, f, args)  -> Printf.sprintf "%s = call %s(%s)" (vs rs) f (vs args)
   | Bprint a            -> Printf.sprintf "bprint %s" (v a)
   | Cycles d            -> Printf.sprintf "%s = cycles" (v d)
+  | Qabs (d, a)         -> Printf.sprintf "%s = qabs(%s)" (v d) (v a)
+  | Qclamp (d, a, b, c) -> Printf.sprintf "%s = qclamp(%s, %s, %s)" (v d) (v a) (v b) (v c)
 
 let string_of_term = function
   | Jump t              -> Printf.sprintf "jump %s" (l t)
@@ -188,7 +193,8 @@ let blocks_of_items (items : item list) : block list =
 let defs = function
   | Const (d, _) | Move (d, _) | Bin (_, d, _, _) | Un (_, d, _) | Intr (_, d, _)
   | Zbb_b (_, d, _, _) | Zbb_u (_, d, _)
-  | AddrLocal (d, _) | AddrGlobal (d, _) | Load (d, _, _, _) | Cycles d -> [d]
+  | AddrLocal (d, _) | AddrGlobal (d, _) | Load (d, _, _, _) | Cycles d
+  | Qabs (d, _) | Qclamp (d, _, _, _) -> [d]
   | Call (rs, _, _) -> rs 
   | Store _ | Bprint _ -> []
 
@@ -196,9 +202,10 @@ let defs = function
 let uses = function
   | Const _ | AddrLocal _ | AddrGlobal _ | Cycles _ -> []
   | Move (_, a) | Un (_, _, a) | Intr (_, _, a) | Zbb_u (_, _, a)
-  | Load (_, _, a, _) | Bprint a -> [a]
+  | Load (_, _, a, _) | Bprint a | Qabs (_, a) -> [a]
   | Bin (_, _, a, b) | Zbb_b (_, _, a, b) -> [a; b]
   | Store (_, a, _, s) -> [a; s]
+  | Qclamp (_, a, b, c) -> [a; b; c]
   | Call (_, _, args) -> args
 
 (*終端が読み込む vreg*)
