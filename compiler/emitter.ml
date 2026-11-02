@@ -221,7 +221,7 @@ let emit_instr (md : mode) (mrc : march) fr (i : instr) =
         Printf.bprintf buf "jal ra, __max\n";
         Printf.bprintf buf "lw a1, %d(sp)\n" (s c);
         Printf.bprintf buf "jal ra, __min\n";
-        Printf.bprintf buf "sw t0, %d(sp)\n" (s d))
+        Printf.bprintf buf "sw a0, %d(sp)\n" (s d))
 
 (*終端*)
 (*ブロックのラベルは .L_関数名_番号*)
