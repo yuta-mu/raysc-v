@@ -25,7 +25,7 @@ let ir_binop : Ast.binop -> Ir.binop = function
   | BitAnd -> Ir.And | BitOr -> Ir.Or | BitXor -> Ir.Xor
   | Eq -> Ir.Eq | Ne -> Ir.Ne | Lt -> Ir.Lt | Le -> Ir.Le
   | Gt -> Ir.Gt | Ge -> Ir.Ge
-  | Mul | And | Or | Dot -> invalid_arg "ir_binop: 専用の変換が必要"
+  | Mul | And | Or | Dot | Had -> invalid_arg "ir_binop: 専用の変換が必要"
 
 (* n が 2 の冪なら Some (log_2 n) を返す *)
 let log2_exact n =
@@ -225,6 +225,12 @@ let compile (ctx : Semant.context) : Ir.program =
           let p1 = bin Ir.QMul (sa + 1) (sb + 1) in
           let p2 = bin Ir.QMul (sa + 2) (sb + 2) in
           bin Ir.Add (bin Ir.Add p0 p1) p2
+
+      (* アダマール積 : 3 成分それぞれの QMul を計算し, 3 成分の vec3 を返す *)
+      | Binary (Had, a, b) ->
+          let sa = expr a in
+          let sb = expr b in
+          bin_words Ir.QMul 3 sa sb
 
       (* 乗算 : 型の組み合わせにより適切な演算に分岐 *)
       | Binary (Mul, a, b) ->

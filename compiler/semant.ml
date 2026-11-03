@@ -189,15 +189,21 @@ let analyze program =
            | Vec3, Q16 -> Vec3
            | Q16, Vec3 -> Vec3
            | _ -> error (Printf.sprintf "multiplication not supported for %s and %s" (typ_to_string ta) (typ_to_string tb)))
-      | Binary (Dot, a, b) ->
+      | Binary ((Dot | Had), a, b) ->
           let ta = infer a and tb = infer b in
-          if ta = Vec3 && tb = Vec3 then Q16 else error "dot product requires two vec3 operands"
+          if ta = Vec3 && tb = Vec3 then Q16 else error "dot/Hadamard product requires two vec3 operands"
+      | Binary ((Shl | Shr), a, b) ->
+          let ta = infer a and tb = infer b in
+          (match ta, tb with
+          | (I32 | Q16 | Vec3) as t, I32 -> t
+          | _, I32 -> error "left operand of shift must be i32, q16, or vec3"
+          | _, _   -> error "right operand of shift must be i32")
       | Binary (op, a, b) ->
           let ta = infer a and tb = infer b in
           if ta <> tb then error (Printf.sprintf "type mismatch: %s and %s" (typ_to_string ta) (typ_to_string tb));
           (match op, ta with
            | (Add | Sub), (I32 | Q16 | Vec3) -> ta
-           | (Div | Mod | Shl | Shr | BitAnd | BitOr | BitXor), I32 -> I32
+           | (Div | Mod | BitAnd | BitOr | BitXor), I32 -> I32
            | (Eq | Ne), (I32 | Q16 | Bool) -> Bool
            | (Lt | Le | Gt | Ge), (I32 | Q16) -> Bool
            | (And | Or), Bool -> Bool
