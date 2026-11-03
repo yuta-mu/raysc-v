@@ -206,7 +206,8 @@ let analyze program =
           if ta <> tb then error (Printf.sprintf "type mismatch: %s and %s" (typ_to_string ta) (typ_to_string tb));
           (match op, ta with
            | (Add | Sub), (I32 | Q16 | Vec3) -> ta
-           | (Div | Mod | BitAnd | BitOr | BitXor), I32 -> I32
+           | (Div | Mod), I32 -> I32
+           | (BitAnd | BitOr | BitXor), (I32 | Q16) -> ta
            | (Eq | Ne), (I32 | Q16 | Bool) -> Bool
            | (Lt | Le | Gt | Ge), (I32 | Q16) -> Bool
            | (And | Or), Bool -> Bool
