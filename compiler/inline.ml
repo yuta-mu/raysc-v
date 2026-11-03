@@ -7,8 +7,8 @@ open Ir
 (* ---------- 段階1:番号をずらす ---------- *)
 
 (* 命令 i の vreg に dv、局所配列の番号に da を足す *)
-let shift_instr dv da (i : instr) : instr =
-  let v x = x + dv and a id = id + da in
+let map_instr vm am (i : instr) : instr =
+  let v = vm and a = am in
   let r = function Local id -> Local (a id) | g -> g in   (* region:Local だけずらす *)
   match i with
   | Const (d, n) -> Const (v d, n)
@@ -25,21 +25,27 @@ let shift_instr dv da (i : instr) : instr =
   | Cycles d -> Cycles (v d)
 
 (* 終わりの命令:vreg に dv、ラベルに dl を足す *)
-let shift_term dv dl (t : terminator) : terminator =
+let map_term vm dl (t : terminator) : terminator =
   match t with
   | Jump l -> Jump (l + dl)
-  | Branch (c, lt, lf) -> Branch (c + dv, lt + dl, lf + dl)
-  | Ret vs -> Ret (List.map (fun x -> x + dv) vs)
+  | Branch (c, lt, lf) -> Branch (vm c, lt + dl, lf + dl)
+  | Ret vs -> Ret (List.map vm vs)
 
 (* 関数 g の全部(引数、配列、ブロック)をずらしたコピー *)
-let shift_func dv dl da (g : func) : func =
+let map_func vm dl da (g : func) : func =
   { g with
-    params = List.map (fun x -> x + dv) g.params;
+    params = List.map vm g.params;
     arrays = List.map (fun (id, bytes) -> (id + da, bytes)) g.arrays;
     blocks = List.map (fun b ->
       { label = b.label + dl;
-        body = List.map (shift_instr dv da) b.body;
-        term = shift_term dv dl b.term }) g.blocks }
+        body = List.map (map_instr vm (fun id -> id + da)) b.body;
+        term = map_term vm dl b.term }) g.blocks }
+
+let defined_vregs (g : func) =
+  let h = Hashtbl.create 64 in
+  List.iter (fun b -> List.iter (fun i ->
+    List.iter (fun d -> Hashtbl.replace h d ()) (defs i)) b.body) g.blocks;
+  h
 
 let max_label (f : func) = List.fold_left (fun m b -> max m b.label) 0 f.blocks
 let next_array (f : func) = List.fold_left (fun m (id, _) -> max m (id + 1)) 0 f.arrays
@@ -66,7 +72,12 @@ let inline_one funcs (f : func) : func option =
              let g = Hashtbl.find funcs name in
              (* f で使っていない番号からずらす *)
              let dv = f.nvregs and dl = max_label f + 1 and da = next_array f in
-             let g' = shift_func dv dl da g in
+             let written = defined_vregs g in
+             let subst = Hashtbl.create 8 in
+             List.iter2 (fun p a ->
+               if not (Hashtbl.mem written p) then Hashtbl.replace subst p a) g.params args;
+             let vm x = match Hashtbl.find_opt subst x with Some a -> a | None -> x + dv in
+             let g' = map_func vm dl da g in
              let l_after = dl + max_label g + 1 in          (* call の後ろ用の新しいラベル *)
              let entry = (List.hd g'.blocks).label in      (* g の入口 *)
              (* call の前:引数をコピーして、g の入口へ *)
