@@ -137,7 +137,7 @@ let emit_instr (md : mode) (mrc : march) fr (i : instr) =
       else
         (Printf.bprintf buf "lw a0, %d(sp)\n" (s a);
         let name = match op with
-          | Clz -> "_clz"
+          | Clz -> "__clz"
           | Sext_b -> "__sext_b"
           | Sext_h -> "__sext_h" in
         Printf.bprintf buf "jal ra, %s\n" name;

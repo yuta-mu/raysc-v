@@ -26,8 +26,10 @@ type context = {
   global_names : (string, string) Hashtbl.t;
 }
 
-let builtins = ["print"; "bprint"; "cycles"; "qmin"; "qmax"; "qabs"; "qclamp";
-                "q16"; "i32"; "vec3"; "sqrt"; "rsqrt"; "rcp"]
+let builtins = ["print"; "bprint"; "cycles"; "q16"; "i32"; "vec3"; "sqrt"; "rsqrt"; "rcp";
+                (* zbb組み込み関数 *)
+                "min"; "max"; "qmin"; "qmax"; "minu"; "maxu"; "andn"; "orn"; "xnor";
+                "clz"; "qclz"; "sext_b"; "sext_h"; "qabs"; "qclamp"]
 
 let rec type_words structs = function
   | I32 | Q16 | Bool -> 1
@@ -205,22 +207,28 @@ let analyze program =
           (match x.desc with Literal (LString _) -> Void | _ -> error "print takes a string literal directly")
       | Call ("bprint", [x]) -> if infer x = I32 then Void else error "bprint expects i32"
       | Call ("cycles", []) -> I32
-      | Call ("qmin", [x; y]) ->
-          let tx = infer x and ty = infer y in
-          if tx = Q16 && ty = Q16 then Q16 else error "qmin expects two q16 arguments"
-      | Call ("qmax", [x; y]) ->
-          let tx = infer x and ty = infer y in
-          if tx = Q16 && ty = Q16 then Q16 else error "qmax expects two q16 arguments"
-      | Call ("qabs", [x]) -> if infer x = Q16 then Q16 else error "qabs expects q16"
-      | Call ("qclamp", [x; y; z]) ->
-          let tx = infer x and ty = infer y and tz = infer z in
-          if tx = Q16 && ty = Q16 && tz = Q16 then Q16 else error "qclamp expects three q16 arguments"
       | Call ("q16", [x]) -> if infer x = I32 then Q16 else error "q16 expects i32"
       | Call ("i32", [x]) -> if infer x = Q16 then I32 else error "i32 expects q16"
       | Call ("vec3", [x; y; z]) ->
           if infer x = Q16 && infer y = Q16 && infer z = Q16 then Vec3 else error "vec3 expects three q16 components"
       | Call (("sqrt" | "rsqrt" | "rcp"), [x]) ->
           if infer x = Q16 then Q16 else error "math builtin expects q16"
+      | Call (("min" | "max" | "minu" | "maxu"), [x; y]) ->
+          let tx = infer x and ty = infer y in
+          if tx = I32 && ty = I32 then I32 else error "min(u)/max(u) expects two i32 arguments"
+      | Call (("qmin" | "qmax"), [x; y]) ->
+          let tx = infer x and ty = infer y in
+          if tx = Q16 && ty = Q16 then Q16 else error "qmin/qmax expects two q16 arguments"
+      | Call (("andn" | "orn" | "xnor"), [x; y]) ->
+          let tx = infer x and ty = infer y in
+          if tx = I32 && ty = I32 then I32 else error "andn/orn/xnor expects two i32 arguments"
+      | Call ("clz", [x]) -> if infer x = I32 then I32 else error "clz expects i32"
+      | Call ("qclz", [x]) -> if infer x = Q16 then I32 else error "qclz expects q16"
+      | Call (("sext_b" | "sext_h"), [x]) -> if infer x = I32 then I32 else error "sext_b/sext_h expects i32"
+      | Call ("qabs", [x]) -> if infer x = Q16 then Q16 else error "qabs expects q16"
+      | Call ("qclamp", [x; y; z]) ->
+          let tx = infer x and ty = infer y and tz = infer z in
+          if tx = Q16 && ty = Q16 && tz = Q16 then Q16 else error "qclamp expects three q16 arguments"
       | Call (n, args) ->
           (match Hashtbl.find_opt structs n with
            | Some fields ->
@@ -307,8 +315,11 @@ let infer_expr ctx info e =
     | Binary (Dot, _, _) -> Q16       (* 内積の結果型は Q16 *)
     | Binary ((Eq | Ne | Lt | Le | Gt | Ge | And | Or), _, _) -> Bool
     | Binary (_, a, _) -> infer a
-    | Call ("cycles", _) | Call ("i32", _) -> I32
-    | Call ("q16", _) | Call (("sqrt" | "rsqrt" | "rcp"), _) -> Q16
+    | Call ("cycles", _) | Call ("i32", _)
+    | Call (("min" | "max" | "minu" | "maxu"), _) | Call (("andn" | "orn" | "xnor"), _)
+    | Call (("clz" | "qclz"), _) | Call (("sext_b" | "sext_h"), _) -> I32
+    | Call ("q16", _) | Call (("sqrt" | "rsqrt" | "rcp"), _)
+    | Call (("qmin" | "qmax" | "qabs" | "qclamp"), _) -> Q16
     | Call ("vec3", _) -> Vec3
     | Call (("print" | "bprint"), _) -> Void
     | Call (n, _) ->

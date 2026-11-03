@@ -262,17 +262,67 @@ let compile (ctx : Semant.context) : Ir.program =
           let d = fresh 1 in
           emit_i (Ir.Cycles d);
           d
-      | Call ("qmin", [x; y]) ->
+      (* キャスト *)
+      | Call ("q16", [x]) -> let sx = expr x in bin Ir.Shl sx (const_i32 16l)
+      | Call ("i32", [x]) -> let sx = expr x in bin Ir.Sra sx (const_i32 16l)
+      (* 特殊命令組み込み関数 (sqrt, rsqrt, rcp) *)
+      | Call ("sqrt", [x]) -> intr Ir.Sqrt (expr x)
+      | Call ("rsqrt", [x]) -> intr Ir.Rsqrt (expr x)
+      | Call ("rcp", [x]) -> intr Ir.Rcp (expr x)
+      (* zbb組み込み関数 *)
+      | Call (("min" | "qmin"), [x; y]) ->
           let d = fresh 1 in
           let sx = expr x in
           let sy = expr y in
           emit_i (Ir.Zbb_b (Min, d, sx, sy));
           d
-      | Call ("qmax", [x; y]) ->
+      | Call (("max" | "qmax"), [x; y]) ->
           let d = fresh 1 in
           let sx = expr x in
           let sy = expr y in
           emit_i (Ir.Zbb_b (Max, d, sx, sy));
+          d
+      | Call ("minu", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Minu, d, sx, sy));
+          d
+      | Call ("maxu", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Maxu, d, sx, sy));
+          d
+      | Call ("andn", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Andn, d, sx, sy));
+          d
+      | Call ("orn", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Orn, d, sx, sy));
+          d
+      | Call ("xnor", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Xnor, d, sx, sy));
+          d
+      | Call (("clz" | "qclz"), [x]) ->
+          let d = fresh 1 in
+          emit_i (Ir.Zbb_u (Clz, d, expr x));
+          d
+      | Call ("sext_b", [x]) ->
+          let d = fresh 1 in
+          emit_i (Ir.Zbb_u (Sext_b, d, expr x));
+          d
+      | Call ("sext_h", [x]) ->
+          let d = fresh 1 in
+          emit_i (Ir.Zbb_u (Sext_h, d, expr x));
           d
       | Call ("qabs", [x]) ->
           let d = fresh 1 in
@@ -285,13 +335,6 @@ let compile (ctx : Semant.context) : Ir.program =
           let sz = expr z in
           emit_i (Ir.Qclamp (d, sx, sy, sz));
           d
-      (* キャスト *)
-      | Call ("q16", [x]) -> let sx = expr x in bin Ir.Shl sx (const_i32 16l)
-      | Call ("i32", [x]) -> let sx = expr x in bin Ir.Sra sx (const_i32 16l)
-      (* 特殊命令組み込み関数 (sqrt, rsqrt, rcp) *)
-      | Call ("sqrt", [x]) -> intr Ir.Sqrt (expr x)
-      | Call ("rsqrt", [x]) -> intr Ir.Rsqrt (expr x)
-      | Call ("rcp", [x]) -> intr Ir.Rcp (expr x)
       (* 一般の呼び出し *)
       | Call (n, args) ->
           let srcs = map_ltr expr args in

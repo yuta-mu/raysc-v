@@ -1,6 +1,6 @@
-# RayQ 言語仕様 v1.2
+# RayQ 言語仕様 v1.3
 
-RaySC-V プロジェクト / 2026-10-29
+RaySC-V プロジェクト / 2026-11-03
 
 コンパイラ: `rayqc` / ターゲット: RV32IM + custom-0 (Artix-7, ベアメタル)
 
@@ -233,6 +233,21 @@ Primary     ::= IDENT | INT_LIT | Q16_LIT | CHAR_LIT | BOOL_LIT | STR_LIT
 | `sqrt(x)` | `(q16) -> q16` | custom-0 (§9) |
 | `rcp(x)` | `(q16) -> q16` | custom-0 (§9) |
 | `rsqrt(x)` | `(q16) -> q16` | custom-0 (§9) |
+| `min(x, y)` | `(i32, i32) -> i32` | `min rd, rs1, rs2` |
+| `max(x, y)` | `(i32, i32) -> i32` | `max rd, rs1, rs2` |
+| `qmin(x, y)` | `(q16, q16) -> q16` | `min rd, rs1, rs2` |
+| `qmax(x, y)` | `(q16, q16) -> q16` | `max rd, rs1, rs2` |
+| `minu(x, y)` | `(i32, i32) -> i32` | `minu rd, rs1, rs2` |
+| `maxu(x, y)` | `(i32, i32) -> i32` | `maxu rd, rs1, rs2` |
+| `andn(x, y)` | `(i32, i32) -> i32` | `andn rd, rs1, rs2` |
+| `orn(x, y)` | `(i32, i32) -> i32` | `orn rd, rs1, rs2` |
+| `xnor(x, y)` | `(i32, i32) -> i32` | `xnor rd, rs1, rs2` |
+| `clz(x)` | `(i32) -> i32` | `clz rd, rs` |
+| `qclz(x)` | `(q16) -> i32` | `clz rd, rs` |
+| `sext_b(x)` | `(i32) -> i32` | `sext.b rd, rs` |
+| `sext_h(x)` | `(i32) -> i32` | `sext.h rd, rs` |
+| `qabs(x)` | `(q16) -> q16` | `neg t0, rs1; max rd, rs1, t0` |
+| `qclamp(x, lo, hi)` | `(q16, q16, q16) -> q16` | `max t0, rs1, rs2; min rd, t0, rs3` |
 
 - `norm` は組み込みではなく、利用者が `fn norm(v: vec3) -> vec3 { return v * rsqrt(v <.> v); }` と書く。
 - `bprint`、`print`、`cycles` を **MMIO 呼び出し** と呼ぶ。MMIO は volatile で、消去や順序入れ替えは禁止する (§11)。
