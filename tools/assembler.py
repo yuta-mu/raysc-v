@@ -250,11 +250,12 @@ def assemble_line(line, current_pc=0, symbol_table=None):
         val = (info['funct7'] << 25) | (rs2 << 20) | (rs1 << 15) | (info['funct3'] << 12) | (rd << 7) | info['opcode']
         return f"{val:08x}"
 
-    # R1-type qmul以外のcustom-0(rs2はx0)
+    # R1-type
     elif fmt == 'R1':
         check_args(tokens, 2)
         rd, rs1 = parse_reg(tokens[1]), parse_reg(tokens[2])
-        val = (info['funct7'] << 25) | (0 << 20) | (rs1 << 15) | (info['funct3'] << 12) | (rd << 7) | info['opcode']
+        rs2_code = info.get('rs2', 0)
+        val = (info['funct7'] << 25) | (rs2_code << 20) | (rs1 << 15) | (info['funct3'] << 12) | (rd << 7) | info['opcode']
         return f"{val:08x}"
 
     # I-type
@@ -368,6 +369,13 @@ def main():
     ap.add_argument("--no-startup", action="store_true", help="startup code なし")
     ap.add_argument("--halt", choices=["ebreak", "loop"], default="ebreak", help="main 復帰後の停止方法 (既定: ebreak)")
     ap.add_argument("--stack-top", type=auto_int, default=DEFAULT_STACK_TOP, help="スタートアップの初期 sp (既定: 0x40000)")
+    ap.add_argument(
+        "--dump-perf",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="main 終了後に 16B カウンタを UART 出力する (既定: 有効)"
+    )
+
     args = ap.parse_args()
 
     if args.stack_top % 4 or not 0 <= args.stack_top < (1 << 32):
@@ -388,7 +396,28 @@ def main():
         startup_code = [
             f"li sp, {args.stack_top}",
             "jal ra, main",
+        ]
+        if args.dump_perf:
+            startup_code += [
+                # --- main 終了後、64bit カウンタ (計 16 バイト) を UART へ自動送信 ---
+                "li t0, 0x10000000",        # UART TX
+                "li t1, 0x20000000",        # 0x0: cyc_l, 0x4: cyc_h, 0x8: inst_l, 0xC: inst_h
+                "addi t2, t1, 16",          # 終了アドレス
+                "__dump_perf_loop:",
+                "lw t3, 0(t1)",             # 32bit カウンタ値をロード
+                "sb t3, 0(t0)",             # Byte 0 (LSB)
+                "srli t3, t3, 8",
+                "sb t3, 0(t0)",             # Byte 1
+                "srli t3, t3, 8",
+                "sb t3, 0(t0)",             # Byte 2
+                "srli t3, t3, 8",
+                "sb t3, 0(t0)",             # Byte 3 (MSB)
+                "addi t1, t1, 4",
+                "bne t1, t2, __dump_perf_loop",
+            ]
+        startup_code += [
             f"__halt: {halt}",
+            "j __halt",
         ]
         numbered = [(0, l) for l in startup_code] + numbered
 

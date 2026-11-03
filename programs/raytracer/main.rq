@@ -1,13 +1,9 @@
 const WIDTH: i32 = 320;
-const HEIGHT: i32 = 240;
+const HEIGHT: i32 = 180;
 const SAMPLES_PER_PIXEL: i32 = 100;
 const MAX_DEPTH: i32 = 20;
-const NUM_SPHERES: i32 = 15;
+const NUM_SPHERES: i32 = 64;
 
-const Q_ZERO: q16 = 0.0;
-const Q_HALF: q16 = 0.5;
-const Q_ONE: q16 = 1.0;
-const Q_TWO: q16 = 2.0;
 const Q_INF: q16 = 32767.0;
 const Q_PI: q16 = 3.141592653589793;
 const Q_EPS: q16 = 0.00390625;
@@ -19,35 +15,114 @@ const MAT_LAMBERTIAN: i32 = 0;
 const MAT_METAL: i32 = 1;
 const MAT_DIELECTRIC: i32 = 2;
 
-const SPHERE_X: [q16; 15] = [
-    0.0, -4.0, 4.0, 5.4, 6.8, 7.2, 3.1, 1.8, 2.5, 5.8, 8.3, 4.5, -1.5, -2.2, 6.2
+const SPHERE_X: [q16; 64] = [
+    0.00, -4.00, 4.00, -5.68, 6.86, -7.90, 6.19, -8.13, 
+    -3.54, 7.53, -6.02, 1.48, -0.44, 7.84, 7.96, -7.17, 
+    -3.50, -4.94, 5.71, -7.55, -4.70, 3.31, 7.07, 1.08, 
+    8.13, 5.08, -1.92, -7.83, 4.38, -1.02, 8.38, 6.15, 
+    -5.80, -0.17, -4.10, 1.01, 0.61, -1.43, -3.83, 6.02, 
+    2.36, 4.13, -2.05, 9.00, 1.93, -2.26, -4.48, -1.12, 
+    3.47, -2.06, -5.37, 6.57, 8.94, 5.16, 7.21, -6.80, 
+    0.95, -2.54, -6.16, -8.42, 7.48, -7.67, 0.35, -7.26
 ];
-const SPHERE_Y: [q16; 15] = [
-    1.0, 1.0, 1.0, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2
+
+const SPHERE_Y: [q16; 64] = [
+    1.00, 1.00, 1.00, 0.20, 0.20, 0.20, 0.20, 0.20, 
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20
 ];
-const SPHERE_Z: [q16; 15] = [
-    0.0, 0.0, 0.0, 1.2, 0.8, 2.5, 2.1, 1.6, -1.4, -1.2, 1.5, 3.2, 1.8, -1.5, 3.8
+
+const SPHERE_Z: [q16; 64] = [
+    0.00, 0.00, 0.00, -3.72, 3.37, -0.49, -0.04, -2.10, 
+    1.71, 1.77, 0.66, 1.55, 2.15, -0.29, 1.13, 2.23, 
+    3.07, -1.37, 1.48, 0.94, 1.25, -1.03, -3.62, -1.13, 
+    -3.04, 0.61, -0.43, 2.91, 1.72, 2.72, 2.52, -1.04, 
+    1.68, -1.50, -3.27, -2.68, 2.69, 0.39, -1.97, 3.76, 
+    -0.42, -2.13, 3.52, -3.38, 3.07, -2.64, 3.58, 1.67, 
+    2.92, 2.73, -2.22, 1.91, 0.73, -0.59, 2.52, -1.17, 
+    -3.45, 0.00, -0.35, -3.22, -2.21, -3.01, 3.71, -2.18
 ];
-const SPHERE_R: [q16; 15] = [
-    1.0, 1.0, 1.0, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2
+
+const SPHERE_R: [q16; 64] = [
+    1.00, 1.00, 1.00, 0.20, 0.20, 0.20, 0.20, 0.20, 
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20
 ];
-const SPHERE_R2: [q16; 15] = [
-    1.0, 1.0, 1.0, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04
+
+const SPHERE_R2: [q16; 64] = [
+    1.00, 1.00, 1.00, 0.04, 0.04, 0.04, 0.04, 0.04, 
+    0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 
+    0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 
+    0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 
+    0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 
+    0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 
+    0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 
+    0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04
 ];
-const SPHERE_MAT: [i32; 15] = [
-    2, 0, 1, 0, 2, 0, 1, 0, 0, 1, 0, 2, 0, 1, 0
+
+const SPHERE_MAT: [i32; 64] = [
+    2, 0, 1, 2, 1, 0, 2, 0, 
+    0, 1, 0, 2, 2, 1, 0, 2, 
+    0, 0, 1, 0, 1, 0, 2, 1, 
+    0, 1, 1, 0, 1, 0, 0, 0, 
+    1, 0, 0, 0, 0, 0, 2, 1, 
+    1, 0, 0, 0, 1, 0, 1, 0, 
+    0, 0, 0, 2, 0, 0, 0, 0, 
+    0, 1, 0, 0, 0, 2, 0, 0
 ];
-const SPHERE_AR: [q16; 15] = [
-    1.0, 0.4, 0.7, 0.65, 1.0, 0.12, 0.8, 0.2, 0.75, 0.85, 0.45, 1.0, 0.7, 0.6, 0.15
+
+const SPHERE_AR: [q16; 64] = [
+    1.00, 0.50, 0.80, 1.00, 0.87, 0.09, 1.00, 0.15, 
+    0.86, 0.37, 0.87, 1.00, 1.00, 0.95, 0.11, 1.00, 
+    0.88, 0.13, 0.28, 0.10, 0.40, 0.28, 1.00, 0.86, 
+    0.16, 0.42, 0.34, 0.43, 0.46, 0.86, 0.65, 0.13, 
+    0.86, 0.05, 0.77, 0.05, 0.66, 0.62, 1.00, 0.92, 
+    0.83, 0.87, 0.93, 0.06, 0.56, 0.49, 0.73, 0.85, 
+    0.90, 0.71, 0.54, 1.00, 0.25, 0.85, 0.93, 0.64, 
+    0.82, 0.93, 0.30, 0.89, 0.95, 1.00, 0.07, 0.06
 ];
-const SPHERE_AG: [q16; 15] = [
-    1.0, 0.2, 0.6, 0.05, 1.0, 0.45, 0.85, 0.3, 0.55, 0.65, 0.1, 1.0, 0.25, 0.75, 0.6
+
+const SPHERE_AG: [q16; 64] = [
+    1.00, 0.90, 0.70, 1.00, 0.46, 0.09, 1.00, 0.90, 
+    0.83, 0.90, 0.69, 1.00, 1.00, 0.46, 0.94, 1.00, 
+    0.10, 0.87, 0.87, 0.87, 0.89, 0.06, 1.00, 0.82, 
+    0.90, 0.95, 0.94, 0.16, 0.50, 0.09, 0.88, 0.85, 
+    0.42, 0.82, 0.87, 0.86, 0.07, 0.92, 1.00, 0.61, 
+    0.91, 0.06, 0.13, 0.87, 0.93, 0.05, 0.30, 0.06, 
+    0.64, 0.90, 0.07, 1.00, 0.89, 0.09, 0.87, 0.93, 
+    0.88, 0.29, 0.88, 0.05, 0.09, 1.00, 0.96, 0.24
 ];
-const SPHERE_AB: [q16; 15] = [
-    1.0, 0.1, 0.5, 0.05, 1.0, 0.15, 0.88, 0.8, 0.1, 0.5, 0.6, 1.0, 0.15, 0.65, 0.55
+
+const SPHERE_AB: [q16; 64] = [
+    1.00, 1.00, 0.60, 1.00, 0.47, 0.90, 1.00, 0.23, 
+    0.07, 0.49, 0.06, 1.00, 1.00, 0.90, 0.51, 1.00, 
+    0.15, 0.65, 0.88, 0.16, 0.81, 0.92, 1.00, 0.36, 
+    0.74, 0.75, 0.60, 0.87, 0.95, 0.95, 0.10, 0.20, 
+    0.58, 0.93, 0.08, 0.44, 0.91, 0.07, 1.00, 0.46, 
+    0.42, 0.31, 0.37, 0.71, 0.46, 0.89, 0.91, 0.61, 
+    0.09, 0.14, 0.89, 1.00, 0.09, 0.05, 0.09, 0.09, 
+    0.08, 0.60, 0.04, 0.23, 0.37, 1.00, 0.87, 0.86
 ];
-const SPHERE_PARAM: [q16; 15] = [
-    1.5, 0.0, 0.0, 0.0, 1.5, 0.0, 0.1, 0.0, 0.0, 0.2, 0.0, 1.5, 0.0, 0.05, 0.0
+
+const SPHERE_PARAM: [q16; 64] = [
+    1.50, 0.00, 0.00, 1.50, 0.14, 0.00, 1.50, 0.00, 
+    0.00, 0.05, 0.00, 1.50, 1.50, 0.04, 0.00, 1.50, 
+    0.00, 0.00, 0.14, 0.00, 0.15, 0.00, 1.50, 0.12, 
+    0.00, 0.16, 0.16, 0.00, 0.08, 0.00, 0.00, 0.00, 
+    0.09, 0.00, 0.00, 0.00, 0.00, 0.00, 1.50, 0.14, 
+    0.05, 0.00, 0.00, 0.00, 0.02, 0.00, 0.01, 0.00, 
+    0.00, 0.00, 0.00, 1.50, 0.00, 0.00, 0.00, 0.00, 
+    0.00, 0.14, 0.00, 0.00, 0.00, 1.50, 0.00, 0.00
 ];
 
 struct Ray {
@@ -109,7 +184,7 @@ struct TraceResult {
 }
 
 fn q_abs(x: q16) -> q16 {
-    if (x < Q_ZERO) {
+    if (x < 0.0) {
         return -x;
     }
     return x;
@@ -150,8 +225,12 @@ fn q_tan_small(x: q16) -> q16 {
     x3 = x2 * x;
     x5 = x3 * x2;
     term1 = x3 * rcp(q16(3));
-    term2 = (Q_TWO * x5) * rcp(q16(15));
+    term2 = (2.0 * x5) * rcp(q16(15));
     return x + term1 + term2;
+}
+
+fn vec3_neg(v: vec3) -> vec3 {
+    return vec3(-v.x, -v.y, -v.z);
 }
 
 fn vec3_mul_elem(a: vec3, b: vec3) -> vec3 {
@@ -169,7 +248,7 @@ fn vec3_cross(a: vec3, b: vec3) -> vec3 {
 fn vec3_unit(v: vec3) -> vec3 {
     let lensq: q16;
     lensq = v <.> v;
-    if (lensq <= Q_ZERO) {
+    if (lensq <= 0.0) {
         return vec3(0.0, 1.0, 0.0);
     }
     return v * rsqrt(lensq);
@@ -179,8 +258,8 @@ fn vec3_unit_big(v: vec3) -> vec3 {
     let s: vec3;
     s = v;
     for k in 0..8 {
-        if ((s <.> s) > Q_TWO) {
-            s = s * Q_HALF;
+        if ((s <.> s) > 2.0) {
+            s = s * 0.5;
         }
     }
     return vec3_unit(s);
@@ -200,7 +279,7 @@ fn vec3_near_zero(v: vec3) -> i32 {
 }
 
 fn vec3_reflect(v: vec3, n: vec3) -> vec3 {
-    return v - n * (Q_TWO * (v <.> n));
+    return v - n * (2.0 * (v <.> n));
 }
 
 fn vec3_refract(uv: vec3, n: vec3, ratio: q16) -> vec3 {
@@ -208,10 +287,10 @@ fn vec3_refract(uv: vec3, n: vec3, ratio: q16) -> vec3 {
     let r_out_perp: vec3;
     let perp_len2: q16;
     let parallel_mag: q16;
-    cos_theta = q_min((-uv) <.> n, Q_ONE);
+    cos_theta = q_min(vec3_neg(uv) <.> n, 1.0);
     r_out_perp = (uv + n * cos_theta) * ratio;
     perp_len2 = r_out_perp <.> r_out_perp;
-    parallel_mag = sqrt(q_abs(Q_ONE - perp_len2));
+    parallel_mag = sqrt(q_abs(1.0 - perp_len2));
     return r_out_perp + n * (-parallel_mag);
 }
 
@@ -264,10 +343,10 @@ fn random_unit_vector(state: i32) -> RandVec3 {
     let out: RandVec3;
     current_state = state;
     for attempt in 0..64 {
-        sample = random_vec3_range(current_state, -Q_ONE, Q_ONE);
+        sample = random_vec3_range(current_state, -1.0, 1.0);
         current_state = sample.state;
         lensq = sample.value <.> sample.value;
-        if (lensq >= Q_UNIT_MIN_LENSQ && lensq <= Q_ONE) {
+        if (lensq >= Q_UNIT_MIN_LENSQ && lensq <= 1.0) {
             out.state = current_state;
             out.value = sample.value * rsqrt(lensq);
             return out;
@@ -286,18 +365,18 @@ fn random_in_unit_disk(state: i32) -> RandVec3 {
     let out: RandVec3;
     current_state = state;
     for attempt in 0..64 {
-        rx = random_q16_range(current_state, -Q_ONE, Q_ONE);
-        ry = random_q16_range(rx.state, -Q_ONE, Q_ONE);
+        rx = random_q16_range(current_state, -1.0, 1.0);
+        ry = random_q16_range(rx.state, -1.0, 1.0);
         current_state = ry.state;
-        p = vec3(rx.value, ry.value, Q_ZERO);
-        if ((p <.> p) < Q_ONE) {
+        p = vec3(rx.value, ry.value, 0.0);
+        if ((p <.> p) < 1.0) {
             out.state = current_state;
             out.value = p;
             return out;
         }
     }
     out.state = current_state;
-    out.value = vec3(Q_ZERO, Q_ZERO, Q_ZERO);
+    out.value = vec3(0.0, 0.0, 0.0);
     return out;
 }
 
@@ -323,22 +402,22 @@ fn hit_ground(ray: Ray, t_min: q16, t_max: q16) -> HitRecord {
     let p: vec3;
 
     rec.hit = 0;
-    rec.p = vec3(Q_ZERO, Q_ZERO, Q_ZERO);
+    rec.p = vec3(0.0, 0.0, 0.0);
     rec.normal = vec3(0.0, 1.0, 0.0);
-    rec.t = Q_ZERO;
+    rec.t = 0.0;
     rec.front_face = 1;
     rec.mat_kind = MAT_LAMBERTIAN;
-    rec.albedo = vec3(Q_HALF, Q_HALF, Q_HALF);
-    rec.fuzz_or_ref_idx = Q_ZERO;
+    rec.albedo = vec3(0.5, 0.5, 0.5);
+    rec.fuzz_or_ref_idx = 0.0;
 
     os = ray.o * 0.125;
     bs = (os <.> ray.d) + 125.0 * ray.d.y;
-    if (bs >= Q_ZERO) {
+    if (bs >= 0.0) {
         return rec;
     }
     ks = (os <.> os) + 31.25 * ray.o.y;
     disc = bs * bs - ks;
-    if (disc < Q_ZERO) {
+    if (disc < 0.0) {
         return rec;
     }
     tau = -bs - sqrt(disc);
@@ -352,7 +431,7 @@ fn hit_ground(ray: Ray, t_min: q16, t_max: q16) -> HitRecord {
     rec.p = p;
     rec.normal = vec3_unit(vec3(
         p.x * 0.001,
-        Q_ONE + p.y * 0.001,
+        1.0 + p.y * 0.001,
         p.z * 0.001
     ));
     return rec;
@@ -376,9 +455,9 @@ fn hit_sphere(index: i32, ray: Ray, t_min: q16, t_max: q16) -> HitRecord {
     radius2 = SPHERE_R2[index];
 
     rec.hit = 0;
-    rec.p = vec3(Q_ZERO, Q_ZERO, Q_ZERO);
-    rec.normal = vec3(Q_ZERO, Q_ZERO, Q_ZERO);
-    rec.t = Q_ZERO;
+    rec.p = vec3(0.0, 0.0, 0.0);
+    rec.normal = vec3(0.0, 0.0, 0.0);
+    rec.t = 0.0;
     rec.front_face = 0;
     rec.mat_kind = SPHERE_MAT[index];
     rec.albedo = vec3(SPHERE_AR[index], SPHERE_AG[index], SPHERE_AB[index]);
@@ -394,7 +473,7 @@ fn hit_sphere(index: i32, ray: Ray, t_min: q16, t_max: q16) -> HitRecord {
         return rec;
     }
     disc = radius2 - (perp <.> perp);
-    if (disc < Q_ZERO) {
+    if (disc < 0.0) {
         return rec;
     }
     sqrtd = sqrt(disc);
@@ -413,12 +492,12 @@ fn hit_sphere(index: i32, ray: Ray, t_min: q16, t_max: q16) -> HitRecord {
     rec.hit = 1;
     rec.t = root;
     rec.p = center + n * radius;
-    if ((ray.d <.> n) < Q_ZERO) {
+    if ((ray.d <.> n) < 0.0) {
         rec.front_face = 1;
         rec.normal = n;
     } else {
         rec.front_face = 0;
-        rec.normal = vec3(Q_ZERO, Q_ZERO, Q_ZERO) - n;
+        rec.normal = vec3_neg(n);
     }
     return rec;
 }
@@ -449,13 +528,13 @@ fn schlick_reflectance(cosine: q16, refraction_index: q16) -> q16 {
     let c2: q16;
     let c4: q16;
     let c5: q16;
-    r0_base = (Q_ONE - refraction_index) * rcp(Q_ONE + refraction_index);
+    r0_base = (1.0 - refraction_index) * rcp(1.0 + refraction_index);
     r0 = r0_base * r0_base;
-    one_minus_cos = Q_ONE - cosine;
+    one_minus_cos = 1.0 - cosine;
     c2 = one_minus_cos * one_minus_cos;
     c4 = c2 * c2;
     c5 = c4 * one_minus_cos;
-    return r0 + (Q_ONE - r0) * c5;
+    return r0 + (1.0 - r0) * c5;
 }
 
 fn material_scatter(state: i32, ray_in: Ray, rec: HitRecord) -> ScatterResult {
@@ -492,7 +571,7 @@ fn material_scatter(state: i32, ray_in: Ray, rec: HitRecord) -> ScatterResult {
         out.state = random_vec.state;
         scatter_dir = vec3_unit(reflected) + random_vec.value * rec.fuzz_or_ref_idx;
         out.scattered = make_ray(rec.p, scatter_dir);
-        if ((out.scattered.d <.> rec.normal) > Q_ZERO) {
+        if ((out.scattered.d <.> rec.normal) > 0.0) {
             out.did_scatter = 1;
         }
         return out;
@@ -503,9 +582,9 @@ fn material_scatter(state: i32, ray_in: Ray, rec: HitRecord) -> ScatterResult {
     } else {
         ratio = rec.fuzz_or_ref_idx;
     }
-    cos_theta = q_min((-ray_in.d) <.> rec.normal, Q_ONE);
-    sin_theta = sqrt(q_abs(Q_ONE - cos_theta * cos_theta));
-    if (ratio * sin_theta > Q_ONE) {
+    cos_theta = q_min(vec3_neg(ray_in.d) <.> rec.normal, 1.0);
+    sin_theta = sqrt(q_abs(1.0 - cos_theta * cos_theta));
+    if (ratio * sin_theta > 1.0) {
         direction = vec3_reflect(ray_in.d, rec.normal);
     } else {
         random_scalar = random_q16(out.state);
@@ -545,8 +624,8 @@ fn camera_init() -> Camera {
     defocus_angle = 0.6;
 
     theta = degrees_to_radians(20.0);
-    h = q_tan_small(theta * Q_HALF);
-    viewport_height = (Q_TWO * h) * focus_dist;
+    h = q_tan_small(theta * 0.5);
+    viewport_height = (2.0 * h) * focus_dist;
     aspect = ratio_i32(WIDTH, HEIGHT);
     viewport_width = viewport_height * aspect;
 
@@ -556,16 +635,16 @@ fn camera_init() -> Camera {
 
     cam.center = lookfrom;
     cam.viewport_u = u * viewport_width;
-    cam.viewport_v = (-v) * viewport_height;
-    cam.viewport_upper_left = cam.center - w * focus_dist - cam.viewport_u * Q_HALF - cam.viewport_v * Q_HALF;
+    cam.viewport_v = vec3_neg(v) * viewport_height;
+    cam.viewport_upper_left = cam.center - w * focus_dist - cam.viewport_u * 0.5 - cam.viewport_v * 0.5;
 
-    if (defocus_angle <= Q_ZERO) {
+    if (defocus_angle <= 0.0) {
         cam.use_defocus = 0;
-        cam.defocus_disk_u = vec3(Q_ZERO, Q_ZERO, Q_ZERO);
-        cam.defocus_disk_v = vec3(Q_ZERO, Q_ZERO, Q_ZERO);
+        cam.defocus_disk_u = vec3(0.0, 0.0, 0.0);
+        cam.defocus_disk_v = vec3(0.0, 0.0, 0.0);
     } else {
         cam.use_defocus = 1;
-        defocus_rad = focus_dist * q_tan_small(degrees_to_radians(defocus_angle * Q_HALF));
+        defocus_rad = focus_dist * q_tan_small(degrees_to_radians(defocus_angle * 0.5));
         cam.defocus_disk_u = u * defocus_rad;
         cam.defocus_disk_v = v * defocus_rad;
     }
@@ -616,7 +695,7 @@ fn ray_color(state: i32, initial_ray: Ray) -> TraceResult {
 
     current_state = state;
     current_ray = initial_ray;
-    throughput = vec3(Q_ONE, Q_ONE, Q_ONE);
+    throughput = vec3(1.0, 1.0, 1.0);
 
     for depth in 0..MAX_DEPTH {
         rec = world_hit(current_ray, Q_EPS, Q_INF);
@@ -625,17 +704,17 @@ fn ray_color(state: i32, initial_ray: Ray) -> TraceResult {
             current_state = scatter.state;
             if (scatter.did_scatter == 0) {
                 out.state = current_state;
-                out.color = vec3(Q_ZERO, Q_ZERO, Q_ZERO);
+                out.color = vec3(0.0, 0.0, 0.0);
                 return out;
             }
             throughput = vec3_mul_elem(throughput, scatter.attenuation);
             current_ray = scatter.scattered;
         } else {
-            a = Q_HALF * (current_ray.d.y + Q_ONE);
+            a = 0.5 * (current_ray.d.y + 1.0);
             sky = vec3(
-                Q_ONE * (Q_ONE - a) + 0.5 * a,
-                Q_ONE * (Q_ONE - a) + 0.7 * a,
-                Q_ONE * (Q_ONE - a) + Q_ONE * a
+                1.0 * (1.0 - a) + 0.5 * a,
+                1.0 * (1.0 - a) + 0.7 * a,
+                1.0 * (1.0 - a) + 1.0 * a
             );
             out.state = current_state;
             out.color = vec3_mul_elem(throughput, sky);
@@ -643,18 +722,18 @@ fn ray_color(state: i32, initial_ray: Ray) -> TraceResult {
         }
     }
     out.state = current_state;
-    out.color = vec3(Q_ZERO, Q_ZERO, Q_ZERO);
+    out.color = vec3(0.0, 0.0, 0.0);
     return out;
 }
 
 fn color_to_byte(linear_value: q16) -> i32 {
     let gamma_value: q16;
     let clamped: q16;
-    if (linear_value <= Q_ZERO) {
+    if (linear_value <= 0.0) {
         return 0;
     }
     gamma_value = sqrt(linear_value);
-    clamped = q_clamp(gamma_value, Q_ZERO, 0.999);
+    clamped = q_clamp(gamma_value, 0.0, 0.999);
     return i32(clamped * 256);
 }
 
@@ -672,10 +751,10 @@ fn camera_render(seed: i32, cam: Camera) -> void {
     let avg_color: vec3;
 
     state = seed;
-    print("P6\n320 240\n255\n");
+    print("P6\n320 180\n255\n");
     for j in 0..HEIGHT {
         for i in 0..WIDTH {
-            pixel_acc = vec3(Q_ZERO, Q_ZERO, Q_ZERO);
+            pixel_acc = vec3(0.0, 0.0, 0.0);
             for sample_index in 0..SAMPLES_PER_PIXEL {
                 ray_sample = camera_get_ray(state, cam, i, j);
                 state = ray_sample.state;
@@ -694,3 +773,4 @@ fn main() -> void {
     cam = camera_init();
     camera_render(42, cam);
 }
+
