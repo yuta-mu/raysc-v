@@ -205,10 +205,6 @@ fn q_tan_small(x: q16) -> q16 {
     return x + term1 + term2;
 }
 
-fn vec3_mul_elem(a: vec3, b: vec3) -> vec3 {
-    return vec3(a.x * b.x, a.y * b.y, a.z * b.z);
-}
-
 fn vec3_cross(a: vec3, b: vec3) -> vec3 {
     return vec3(
         a.y * b.z - a.z * b.y,
@@ -227,9 +223,14 @@ fn vec3_unit(v: vec3) -> vec3 {
 }
 
 fn vec3_unit_big(v: vec3) -> vec3 {
+    let m: q16;
+    let sh: i32;
     let s: vec3;
-    s = v;
-    for k in 0..8 {
+    m = qmax(qmax(qabs(v.x), qabs(v.y)), qabs(v.z));
+    sh = max(15 - qclz(m), 0);
+    s = v >> sh;
+    if ((s <.> s) > 2.0) {
+        s = s * 0.5;
         if ((s <.> s) > 2.0) {
             s = s * 0.5;
         }
@@ -679,7 +680,7 @@ fn ray_color(state: i32, initial_ray: Ray) -> TraceResult {
                 out.color = vec3(0.0, 0.0, 0.0);
                 return out;
             }
-            throughput = vec3_mul_elem(throughput, scatter.attenuation);
+            throughput = throughput <*> scatter.attenuation;
             current_ray = scatter.scattered;
         } else {
             a = 0.5 * (current_ray.d.y + 1.0);
@@ -689,7 +690,7 @@ fn ray_color(state: i32, initial_ray: Ray) -> TraceResult {
                 1.0 * (1.0 - a) + 1.0 * a
             );
             out.state = current_state;
-            out.color = vec3_mul_elem(throughput, sky);
+            out.color = throughput <*> sky;
             return out;
         }
     }
