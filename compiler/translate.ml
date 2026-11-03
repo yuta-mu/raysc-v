@@ -242,6 +242,17 @@ let compile (ctx : Semant.context) : Ir.program =
            | Q16, Vec3 -> vec3_scale sb sa
            | _ -> bin Ir.Mul sa sb)           (* i32*i32, q16*i32, i32*q16 は素の乗算 *)
 
+      (* シフト : 左辺は 1 or 3 ワード, シフト量は常に 1 ワードの i32 *)
+      | Binary ((Shl | Shr) as op, a, b) ->
+          let sa = expr a in
+          let sb = expr b in
+          let n = words_of (type_of a) in
+          let d = fresh n in
+          for i = 0 to n - 1 do
+            emit_i (Ir.Bin (ir_binop op, d + i, sa + i, sb))
+          done;
+          d
+
       (* その他の二項演算 *)
       | Binary (op, a, b) ->
           let sa = expr a in
