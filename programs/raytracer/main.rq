@@ -226,7 +226,7 @@ fn vec3_unit_big(v: vec3) -> vec3 {
     let m: q16;
     let sh: i32;
     let s: vec3;
-    m = qmax(qmax(qabs(v.x), qabs(v.y)), qabs(v.z));
+    m = qabs(v.x) | qabs(v.y) | qabs(v.z);
     sh = max(15 - qclz(m), 0);
     s = v >> sh;
     if ((s <.> s) > 2.0) {
