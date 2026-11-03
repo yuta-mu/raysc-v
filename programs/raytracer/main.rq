@@ -273,7 +273,7 @@ fn rng_next_i32(state: i32) -> RandI32 {
     x = x ^ ((x >> 17) & 32767);
     x = x ^ (x << 5);
     out.state = x;
-    out.value = x & 2147483647;
+    out.value = andn(x, -2147483648);
     return out;
 }
 
@@ -705,7 +705,7 @@ fn color_to_byte(linear_value: q16) -> i32 {
         return 0;
     }
     gamma_value = sqrt(linear_value);
-    clamped = qclamp(gamma_value, 0.0, 0.999);
+    clamped = qmin(gamma_value, 0.999);
     return i32(clamped * 256);
 }
 
