@@ -189,9 +189,12 @@ let analyze program =
            | Vec3, Q16 -> Vec3
            | Q16, Vec3 -> Vec3
            | _ -> error (Printf.sprintf "multiplication not supported for %s and %s" (typ_to_string ta) (typ_to_string tb)))
-      | Binary ((Dot | Had), a, b) ->
+      | Binary (Dot, a, b) ->
           let ta = infer a and tb = infer b in
-          if ta = Vec3 && tb = Vec3 then Q16 else error "dot/Hadamard product requires two vec3 operands"
+          if ta = Vec3 && tb = Vec3 then Q16 else error "dot product requires two vec3 operands"
+      | Binary (Had, a, b) ->
+          let ta = infer a and tb = infer b in
+          if ta = Vec3 && tb = Vec3 then Vec3 else error "Hadamard product requires two vec3 operands"
       | Binary ((Shl | Shr), a, b) ->
           let ta = infer a and tb = infer b in
           (match ta, tb with
