@@ -30,7 +30,7 @@ typedef enum logic [1:0] {
     ALU_OP_ITYPE  = 2'b11
 } alu_op_mode_t;
 
-typedef enum logic [3:0] {
+typedef enum logic [4:0] {
     ALU_ADD,
     ALU_SUB,
     ALU_SLL,
@@ -40,12 +40,23 @@ typedef enum logic [3:0] {
     ALU_SRL,
     ALU_SRA,
     ALU_OR,
-    ALU_AND
+    ALU_AND,
+    ALU_MIN,
+    ALU_MAX,
+    ALU_MINU,
+    ALU_MAXU,
+    ALU_ANDN,
+    ALU_ORN,
+    ALU_XNOR,
+    ALU_ZBB_UNARY
 } alu_op_t;
 
-localparam logic [6:0] FUNCT7_BASE   = 7'b0000000;
-localparam logic [6:0] FUNCT7_ALT    = 7'b0100000;
-localparam logic [6:0] FUNCT7_MULDIV = 7'b0000001;
+localparam logic [6:0] FUNCT7_ZBB_MINMAX = 7'b0000101;
+localparam logic [6:0] FUNCT7_ZBB_UNARY  = 7'b0110000;
+
+localparam logic [4:0] SHAMT_ZBB_CLZ     = 5'b00000;
+localparam logic [4:0] SHAMT_ZBB_SEXTB   = 5'b00100;
+localparam logic [4:0] SHAMT_ZBB_SEXTH   = 5'b00101;
 
 localparam logic [2:0] FUNCT3_ADD    = 3'h0;
 localparam logic [2:0] FUNCT3_SUB    = 3'h0;
@@ -57,6 +68,11 @@ localparam logic [2:0] FUNCT3_SRL    = 3'h5;
 localparam logic [2:0] FUNCT3_SRA    = 3'h5;
 localparam logic [2:0] FUNCT3_SLT    = 3'h2;
 localparam logic [2:0] FUNCT3_SLTU   = 3'h3;
+
+localparam logic [2:0] FUNCT3_MIN    = 3'h4;
+localparam logic [2:0] FUNCT3_MINU   = 3'h5;
+localparam logic [2:0] FUNCT3_MAX    = 3'h6;
+localparam logic [2:0] FUNCT3_MAXU   = 3'h7;
 
 localparam logic [2:0] FUNCT3_ADDI   = 3'h0;
 localparam logic [2:0] FUNCT3_XORI   = 3'h4;
@@ -97,4 +113,3 @@ localparam logic [2:0] FUNCT3_BGEU   = 3'h7;
 localparam logic [2:0] FUNCT3_JALR   = 3'h0;
 
 `endif
-

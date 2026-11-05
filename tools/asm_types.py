@@ -102,6 +102,18 @@ OPCODES = {
     'qsqrt':  {'type': 'R1', 'opcode': 0x0B, 'funct3': 0x2, 'funct7': 0x00},
     'qrsqrt': {'type': 'R1', 'opcode': 0x0B, 'funct3': 0x3, 'funct7': 0x00},
     'qrcp':   {'type': 'R1', 'opcode': 0x0B, 'funct3': 0x4, 'funct7': 0x00},
+
+    # Zbb Extension
+    'min':    {'type': 'R',  'opcode': 0x33, 'funct3': 0x4, 'funct7': 0x05},
+    'minu':   {'type': 'R',  'opcode': 0x33, 'funct3': 0x5, 'funct7': 0x05},
+    'max':    {'type': 'R',  'opcode': 0x33, 'funct3': 0x6, 'funct7': 0x05},
+    'maxu':   {'type': 'R',  'opcode': 0x33, 'funct3': 0x7, 'funct7': 0x05},
+    'andn':   {'type': 'R',  'opcode': 0x33, 'funct3': 0x7, 'funct7': 0x20},
+    'orn':    {'type': 'R',  'opcode': 0x33, 'funct3': 0x6, 'funct7': 0x20},
+    'xnor':   {'type': 'R',  'opcode': 0x33, 'funct3': 0x4, 'funct7': 0x20},
+    'clz':    {'type': 'R1', 'opcode': 0x13, 'funct3': 0x1, 'funct7': 0x30, 'rs2': 0x00},
+    'sext.b': {'type': 'R1', 'opcode': 0x13, 'funct3': 0x1, 'funct7': 0x30, 'rs2': 0x04},
+    'sext.h': {'type': 'R1', 'opcode': 0x13, 'funct3': 0x1, 'funct7': 0x30, 'rs2': 0x05},
 }
 
 # 1命令に展開される疑似命令 (li / la / 引数1個の jal, jalr は assembler.py 側で処理)

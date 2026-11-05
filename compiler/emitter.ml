@@ -190,9 +190,21 @@ let emit_instr (m : mode) fr (i : instr) =
       Printf.bprintf buf "li t1, 0x10000000\n"; (*UART*)
       Printf.bprintf buf "sb t0, 0(t1)\n" (*下位 8 ビットを送る*)
   | Cycles d ->
-      Printf.bprintf buf "li t1, 0x20000000\n"; (*cycles*)
+      Printf.bprintf buf "li t1, 0x20000000\n"; (* cycle_lo *)
       Printf.bprintf buf "lw t0, 0(t1)\n";
-      store "t0" (s d)
+      store "t0" (s d)    
+  (**| CyclesH d ->
+      Printf.bprintf buf "li t1, 0x20000004\n"; (* cycle_hi *)
+      Printf.bprintf buf "lw t0, 0(t1)\n";
+      Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
+  | Instret d ->
+      Printf.bprintf buf "li t1, 0x20000008\n"; (* instret_lo *)
+      Printf.bprintf buf "lw t0, 0(t1)\n";
+      Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
+  | InstretH d ->
+      Printf.bprintf buf "li t1, 0x2000000C\n"; (* instret_hi *)
+      Printf.bprintf buf "lw t0, 0(t1)\n";
+      store "t0" (s d)*)
 
 (*終端*)
 (*ブロックのラベルは .L_関数名_番号*)

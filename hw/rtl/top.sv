@@ -74,8 +74,8 @@ module top (
     localparam logic [31:0] MEM_BYTES     = 32'h0004_0000; // 256 KB
     localparam logic [31:0] UART_ADDR     = 32'h1000_0000;
     localparam logic [31:0] CYCLE_ADDR    = 32'h2000_0000;
-    localparam logic [31:0] INSTRET_ADDR  = 32'h2000_0004;
-    localparam logic [31:0] CYCLEH_ADDR   = 32'h2000_0008;
+    localparam logic [31:0] CYCLEH_ADDR   = 32'h2000_0004;
+    localparam logic [31:0] INSTRET_ADDR  = 32'h2000_0008;
     localparam logic [31:0] INSTRETH_ADDR = 32'h2000_000C;
 
     logic [31:0] pc, inst;
@@ -126,6 +126,18 @@ module top (
     logic        mem_read_d;
     logic [31:0] mmio_rdata_d;
 
+    logic is_counter = (mem_addr[31:28] == 4'h2); // 0x2000_0000 空間
+    logic [31:0] counter_rdata;
+
+    always_comb begin
+        case (mem_addr[3:2])
+            2'b00: counter_rdata = cycles[31:0];
+            2'b01: counter_rdata = cycles[63:32];
+            2'b10: counter_rdata = instret[31:0];
+            2'b11: counter_rdata = instret[63:32];
+        endcase
+    end
+
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             mem_addr_d   <= '0;
@@ -134,13 +146,8 @@ module top (
         end else begin
             mem_addr_d    <= mem_addr;
             mem_read_d    <= mem_read;
-            case (mem_addr)
-                CYCLE_ADDR:    mmio_rdata_d <= cycles[31:0];
-                INSTRET_ADDR:  mmio_rdata_d <= instret[31:0];
-                CYCLEH_ADDR:   mmio_rdata_d <= cycles[63:32];
-                INSTRETH_ADDR: mmio_rdata_d <= instret[63:32];
-                default:       mmio_rdata_d <= 32'h0;
-            endcase
+            if (mem_read && is_counter) mmio_rdata_d <= counter_rdata;
+            else mmio_rdata_d <= 32'h0;
         end
     end
 
