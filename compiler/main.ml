@@ -3,6 +3,7 @@ let () =
   let output_file = ref "" in
   let opt_level = ref 0 in
   let accel_mode = ref "off" in
+  let march = ref "rv32im" in
   let dump_ir = ref false in
   let inline_flag = ref false in
   let fold_flag = ref false in
@@ -14,6 +15,7 @@ let () =
     ("-O2", Arg.Unit (fun () -> opt_level := 2), "Optimization level 2");
     ("-O3", Arg.Unit (fun () -> opt_level := 3), "Optimization level 3");
     ("--accel", Arg.Set_string accel_mode, "Accelerator mode (off|math|isect)");
+    ("--march", Arg.Set_string march, "Target architecture (rv32i|rv32im|rv32im_zbb)");
     ("--dump-ir", Arg.Set dump_ir, "Print the IR to stdout");
     ("--inline", Arg.Set inline_flag, "Inline all function calls");
     ("--fold", Arg.Set fold_flag, "Constant folding / propagation");
@@ -57,13 +59,19 @@ let () =
   if !dump_ir then Ir.dump_program stdout ir;   (* --dump-ir のときは IR を表示 *)
 
   let asm =
-    let m = match !accel_mode with
+    let md = match !accel_mode with
       | "off" -> Emitter.Off
       | "math" -> Emitter.Math
       | "isect" -> Emitter.Isect
       | _ -> prerr_endline ("Unknown accelerator mode: " ^ !accel_mode); exit 1
     in
-    try Emitter.emit_program m ir with
+    let mrc = match !march with
+      | "rv32i" -> Emitter.I
+      | "rv32im" -> Emitter.Im
+      | "rv32im_zbb" -> Emitter.Im_zbb
+      | _ -> prerr_endline ("Unknown target architecture: " ^ !march); exit 1
+    in
+    try Emitter.emit_program md mrc ir with
     | Failure msg -> prerr_endline msg; exit 1    (* frame too large など *)
   in
   let out = open_out !output_file in

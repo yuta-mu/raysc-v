@@ -183,30 +183,6 @@ struct TraceResult {
     color: vec3,
 }
 
-fn q_abs(x: q16) -> q16 {
-    if (x < 0.0) {
-        return -x;
-    }
-    return x;
-}
-
-fn q_min(a: q16, b: q16) -> q16 {
-    if (a < b) {
-        return a;
-    }
-    return b;
-}
-
-fn q_clamp(x: q16, lo: q16, hi: q16) -> q16 {
-    if (x < lo) {
-        return lo;
-    }
-    if (x > hi) {
-        return hi;
-    }
-    return x;
-}
-
 fn ratio_i32(n: i32, d: i32) -> q16 {
     return ULP * ((n << 16) / d);
 }
@@ -229,14 +205,6 @@ fn q_tan_small(x: q16) -> q16 {
     return x + term1 + term2;
 }
 
-fn vec3_neg(v: vec3) -> vec3 {
-    return vec3(-v.x, -v.y, -v.z);
-}
-
-fn vec3_mul_elem(a: vec3, b: vec3) -> vec3 {
-    return vec3(a.x * b.x, a.y * b.y, a.z * b.z);
-}
-
 fn vec3_cross(a: vec3, b: vec3) -> vec3 {
     return vec3(
         a.y * b.z - a.z * b.y,
@@ -255,9 +223,14 @@ fn vec3_unit(v: vec3) -> vec3 {
 }
 
 fn vec3_unit_big(v: vec3) -> vec3 {
+    let m: q16;
+    let sh: i32;
     let s: vec3;
-    s = v;
-    for k in 0..8 {
+    m = qabs(v.x) | qabs(v.y) | qabs(v.z);
+    sh = max(15 - qclz(m), 0);
+    s = v >> sh;
+    if ((s <.> s) > 2.0) {
+        s = s * 0.5;
         if ((s <.> s) > 2.0) {
             s = s * 0.5;
         }
@@ -266,13 +239,13 @@ fn vec3_unit_big(v: vec3) -> vec3 {
 }
 
 fn vec3_near_zero(v: vec3) -> i32 {
-    if (q_abs(v.x) >= Q_NEAR_ZERO) {
+    if (qabs(v.x) >= Q_NEAR_ZERO) {
         return 0;
     }
-    if (q_abs(v.y) >= Q_NEAR_ZERO) {
+    if (qabs(v.y) >= Q_NEAR_ZERO) {
         return 0;
     }
-    if (q_abs(v.z) >= Q_NEAR_ZERO) {
+    if (qabs(v.z) >= Q_NEAR_ZERO) {
         return 0;
     }
     return 1;
@@ -287,10 +260,10 @@ fn vec3_refract(uv: vec3, n: vec3, ratio: q16) -> vec3 {
     let r_out_perp: vec3;
     let perp_len2: q16;
     let parallel_mag: q16;
-    cos_theta = q_min(vec3_neg(uv) <.> n, 1.0);
+    cos_theta = qmin((-uv) <.> n, 1.0);
     r_out_perp = (uv + n * cos_theta) * ratio;
     perp_len2 = r_out_perp <.> r_out_perp;
-    parallel_mag = sqrt(q_abs(1.0 - perp_len2));
+    parallel_mag = sqrt(qabs(1.0 - perp_len2));
     return r_out_perp + n * (-parallel_mag);
 }
 
@@ -301,7 +274,7 @@ fn rng_next_i32(state: i32) -> RandI32 {
     x = x ^ ((x >> 17) & 32767);
     x = x ^ (x << 5);
     out.state = x;
-    out.value = x & 2147483647;
+    out.value = andn(x, -2147483648);
     return out;
 }
 
@@ -469,7 +442,7 @@ fn hit_sphere(index: i32, ray: Ray, t_min: q16, t_max: q16) -> HitRecord {
         return rec;
     }
     perp = oc - ray.d * b;
-    if (q_abs(perp.x) > radius || q_abs(perp.y) > radius || q_abs(perp.z) > radius) {
+    if (qabs(perp.x) > radius || qabs(perp.y) > radius || qabs(perp.z) > radius) {
         return rec;
     }
     disc = radius2 - (perp <.> perp);
@@ -497,7 +470,7 @@ fn hit_sphere(index: i32, ray: Ray, t_min: q16, t_max: q16) -> HitRecord {
         rec.normal = n;
     } else {
         rec.front_face = 0;
-        rec.normal = vec3_neg(n);
+        rec.normal = -n;
     }
     return rec;
 }
@@ -582,8 +555,8 @@ fn material_scatter(state: i32, ray_in: Ray, rec: HitRecord) -> ScatterResult {
     } else {
         ratio = rec.fuzz_or_ref_idx;
     }
-    cos_theta = q_min(vec3_neg(ray_in.d) <.> rec.normal, 1.0);
-    sin_theta = sqrt(q_abs(1.0 - cos_theta * cos_theta));
+    cos_theta = qmin((-ray_in.d) <.> rec.normal, 1.0);
+    sin_theta = sqrt(qabs(1.0 - cos_theta * cos_theta));
     if (ratio * sin_theta > 1.0) {
         direction = vec3_reflect(ray_in.d, rec.normal);
     } else {
@@ -635,7 +608,7 @@ fn camera_init() -> Camera {
 
     cam.center = lookfrom;
     cam.viewport_u = u * viewport_width;
-    cam.viewport_v = vec3_neg(v) * viewport_height;
+    cam.viewport_v = (-v) * viewport_height;
     cam.viewport_upper_left = cam.center - w * focus_dist - cam.viewport_u * 0.5 - cam.viewport_v * 0.5;
 
     if (defocus_angle <= 0.0) {
@@ -707,7 +680,7 @@ fn ray_color(state: i32, initial_ray: Ray) -> TraceResult {
                 out.color = vec3(0.0, 0.0, 0.0);
                 return out;
             }
-            throughput = vec3_mul_elem(throughput, scatter.attenuation);
+            throughput = throughput <*> scatter.attenuation;
             current_ray = scatter.scattered;
         } else {
             a = 0.5 * (current_ray.d.y + 1.0);
@@ -717,7 +690,7 @@ fn ray_color(state: i32, initial_ray: Ray) -> TraceResult {
                 1.0 * (1.0 - a) + 1.0 * a
             );
             out.state = current_state;
-            out.color = vec3_mul_elem(throughput, sky);
+            out.color = throughput <*> sky;
             return out;
         }
     }
@@ -733,7 +706,7 @@ fn color_to_byte(linear_value: q16) -> i32 {
         return 0;
     }
     gamma_value = sqrt(linear_value);
-    clamped = q_clamp(gamma_value, 0.0, 0.999);
+    clamped = qmin(gamma_value, 0.999);
     return i32(clamped * 256);
 }
 

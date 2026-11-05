@@ -26,7 +26,10 @@ type context = {
   global_names : (string, string) Hashtbl.t;
 }
 
-let builtins = ["print"; "bprint"; "cycles"; "q16"; "i32"; "vec3"; "sqrt"; "rsqrt"; "rcp"]
+let builtins = ["print"; "bprint"; "cycles"; "q16"; "i32"; "vec3"; "sqrt"; "rsqrt"; "rcp";
+                (* zbb組み込み関数 *)
+                "min"; "max"; "qmin"; "qmax"; "minu"; "maxu"; "andn"; "orn"; "xnor";
+                "clz"; "qclz"; "sext_b"; "sext_h"; "qabs"; "qclamp"]
 
 let rec type_words structs = function
   | I32 | Q16 | Bool -> 1
@@ -189,12 +192,22 @@ let analyze program =
       | Binary (Dot, a, b) ->
           let ta = infer a and tb = infer b in
           if ta = Vec3 && tb = Vec3 then Q16 else error "dot product requires two vec3 operands"
+      | Binary (Had, a, b) ->
+          let ta = infer a and tb = infer b in
+          if ta = Vec3 && tb = Vec3 then Vec3 else error "Hadamard product requires two vec3 operands"
+      | Binary ((Shl | Shr), a, b) ->
+          let ta = infer a and tb = infer b in
+          (match ta, tb with
+          | (I32 | Q16 | Vec3) as t, I32 -> t
+          | _, I32 -> error "left operand of shift must be i32, q16, or vec3"
+          | _, _   -> error "right operand of shift must be i32")
       | Binary (op, a, b) ->
           let ta = infer a and tb = infer b in
           if ta <> tb then error (Printf.sprintf "type mismatch: %s and %s" (typ_to_string ta) (typ_to_string tb));
           (match op, ta with
            | (Add | Sub), (I32 | Q16 | Vec3) -> ta
-           | (Div | Mod | Shl | Shr | BitAnd | BitOr | BitXor), I32 -> I32
+           | (Div | Mod), I32 -> I32
+           | (BitAnd | BitOr | BitXor), (I32 | Q16) -> ta
            | (Eq | Ne), (I32 | Q16 | Bool) -> Bool
            | (Lt | Le | Gt | Ge), (I32 | Q16) -> Bool
            | (And | Or), Bool -> Bool
@@ -210,6 +223,22 @@ let analyze program =
           if infer x = Q16 && infer y = Q16 && infer z = Q16 then Vec3 else error "vec3 expects three q16 components"
       | Call (("sqrt" | "rsqrt" | "rcp"), [x]) ->
           if infer x = Q16 then Q16 else error "math builtin expects q16"
+      | Call (("min" | "max" | "minu" | "maxu"), [x; y]) ->
+          let tx = infer x and ty = infer y in
+          if tx = I32 && ty = I32 then I32 else error "min(u)/max(u) expects two i32 arguments"
+      | Call (("qmin" | "qmax"), [x; y]) ->
+          let tx = infer x and ty = infer y in
+          if tx = Q16 && ty = Q16 then Q16 else error "qmin/qmax expects two q16 arguments"
+      | Call (("andn" | "orn" | "xnor"), [x; y]) ->
+          let tx = infer x and ty = infer y in
+          if tx = I32 && ty = I32 then I32 else error "andn/orn/xnor expects two i32 arguments"
+      | Call ("clz", [x]) -> if infer x = I32 then I32 else error "clz expects i32"
+      | Call ("qclz", [x]) -> if infer x = Q16 then I32 else error "qclz expects q16"
+      | Call (("sext_b" | "sext_h"), [x]) -> if infer x = I32 then I32 else error "sext_b/sext_h expects i32"
+      | Call ("qabs", [x]) -> if infer x = Q16 then Q16 else error "qabs expects q16"
+      | Call ("qclamp", [x; y; z]) ->
+          let tx = infer x and ty = infer y and tz = infer z in
+          if tx = Q16 && ty = Q16 && tz = Q16 then Q16 else error "qclamp expects three q16 arguments"
       | Call (n, args) ->
           (match Hashtbl.find_opt structs n with
            | Some fields ->
@@ -296,8 +325,11 @@ let infer_expr ctx info e =
     | Binary (Dot, _, _) -> Q16       (* 内積の結果型は Q16 *)
     | Binary ((Eq | Ne | Lt | Le | Gt | Ge | And | Or), _, _) -> Bool
     | Binary (_, a, _) -> infer a
-    | Call ("cycles", _) | Call ("i32", _) -> I32
-    | Call ("q16", _) | Call (("sqrt" | "rsqrt" | "rcp"), _) -> Q16
+    | Call ("cycles", _) | Call ("i32", _)
+    | Call (("min" | "max" | "minu" | "maxu"), _) | Call (("andn" | "orn" | "xnor"), _)
+    | Call (("clz" | "qclz"), _) | Call (("sext_b" | "sext_h"), _) -> I32
+    | Call ("q16", _) | Call (("sqrt" | "rsqrt" | "rcp"), _)
+    | Call (("qmin" | "qmax" | "qabs" | "qclamp"), _) -> Q16
     | Call ("vec3", _) -> Vec3
     | Call (("print" | "bprint"), _) -> Void
     | Call (n, _) ->

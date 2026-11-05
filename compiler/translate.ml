@@ -25,7 +25,7 @@ let ir_binop : Ast.binop -> Ir.binop = function
   | BitAnd -> Ir.And | BitOr -> Ir.Or | BitXor -> Ir.Xor
   | Eq -> Ir.Eq | Ne -> Ir.Ne | Lt -> Ir.Lt | Le -> Ir.Le
   | Gt -> Ir.Gt | Ge -> Ir.Ge
-  | Mul | And | Or | Dot -> invalid_arg "ir_binop: 専用の変換が必要"
+  | Mul | And | Or | Dot | Had -> invalid_arg "ir_binop: 専用の変換が必要"
 
 (* n が 2 の冪なら Some (log_2 n) を返す *)
 let log2_exact n =
@@ -226,6 +226,12 @@ let compile (ctx : Semant.context) : Ir.program =
           let p2 = bin Ir.QMul (sa + 2) (sb + 2) in
           bin Ir.Add (bin Ir.Add p0 p1) p2
 
+      (* アダマール積 : 3 成分それぞれの QMul を計算し, 3 成分の vec3 を返す *)
+      | Binary (Had, a, b) ->
+          let sa = expr a in
+          let sb = expr b in
+          bin_words Ir.QMul 3 sa sb
+
       (* 乗算 : 型の組み合わせにより適切な演算に分岐 *)
       | Binary (Mul, a, b) ->
           let sa = expr a in
@@ -235,6 +241,17 @@ let compile (ctx : Semant.context) : Ir.program =
            | Vec3, Q16 -> vec3_scale sa sb
            | Q16, Vec3 -> vec3_scale sb sa
            | _ -> bin Ir.Mul sa sb)           (* i32*i32, q16*i32, i32*q16 は素の乗算 *)
+
+      (* シフト : 左辺は 1 or 3 ワード, シフト量は常に 1 ワードの i32 *)
+      | Binary ((Shl | Shr) as op, a, b) ->
+          let sa = expr a in
+          let sb = expr b in
+          let n = words_of (type_of a) in
+          let d = fresh n in
+          for i = 0 to n - 1 do
+            emit_i (Ir.Bin (ir_binop op, d + i, sa + i, sb))
+          done;
+          d
 
       (* その他の二項演算 *)
       | Binary (op, a, b) ->
@@ -269,6 +286,72 @@ let compile (ctx : Semant.context) : Ir.program =
       | Call ("sqrt", [x]) -> intr Ir.Sqrt (expr x)
       | Call ("rsqrt", [x]) -> intr Ir.Rsqrt (expr x)
       | Call ("rcp", [x]) -> intr Ir.Rcp (expr x)
+      (* zbb組み込み関数 *)
+      | Call (("min" | "qmin"), [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Min, d, sx, sy));
+          d
+      | Call (("max" | "qmax"), [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Max, d, sx, sy));
+          d
+      | Call ("minu", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Minu, d, sx, sy));
+          d
+      | Call ("maxu", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Maxu, d, sx, sy));
+          d
+      | Call ("andn", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Andn, d, sx, sy));
+          d
+      | Call ("orn", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Orn, d, sx, sy));
+          d
+      | Call ("xnor", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Xnor, d, sx, sy));
+          d
+      | Call (("clz" | "qclz"), [x]) ->
+          let d = fresh 1 in
+          emit_i (Ir.Zbb_u (Clz, d, expr x));
+          d
+      | Call ("sext_b", [x]) ->
+          let d = fresh 1 in
+          emit_i (Ir.Zbb_u (Sext_b, d, expr x));
+          d
+      | Call ("sext_h", [x]) ->
+          let d = fresh 1 in
+          emit_i (Ir.Zbb_u (Sext_h, d, expr x));
+          d
+      | Call ("qabs", [x]) ->
+          let d = fresh 1 in
+          emit_i (Ir.Qabs (d, expr x));
+          d
+      | Call ("qclamp", [x; y; z]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          let sz = expr z in
+          emit_i (Ir.Qclamp (d, sx, sy, sz));
+          d
       (* 一般の呼び出し *)
       | Call (n, args) ->
           let srcs = map_ltr expr args in
