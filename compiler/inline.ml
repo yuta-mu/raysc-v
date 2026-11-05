@@ -1,12 +1,7 @@
-(* inline.ml : 全関数インライン展開 (C-9)
-   RayQ には再帰がないので、call を 1 つずつ展開していけば、必ず call がなくなる。
-   展開したあと、jump でつながったブロックを 1 つにまとめて(merge_blocks)、
-   fold がブロックをまたいだ値も使えるようにする。 *)
 open Ir
 
-(* ---------- 段階1:番号をずらす ---------- *)
-
-(* 命令 i の vreg に dv、局所配列の番号に da を足す *)
+(*vreg番号をずらす*)
+(* 命令iのvregにdv、局所配列の番号にdaを足す *)
 let map_instr vm am (i : instr) : instr =
   let v = vm and a = am in
   let r = function Local id -> Local (a id) | g -> g in   (* region:Local だけずらす *)
@@ -16,6 +11,10 @@ let map_instr vm am (i : instr) : instr =
   | Bin (op, d, x, y) -> Bin (op, v d, v x, v y)
   | Un (op, d, x) -> Un (op, v d, v x)
   | Intr (f, d, x) -> Intr (f, v d, v x)
+  | Zbb_b (op, d, x, y) -> Zbb_b (op, v d, v x, v y)      
+  | Zbb_u (op, d, x) -> Zbb_u (op, v d, v x)             
+  | Qabs (d, x) -> Qabs (v d, v x)                       
+  | Qclamp (d, x, y, z) -> Qclamp (v d, v x, v y, v z)    
   | AddrLocal (d, id) -> AddrLocal (v d, a id)
   | AddrGlobal (d, s) -> AddrGlobal (v d, s)          (* 名前はずらさない *)
   | Load (d, rg, x, o) -> Load (v d, r rg, v x, o)
@@ -50,8 +49,7 @@ let defined_vregs (g : func) =
 let max_label (f : func) = List.fold_left (fun m b -> max m b.label) 0 f.blocks
 let next_array (f : func) = List.fold_left (fun m (id, _) -> max m (id + 1)) 0 f.arrays
 
-(* ---------- 段階2:call を 1 つ展開する ---------- *)
-
+(*callを1つ展開する*)
 (* body を「call の前」「call」「call の後」に分ける。call がなければ None *)
 let split_at_call body =
   let rec go acc = function
@@ -81,8 +79,10 @@ let inline_one funcs (f : func) : func option =
              let l_after = dl + max_label g + 1 in          (* call の後ろ用の新しいラベル *)
              let entry = (List.hd g'.blocks).label in      (* g の入口 *)
              (* call の前:引数をコピーして、g の入口へ *)
-             let b_pre =
-               { b with body = pre @ List.map2 (fun p a -> Move (p, a)) g'.params args;
+              let b_pre =
+               { b with body = pre @ List.filter_map (fun (p, a) ->
+                                   if p = a then None else Some (Move (p, a)))   (* 置きかえた引数は Move なし *)
+                                   (List.combine g'.params args);
                         term = Jump entry } in
              (* g の中身:ret を「戻り値をコピーして、call の後ろへ」に置きかえる *)
              let body_blocks = List.map (fun cb ->
@@ -98,15 +98,13 @@ let inline_one funcs (f : func) : func option =
   in
   go [] f.blocks
 
-(* ---------- 段階3:call がなくなるまでくり返す ---------- *)
-
+(*callがなくなるまでくり返*)
 let rec inline_all funcs f =
   match inline_one funcs f with
   | Some f' -> inline_all funcs f'
   | None -> f
 
-(* ---------- 段階4:ブロックをつなげる ----------
-   A の最後が jump B で、B に来る道が A からの 1 本だけなら、B を A のうしろにくっつける *)
+(*ブロックをつなげる*)
 let merge_blocks (f : func) : func =
   let entry = (List.hd f.blocks).label in
   let rec loop blocks =
@@ -130,8 +128,7 @@ let merge_blocks (f : func) : func =
   in
   { f with blocks = loop f.blocks }
 
-(* ---------- run ----------
-   main に全部を展開する。ほかの関数は呼ばれなくなるので、main だけを残す *)
+(*run*)
 let run (p : program) : program =
   let funcs = Hashtbl.create 16 in
   List.iter (fun f -> Hashtbl.replace funcs f.name f) p.funcs;
