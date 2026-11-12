@@ -10,8 +10,6 @@ module custom0 (
 );
 
     // 1. qmul (funct3 = 3'b000): Q16.16 固定小数点乗算 (DSPパイプライン化)
-    // フォワーディングMUX -> DSP48E1 -> EX/MEMレジスタ の貫通パスを切るため、
-    // 乗算結果を一旦レジスタ (qmul_res_q) にラッチして次のサイクルで完了させる。
     logic        qmul_start;
     logic        qmul_done_q;
     logic [31:0] qmul_res_q;
@@ -80,7 +78,36 @@ module custom0 (
         .done   (rcp_done)
     );
 
-    // 5. 出力選択 & ストール信号 (すべて FF 出力から選択されるため高速)
+    // 5. ハードウェア乱数生成器 (Xorshift32)
+    // funct3 = 3'b101 (qseed) : rng_state <= a
+    // funct3 = 3'b110 (qrand) : [0.0, 1.0) の q16 乱数を返しrng_state を更新
+    // funct3 = 3'b111 (qrands): [-1.0, 1.0) の q16 乱数を返しrng_state を更新
+    logic [31:0] rng_state;
+    logic [31:0] rng_x1, rng_x2, rng_next;
+    logic [31:0] rand_u_q16, rand_s_q16;
+
+    assign rng_x1     = rng_state ^ (rng_state << 13);
+    assign rng_x2     = rng_x1 ^ {17'd0, rng_x1[31:17]}; // (x >> 17) & 32767
+    assign rng_next   = rng_x2 ^ (rng_x2 << 5);
+
+    // ULP * ((raw.value >> 8) & 65535) と完全一致
+    assign rand_u_q16 = {16'd0, rng_next[23:8]};
+    // -1.0 + 2.0 * rand_u_q16 と完全一致
+    assign rand_s_q16 = {{16{~rng_next[23]}}, rng_next[22:8], 1'b0};
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            rng_state <= 32'd42;
+        end else if (valid) begin
+            if (funct3 == 3'b101) begin
+                rng_state <= a;
+            end else if (funct3 == 3'b110 || funct3 == 3'b111) begin
+                rng_state <= rng_next;
+            end
+        end
+    end
+
+    // 6. 出力選択 & ストール信号
     always_comb begin
         result = 32'd0;
         stall  = 1'b0;
@@ -101,6 +128,18 @@ module custom0 (
                 3'b100: begin
                     result = rcp_res;
                     stall  = !rcp_done;
+                end
+                3'b101: begin
+                    result = a;
+                    stall  = 1'b0;
+                end
+                3'b110: begin
+                    result = rand_u_q16;
+                    stall  = 1'b0;
+                end
+                3'b111: begin
+                    result = rand_s_q16;
+                    stall  = 1'b0;
                 end
                 default: begin
                     result = 32'd0;

@@ -64,7 +64,6 @@ module datapath (
             pc <= 32'h0000_0000;
         end else if (!halted) begin
             if (ex_valid && ex_is_ebreak) begin
-                // 規則1 & 3: 有効な ebreak が EX に到達したら停止 PC を ebreak 自身のアドレスに固定
                 pc <= ex_pc;
             end else if (!ebreak_in_pipe && (!stall_if || branch_flush)) begin
                 pc <= pc_next;
@@ -275,7 +274,7 @@ module datapath (
     assign ex_pc_target = (ex_jump && ex_alu_src_b) ? (ex_alu_result & ~32'd1) : (ex_pc + ex_imm);
     assign ex_pc_src    = ex_valid && (ex_jump || ex_branch_taken);
 
-    // --- M拡張: 乗算器 (DSP直結パス切断のため1サイクルラッチ) & 除算器 ---
+    // --- M拡張: 乗算器 & 除算器 ---
     logic [31:0] ex_mul_comb, ex_mul_q, ex_div_result, ex_mdu_result;
     logic        is_mul_op, mul_done_q, mul_stall;
     logic        div_busy, div_done, is_div_op, div_start, div_stall;
@@ -320,7 +319,7 @@ module datapath (
 
     assign ex_mdu_result = ex_funct3[2] ? ex_div_result : ex_mul_q;
 
-    // --- custom-0 演算器 (qmul 含めすべて custom0.sv 内部で FF 出力化済み) ---
+    // --- custom-0 演算器 ---
     logic        is_custom0, c0_stall;
     logic [31:0] ex_c0_result;
 
@@ -371,7 +370,7 @@ module datapath (
             mem_rd          <= 5'd0;
             mem_funct3      <= 3'd0;
         end else if (stall_mem) begin
-            // UARTストール中はMEMステージを保持
+            // UART / アクセラレータストール中はMEMステージを保持
         end else if (halted || ex_busy_stall || !ex_valid) begin
             mem_valid      <= 1'b0;
             mem_is_ebreak  <= 1'b0;
@@ -392,10 +391,19 @@ module datapath (
         end
     end
 
-    // # Stage 4: MEM (Memory Access Request to BRAM Port B / MMIO / UART)
-    assign mem_addr  = mem_exec_result;
-    assign mem_read  = mem_valid && mem_mem_read  && !halted;
-    assign mem_write = mem_valid && mem_mem_write && !halted;
+    // # Stage 4: MEM (Memory Access Request to BRAM Port B / MMIO / UART / Accel)
+    assign mem_addr = mem_exec_result;
+
+    // 0x3000_0000 〜 0x3000_0FFF を球交差判定アクセラレータに割り当て
+    wire        is_accel_mmio = mem_valid && (mem_addr[31:12] == 20'h30000) && !halted;
+    wire        accel_we      = is_accel_mmio && mem_mem_write;
+    wire        accel_re      = is_accel_mmio && mem_mem_read;
+    wire [31:0] accel_rdata;
+    wire        accel_stall;
+
+    // アクセラレータアクセス時は外部メモリバス (BRAM等) の read/write を抑止
+    assign mem_read  = mem_valid && mem_mem_read  && !is_accel_mmio && !halted;
+    assign mem_write = mem_valid && mem_mem_write && !is_accel_mmio && !halted;
 
     logic [1:0]  mem_byte_offset;
     logic [7:0]  rs2_b;
@@ -435,12 +443,28 @@ module datapath (
         endcase
     end
 
+    sphere_accel #(
+        .USE_ROUND(1'b1)
+    ) u_sphere_accel (
+        .clk         (clk),
+        .rst_n       (rst_n),
+        .sel         (is_accel_mmio),
+        .we          (accel_we),
+        .re          (accel_re),
+        .addr_offset (mem_addr[11:0]),
+        .wdata       (mem_wdata),
+        .rdata       (accel_rdata),
+        .stall       (accel_stall)
+    );
+
     // --- MEM/WB パイプラインレジスタ ---
     logic        wb_is_ebreak;
     result_src_t wb_result_src;
     logic [31:0] wb_exec_result;
     logic [2:0]  wb_funct3;
     logic [1:0]  wb_byte_offset;
+    logic        wb_is_accel;
+    logic [31:0] wb_accel_rdata;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -452,10 +476,13 @@ module datapath (
             wb_rd          <= 5'd0;
             wb_funct3      <= 3'd0;
             wb_byte_offset <= 2'd0;
+            wb_is_accel    <= 1'b0;
+            wb_accel_rdata <= 32'h0;
         end else if (halted || stall_mem || !mem_valid) begin
             wb_valid      <= 1'b0;
             wb_is_ebreak  <= 1'b0;
             wb_reg_write  <= 1'b0;
+            wb_is_accel   <= 1'b0;
         end else begin
             wb_valid       <= 1'b1;
             wb_is_ebreak   <= mem_is_ebreak;
@@ -465,21 +492,27 @@ module datapath (
             wb_rd          <= mem_rd;
             wb_funct3      <= mem_funct3;
             wb_byte_offset <= mem_byte_offset;
+            wb_is_accel    <= is_accel_mmio;
+            wb_accel_rdata <= accel_rdata;
         end
     end
 
     // # Stage 5: WB (Write Back & Load Data Alignment)
+    logic [31:0] raw_mem_rdata;
     logic [7:0]  rdata_b0, rdata_b1, rdata_b2, rdata_b3, selected_byte;
     logic [15:0] rdata_h0, rdata_h1, selected_half;
     logic        byte_sign, half_sign;
     logic [31:0] load_data;
 
-    assign rdata_b0 = mem_rdata[7:0];
-    assign rdata_b1 = mem_rdata[15:8];
-    assign rdata_b2 = mem_rdata[23:16];
-    assign rdata_b3 = mem_rdata[31:24];
-    assign rdata_h0 = mem_rdata[15:0];
-    assign rdata_h1 = mem_rdata[31:16];
+    // アクセラレータからの読み出し時は wb_accel_rdata を選択
+    assign raw_mem_rdata = wb_is_accel ? wb_accel_rdata : mem_rdata;
+
+    assign rdata_b0 = raw_mem_rdata[7:0];
+    assign rdata_b1 = raw_mem_rdata[15:8];
+    assign rdata_b2 = raw_mem_rdata[23:16];
+    assign rdata_b3 = raw_mem_rdata[31:24];
+    assign rdata_h0 = raw_mem_rdata[15:0];
+    assign rdata_h1 = raw_mem_rdata[31:16];
 
     always_comb begin
         case (wb_byte_offset)
@@ -498,10 +531,10 @@ module datapath (
         case (wb_funct3)
             FUNCT3_LB:  load_data = {{24{byte_sign}}, selected_byte};
             FUNCT3_LH:  load_data = {{16{half_sign}}, selected_half};
-            FUNCT3_LW:  load_data = mem_rdata;
+            FUNCT3_LW:  load_data = raw_mem_rdata;
             FUNCT3_LBU: load_data = {24'b0, selected_byte};
             FUNCT3_LHU: load_data = {16'b0, selected_half};
-            default:    load_data = mem_rdata;
+            default:    load_data = raw_mem_rdata;
         endcase
     end
 
@@ -516,7 +549,7 @@ module datapath (
                             id_valid && ((id_uses_rs1 && (id_rs1 == ex_rd)) ||
                                          (id_uses_rs2 && (id_rs2 == ex_rd)));
 
-    assign stall_mem = uart_stall && mem_valid && mem_mem_write;
+    assign stall_mem = (uart_stall && mem_valid && mem_mem_write && !is_accel_mmio) || accel_stall;
     assign stall_ex  = stall_mem || ex_busy_stall;
     assign stall_id  = stall_ex  || load_use_stall;
     assign stall_if  = stall_id;
