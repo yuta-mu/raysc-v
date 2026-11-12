@@ -275,6 +275,107 @@ let emit_instr (md : mode) (mrc : march) fr (i : instr) =
         load "a1" (s c);
         Printf.bprintf buf "jal ra, __min\n";
         store "a0" (s d))
+        Printf.bprintf buf "sw a0, %d(sp)\n" (s d))
+  | AccelSetSphere (i, x, y, z, r, r2, m) ->
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s i);
+        Printf.bprintf buf "slli t0, t0, 5\n";
+        Printf.bprintf buf "li t1, 0x30000000\n";
+        Printf.bprintf buf "add t1, t1, t0\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s x);
+        Printf.bprintf buf "sw t0, 256(t1)\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s y);
+        Printf.bprintf buf "sw t0, 260(t1)\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s z);
+        Printf.bprintf buf "sw t0, 264(t1)\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s r);
+        Printf.bprintf buf "sw t0, 268(t1)\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s r2);
+        Printf.bprintf buf "sw t0, 272(t1)\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s m);
+        Printf.bprintf buf "sw t0, 276(t1)\n"
+  | AccelHit (d, ox, oy, oz, dx, dy, dz, tmin, tmax) ->
+        Printf.bprintf buf "li t1, 0x30000000\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s ox);
+        Printf.bprintf buf "lw t2, %d(sp)\n" (s oy);
+        Printf.bprintf buf "lw t3, %d(sp)\n" (s oz);
+        Printf.bprintf buf "lw t4, %d(sp)\n" (s dx);
+        Printf.bprintf buf "sw t0, 0(t1)\n";
+        Printf.bprintf buf "sw t2, 4(t1)\n";
+        Printf.bprintf buf "sw t3, 8(t1)\n";
+        Printf.bprintf buf "sw t4, 12(t1)\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s dy);
+        Printf.bprintf buf "lw t2, %d(sp)\n" (s dz);
+        Printf.bprintf buf "lw t3, %d(sp)\n" (s tmin);
+        Printf.bprintf buf "lw t4, %d(sp)\n" (s tmax);
+        Printf.bprintf buf "sw t0, 16(t1)\n";
+        Printf.bprintf buf "sw t2, 20(t1)\n";
+        Printf.bprintf buf "sw t3, 24(t1)\n";
+        Printf.bprintf buf "sw t4, 28(t1)\n";
+        Printf.bprintf buf "lw t0, 32(t1)\n";
+        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
+  | AccelT d ->
+        Printf.bprintf buf "li t1, 0x30000000\n";
+        Printf.bprintf buf "lw t0, 36(t1)\n";
+        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
+  | RngSeed a ->
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s a);
+        Printf.bprintf buf "qseed x0, t0\n"
+  | RandQ16 d ->
+        Printf.bprintf buf "qrand t0, x0\n";
+        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
+  | RandQ16S d ->
+        Printf.bprintf buf "qrands t0, x0\n";
+        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
+  | AccelSetSphere (i, x, y, z, r, r2, m) ->
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s i);
+        Printf.bprintf buf "slli t0, t0, 5\n";
+        Printf.bprintf buf "li t1, 0x30000000\n";
+        Printf.bprintf buf "add t1, t1, t0\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s x);
+        Printf.bprintf buf "sw t0, 256(t1)\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s y);
+        Printf.bprintf buf "sw t0, 260(t1)\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s z);
+        Printf.bprintf buf "sw t0, 264(t1)\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s r);
+        Printf.bprintf buf "sw t0, 268(t1)\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s r2);
+        Printf.bprintf buf "sw t0, 272(t1)\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s m);
+        Printf.bprintf buf "sw t0, 276(t1)\n"
+  | AccelHit (d, ox, oy, oz, dx, dy, dz, tmin, tmax) ->
+        Printf.bprintf buf "li t1, 0x30000000\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s ox);
+        Printf.bprintf buf "lw t2, %d(sp)\n" (s oy);
+        Printf.bprintf buf "lw t3, %d(sp)\n" (s oz);
+        Printf.bprintf buf "lw t4, %d(sp)\n" (s dx);
+        Printf.bprintf buf "sw t0, 0(t1)\n";
+        Printf.bprintf buf "sw t2, 4(t1)\n";
+        Printf.bprintf buf "sw t3, 8(t1)\n";
+        Printf.bprintf buf "sw t4, 12(t1)\n";
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s dy);
+        Printf.bprintf buf "lw t2, %d(sp)\n" (s dz);
+        Printf.bprintf buf "lw t3, %d(sp)\n" (s tmin);
+        Printf.bprintf buf "lw t4, %d(sp)\n" (s tmax);
+        Printf.bprintf buf "sw t0, 16(t1)\n";
+        Printf.bprintf buf "sw t2, 20(t1)\n";
+        Printf.bprintf buf "sw t3, 24(t1)\n";
+        Printf.bprintf buf "sw t4, 28(t1)\n";
+        Printf.bprintf buf "lw t0, 32(t1)\n";
+        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
+  | AccelT d ->
+        Printf.bprintf buf "li t1, 0x30000000\n";
+        Printf.bprintf buf "lw t0, 36(t1)\n";
+        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
+  | RngSeed a ->
+        Printf.bprintf buf "lw t0, %d(sp)\n" (s a);
+        Printf.bprintf buf "qseed x0, t0\n"
+  | RandQ16 d ->
+        Printf.bprintf buf "qrand t0, x0\n";
+        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
+  | RandQ16S d ->
+        Printf.bprintf buf "qrands t0, x0\n";
+        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
 
 (*終端*)
 (*ブロックのラベルは .L_関数名_番号*)

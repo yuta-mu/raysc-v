@@ -29,7 +29,8 @@ type context = {
 let builtins = ["print"; "bprint"; "cycles"; "q16"; "i32"; "vec3"; "sqrt"; "rsqrt"; "rcp";
                 (* zbb組み込み関数 *)
                 "min"; "max"; "qmin"; "qmax"; "minu"; "maxu"; "andn"; "orn"; "xnor";
-                "clz"; "qclz"; "sext_b"; "sext_h"; "qabs"; "qclamp"]
+                "clz"; "qclz"; "sext_b"; "sext_h"; "qabs"; "qclamp";
+                "accel_set_sphere"; "accel_hit"; "accel_t"; "rng_seed"; "rand_q16"; "rand_q16_s"]
 
 let rec type_words structs = function
   | I32 | Q16 | Bool -> 1
@@ -239,6 +240,20 @@ let analyze program =
       | Call ("qclamp", [x; y; z]) ->
           let tx = infer x and ty = infer y and tz = infer z in
           if tx = Q16 && ty = Q16 && tz = Q16 then Q16 else error "qclamp expects three q16 arguments"
+      | Call ("accel_set_sphere", [i; x; y; z; r; r2; mat]) ->
+          if infer i = I32 && infer x = Q16 && infer y = Q16 && infer z = Q16 &&
+             infer r = Q16 && infer r2 = Q16 && infer mat = I32
+          then Void
+          else error "accel_set_sphere expects (i32, q16, q16, q16, q16, q16, i32)"
+      | Call ("accel_hit", [ox; oy; oz; dx; dy; dz; tmin; tmax]) ->
+          if infer ox = Q16 && infer oy = Q16 && infer oz = Q16 &&
+             infer dx = Q16 && infer dy = Q16 && infer dz = Q16 &&
+             infer tmin = Q16 && infer tmax = Q16
+          then I32
+          else error "accel_hit expects eight q16 arguments"
+      | Call ("accel_t", []) -> Q16
+      | Call ("rng_seed", [x]) -> if infer x = I32 then Void else error "rng_seed expects i32"
+      | Call (("rand_q16" | "rand_q16_s"), []) -> Q16
       | Call (n, args) ->
           (match Hashtbl.find_opt structs n with
            | Some fields ->
@@ -325,13 +340,13 @@ let infer_expr ctx info e =
     | Binary (Dot, _, _) -> Q16       (* 内積の結果型は Q16 *)
     | Binary ((Eq | Ne | Lt | Le | Gt | Ge | And | Or), _, _) -> Bool
     | Binary (_, a, _) -> infer a
-    | Call ("cycles", _) | Call ("i32", _)
+    | Call ("cycles", _) | Call ("i32", _) | Call ("accel_hit", _)
     | Call (("min" | "max" | "minu" | "maxu"), _) | Call (("andn" | "orn" | "xnor"), _)
     | Call (("clz" | "qclz"), _) | Call (("sext_b" | "sext_h"), _) -> I32
-    | Call ("q16", _) | Call (("sqrt" | "rsqrt" | "rcp"), _)
-    | Call (("qmin" | "qmax" | "qabs" | "qclamp"), _) -> Q16
+    | Call ("q16", _) | Call (("sqrt" | "rsqrt" | "rcp"), _) | Call ("accel_t", _)
+    | Call (("qmin" | "qmax" | "qabs" | "qclamp"), _) | Call (("rand_q16" | "rand_q16_s"), _) -> Q16
     | Call ("vec3", _) -> Vec3
-    | Call (("print" | "bprint"), _) -> Void
+    | Call (("print" | "bprint" | "accel_set_sphere" | "rng_seed"), _) -> Void
     | Call (n, _) ->
         (match Hashtbl.find_opt ctx.structs n with
          | Some _ -> Struct n

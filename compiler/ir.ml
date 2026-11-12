@@ -57,6 +57,12 @@ type instr =
   | Cycles of vreg                             (*d = cycles()*)
   | Qabs of vreg * vreg
   | Qclamp of vreg * vreg * vreg * vreg
+  | AccelSetSphere of vreg * vreg * vreg * vreg * vreg * vreg * vreg
+  | AccelHit of vreg * vreg * vreg * vreg * vreg * vreg * vreg * vreg * vreg
+  | AccelT of vreg
+  | RngSeed of vreg
+  | RandQ16 of vreg
+  | RandQ16S of vreg
 
 (*基本ブロックの終端*)
 type terminator =
@@ -129,6 +135,16 @@ let string_of_instr = function
   | Cycles d            -> Printf.sprintf "%s = cycles" (v d)
   | Qabs (d, a)         -> Printf.sprintf "%s = qabs(%s)" (v d) (v a)
   | Qclamp (d, a, b, c) -> Printf.sprintf "%s = qclamp(%s, %s, %s)" (v d) (v a) (v b) (v c)
+  | AccelSetSphere (i, x, y, z, r, r2, m) ->
+      Printf.sprintf "accel_set_sphere(%s, %s, %s, %s, %s, %s, %s)"
+        (v i) (v x) (v y) (v z) (v r) (v r2) (v m)
+  | AccelHit (d, ox, oy, oz, dx, dy, dz, tmin, tmax) ->
+      Printf.sprintf "%s = accel_hit(%s, %s, %s, %s, %s, %s, %s, %s)"
+        (v d) (v ox) (v oy) (v oz) (v dx) (v dy) (v dz) (v tmin) (v tmax)
+  | AccelT d -> Printf.sprintf "%s = accel_t" (v d)
+  | RngSeed a  -> Printf.sprintf "rng_seed(%s)" (v a)
+  | RandQ16 d  -> Printf.sprintf "%s = rand_q16" (v d)
+  | RandQ16S d -> Printf.sprintf "%s = rand_q16_s" (v d)
 
 let string_of_term = function
   | Jump t              -> Printf.sprintf "jump %s" (l t)
@@ -190,23 +206,28 @@ let blocks_of_items (items : item list) : block list =
   | _ -> invalid_arg "blocks_of_items: the item list must start with L"
 
 (*命令が書き込む vreg*)
-let defs = function
+  let defs = function
   | Const (d, _) | Move (d, _) | Bin (_, d, _, _) | Un (_, d, _) | Intr (_, d, _)
   | Zbb_b (_, d, _, _) | Zbb_u (_, d, _)
   | AddrLocal (d, _) | AddrGlobal (d, _) | Load (d, _, _, _) | Cycles d
-  | Qabs (d, _) | Qclamp (d, _, _, _) -> [d]
-  | Call (rs, _, _) -> rs 
-  | Store _ | Bprint _ -> []
+  | Qabs (d, _) | Qclamp (d, _, _, _)
+  | AccelHit (d, _, _, _, _, _, _, _, _) | AccelT d -> [d]
+  | Call (rs, _, _) -> rs
+  | Store _ | Bprint _ | AccelSetSphere _ | RngSeed _ -> []
+  | RandQ16 d | RandQ16S d -> [d]
 
 (*命令が読み込む vreg*)
 let uses = function
-  | Const _ | AddrLocal _ | AddrGlobal _ | Cycles _ -> []
+  | Const _ | AddrLocal _ | AddrGlobal _ | Cycles _ | AccelT _ | RandQ16 _ | RandQ16S _ -> []
   | Move (_, a) | Un (_, _, a) | Intr (_, _, a) | Zbb_u (_, _, a)
   | Load (_, _, a, _) | Bprint a | Qabs (_, a) -> [a]
   | Bin (_, _, a, b) | Zbb_b (_, _, a, b) -> [a; b]
   | Store (_, a, _, s) -> [a; s]
   | Qclamp (_, a, b, c) -> [a; b; c]
+  | AccelSetSphere (i, x, y, z, r, r2, m) -> [i; x; y; z; r; r2; m]
+  | AccelHit (_, ox, oy, oz, dx, dy, dz, tmin, tmax) -> [ox; oy; oz; dx; dy; dz; tmin; tmax]
   | Call (_, _, args) -> args
+  | RngSeed a -> [a]
 
 (*終端が読み込む vreg*)
 let term_uses = function
@@ -222,7 +243,8 @@ let successors = function
 
 (*副作用の判定*)
 let has_side_effect = function
-  | Bprint _ | Cycles _ | Call _ | Store _ -> true
+  | Bprint _ | Cycles _ | Call _ | Store _
+  | AccelSetSphere _ | AccelHit _ | AccelT _ -> true
   | _ -> false
 
 (*Storeがどの配列に書き込んでいるか*)

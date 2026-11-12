@@ -352,6 +352,49 @@ let compile (ctx : Semant.context) : Ir.program =
           let sz = expr z in
           emit_i (Ir.Qclamp (d, sx, sy, sz));
           d
+    (* 1. 文 (stmt) または void 式の Call ("bprint", [a]) の隣に追加 *)
+| Call ("accel_set_sphere", [ei; ex; ey; ez; er; er2; em]) ->
+          let d = fresh 1 in
+    let vi  = expr ei in
+    let vx  = expr ex in
+    let vy  = expr ey in
+    let vz  = expr ez in
+    let vr  = expr er in
+    let vr2 = expr er2 in
+    let vm  = expr em in
+    emit_i (Ir.AccelSetSphere (vi, vx, vy, vz, vr, vr2, vm));
+    d
+
+(* 2. 式 (expr) の Call ("cycles", []) や Call ("qclamp", ...) の隣に追加 *)
+| Call ("accel_hit", [eox; eoy; eoz; edx; edy; edz; etmin; etmax]) ->
+          let d = fresh 1 in
+    let vox   = expr eox in
+    let voy   = expr eoy in
+    let voz   = expr eoz in
+    let vdx   = expr edx in
+    let vdy   = expr edy in
+    let vdz   = expr edz in
+    let vtmin = expr etmin in
+    let vtmax = expr etmax in
+    emit_i (Ir.AccelHit (d, vox, voy, voz, vdx, vdy, vdz, vtmin, vtmax));
+    d
+
+| Call ("accel_t", []) ->
+          let d = fresh 1 in
+    emit_i (Ir.AccelT d);
+    d
+    | Call ("rng_seed", [es]) ->
+    let vs = expr es in
+    emit_i (Ir.RngSeed vs);
+    fresh 0
+| Call ("rand_q16", []) ->
+    let d = fresh 1 in
+    emit_i (Ir.RandQ16 d);
+    d
+| Call ("rand_q16_s", []) ->
+    let d = fresh 1 in
+    emit_i (Ir.RandQ16S d);
+    d
       (* 一般の呼び出し *)
       | Call (n, args) ->
           let srcs = map_ltr expr args in
