@@ -102,6 +102,9 @@ OPCODES = {
     'qsqrt':  {'type': 'R1', 'opcode': 0x0B, 'funct3': 0x2, 'funct7': 0x00},
     'qrsqrt': {'type': 'R1', 'opcode': 0x0B, 'funct3': 0x3, 'funct7': 0x00},
     'qrcp':   {'type': 'R1', 'opcode': 0x0B, 'funct3': 0x4, 'funct7': 0x00},
+    'qseed':  {'type': 'R1', 'opcode': 0x0B, 'funct3': 0x5, 'funct7': 0x00},
+    'qrand':  {'type': 'R1', 'opcode': 0x0B, 'funct3': 0x6, 'funct7': 0x00},
+    'qrands': {'type': 'R1', 'opcode': 0x0B, 'funct3': 0x7, 'funct7': 0x00},
 
     # Zbb Extension
     'min':    {'type': 'R',  'opcode': 0x33, 'funct3': 0x4, 'funct7': 0x05},
