@@ -14,7 +14,7 @@ let block_use_def (b : block) =
   List.iter read (term_uses b.term);
   (!use, !def)
 
-(* 各ブロックの、入口と出口で生きている vreg *)
+(*各ブロックの、入口と出口で生きているvreg*)
 let liveness (f : func) =
   let ud = Hashtbl.create 64 in
   List.iter (fun b -> Hashtbl.replace ud b.label (block_use_def b)) f.blocks;
@@ -39,7 +39,7 @@ let liveness (f : func) =
   done;
   (live_in, live_out)
 
-(* vreg ごとに、その vreg を書いている命令を集める *)
+(* vreg ごとに、そのvregを書いている命令を集める*)
 let def_sites (f : func) =
   let h = Hashtbl.create 256 in
   List.iter (fun b -> List.iter (fun i ->
@@ -49,6 +49,7 @@ let def_sites (f : func) =
   h
 
 (*生存区間*)
+
 (* 命令に通し番号をつける。ブロックの命令は bs, bs+1, …、終端はbe*)
 let number (f : func) =
   let pos = ref 0 in
@@ -62,8 +63,8 @@ let number (f : func) =
 
 type interval = {
   iv : vreg;
-  mutable start : int;
-  mutable stop : int;
+  mutable start : int; (*生き始める番号*)
+  mutable stop : int; (*最後に生きている番号*)
 }
 
 let build_intervals (f : func) =

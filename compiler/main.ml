@@ -81,12 +81,11 @@ let () =
     let accel_off = (md = Emitter.Off) and zbb = (mrc = Emitter.Im_zbb) in
     List.iter (Regalloc.report ~accel_off ~zbb) ir.Ir.funcs
   end;
-  ignore do_regalloc;                                   (* emitter につなぐまでの仮 *)
 
   if !dump_ir then Ir.dump_program stdout ir;   (* --dump-ir のときは IR を表示 *)
 
   let asm =
-    try Emitter.emit_program md mrc ir with
+    try Emitter.emit_program ~regalloc:do_regalloc md mrc ir with
     | Failure msg -> prerr_endline msg; exit 1    (* frame too large など *)
   in
   let out = open_out !output_file in
