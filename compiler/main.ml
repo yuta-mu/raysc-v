@@ -7,6 +7,7 @@ let () =
   let dump_ir = ref false in
   let inline_flag = ref false in
   let fold_flag = ref false in
+  let regalloc_flag = ref false in
 
   let speclist = [
     ("-o", Arg.Set_string output_file, "Output assembly file (.s)");
@@ -19,6 +20,7 @@ let () =
     ("--dump-ir", Arg.Set dump_ir, "Print the IR to stdout");
     ("--inline", Arg.Set inline_flag, "Inline all function calls");
     ("--fold", Arg.Set fold_flag, "Constant folding / propagation");
+    ("--regalloc", Arg.Set regalloc_flag, "Linear-scan register allocation");
   ] in
 
   Arg.parse speclist (fun f -> input_file := f) "Usage: rayqc <input.rq> -o <output.s>";
@@ -27,6 +29,20 @@ let () =
     prerr_endline "Error: input and output files are required";
     exit 1
   end;
+
+  (*モード(最適化より前に決める)*)
+  let md = match !accel_mode with
+    | "off" -> Emitter.Off
+    | "math" -> Emitter.Math
+    | "isect" -> Emitter.Isect
+    | _ -> prerr_endline ("Unknown accelerator mode: " ^ !accel_mode); exit 1
+  in
+  let mrc = match !march with
+    | "rv32i" -> Emitter.I
+    | "rv32im" -> Emitter.Im
+    | "rv32im_zbb" -> Emitter.Im_zbb
+    | _ -> prerr_endline ("Unknown target architecture: " ^ !march); exit 1
+  in
 
   let ch = open_in !input_file in
   let lexbuf = Lexing.from_channel ch in
@@ -51,27 +67,17 @@ let () =
     try Translate.compile ctx with
     | Semant.Error msg -> prerr_endline ("semantic error: " ^ msg); exit 1
   in
-   let do_inline = !inline_flag || !opt_level >= 1 in
+  let do_inline = !inline_flag || !opt_level >= 1 in
   let do_fold = !fold_flag || !opt_level >= 1 in
+  let do_regalloc = !regalloc_flag || !opt_level >= 2 in
   let ir = if do_inline then Inline.run ir else ir in   (* 先に関数を展開して *)
   let ir = if do_fold then Fold.run ir else ir in       (* 見えた定数を畳みこみ *)
   let ir = if do_inline || do_fold then Dce.run ir else ir in   (* 使われなくなったものを消す *)
+
   if !dump_ir then Ir.dump_program stdout ir;   (* --dump-ir のときは IR を表示 *)
 
   let asm =
-    let md = match !accel_mode with
-      | "off" -> Emitter.Off
-      | "math" -> Emitter.Math
-      | "isect" -> Emitter.Isect
-      | _ -> prerr_endline ("Unknown accelerator mode: " ^ !accel_mode); exit 1
-    in
-    let mrc = match !march with
-      | "rv32i" -> Emitter.I
-      | "rv32im" -> Emitter.Im
-      | "rv32im_zbb" -> Emitter.Im_zbb
-      | _ -> prerr_endline ("Unknown target architecture: " ^ !march); exit 1
-    in
-    try Emitter.emit_program md mrc ir with
+    try Emitter.emit_program ~regalloc:do_regalloc md mrc ir with
     | Failure msg -> prerr_endline msg; exit 1    (* frame too large など *)
   in
   let out = open_out !output_file in
