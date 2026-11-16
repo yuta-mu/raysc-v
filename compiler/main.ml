@@ -8,7 +8,6 @@ let () =
   let inline_flag = ref false in
   let fold_flag = ref false in
   let regalloc_flag = ref false in
-  let ra_stats = ref false in
 
   let speclist = [
     ("-o", Arg.Set_string output_file, "Output assembly file (.s)");
@@ -22,7 +21,6 @@ let () =
     ("--inline", Arg.Set inline_flag, "Inline all function calls");
     ("--fold", Arg.Set fold_flag, "Constant folding / propagation");
     ("--regalloc", Arg.Set regalloc_flag, "Linear-scan register allocation");
-    ("--ra-stats", Arg.Set ra_stats, "Print register allocation statistics to stderr");
   ] in
 
   Arg.parse speclist (fun f -> input_file := f) "Usage: rayqc <input.rq> -o <output.s>";
@@ -32,7 +30,7 @@ let () =
     exit 1
   end;
 
-  (* モード(最適化より前に決める。regalloc でも使うため) *)
+  (*モード(最適化より前に決める)*)
   let md = match !accel_mode with
     | "off" -> Emitter.Off
     | "math" -> Emitter.Math
@@ -75,12 +73,6 @@ let () =
   let ir = if do_inline then Inline.run ir else ir in   (* 先に関数を展開して *)
   let ir = if do_fold then Fold.run ir else ir in       (* 見えた定数を畳みこみ *)
   let ir = if do_inline || do_fold then Dce.run ir else ir in   (* 使われなくなったものを消す *)
-
-  (* 割り当ての結果の表示(--ra-stats のときだけ) *)
-  if !ra_stats then begin
-    let accel_off = (md = Emitter.Off) and zbb = (mrc = Emitter.Im_zbb) in
-    List.iter (Regalloc.report ~accel_off ~zbb) ir.Ir.funcs
-  end;
 
   if !dump_ir then Ir.dump_program stdout ir;   (* --dump-ir のときは IR を表示 *)
 
