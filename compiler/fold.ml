@@ -41,7 +41,8 @@ let eval_un op (a : int32) : int32 =
 (*命令iが読むvregをfで置きかえる(書くvregはそのまま)*)
 let subst_uses f (i : instr) : instr =
   match i with
-  | Const _ | AddrLocal _ | AddrGlobal _ | Cycles _ -> i
+  | Const _ | AddrLocal _ | AddrGlobal _ | Cycles _
+  | AccelT _ | RandQ16 _ | RandQ16S _ -> i
   | Move (d, a) -> Move (d, f a)
   | Bin (op, d, a, b) -> Bin (op, d, f a, f b)
   | Un (op, d, a) -> Un (op, d, f a)
@@ -54,6 +55,11 @@ let subst_uses f (i : instr) : instr =
   | Store (id, a, o, s) -> Store (id, f a, o, f s)
   | Call (rs, n, args) -> Call (rs, n, List.map f args)
   | Bprint a -> Bprint (f a)
+  | AccelSetSphere (i, x, y, z, r, r2, m) ->
+      AccelSetSphere (f i, f x, f y, f z, f r, f r2, f m)
+  | AccelHit (d, ox, oy, oz, dx, dy, dz, tmin, tmax) ->
+      AccelHit (d, f ox, f oy, f oz, f dx, f dy, f dz, f tmin, f tmax)
+  | RngSeed a -> RngSeed (f a)
 
 let fold_block (b : block) : block = 
   let known = Hashtbl.create 16 in (*vreg番号→値をメモ*)

@@ -242,9 +242,11 @@ let successors = function
   | Ret _ -> []
 
 (*副作用の判定*)
+(*副作用の判定*)
 let has_side_effect = function
   | Bprint _ | Cycles _ | Call _ | Store _
-  | AccelSetSphere _ | AccelHit _ | AccelT _ -> true
+  | AccelSetSphere _ | AccelHit _ | AccelT _
+  | RngSeed _ | RandQ16 _ | RandQ16S _ -> true
   | _ -> false
 
 (*Storeがどの配列に書き込んでいるか*)

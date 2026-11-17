@@ -2,53 +2,82 @@ open Ir
 
 (*出力をためておく*)
 let buf = Buffer.create 4096
-(*スタックフレーム レコード*)
+
+(*コンパイラのモード*)
+type mode = Off | Math | Isect
+(*アーキテクチャ指定*)
+type march = I | Im | Im_zbb
+
+(*スタックフレーム レコード
+  [スタック引数 | ベースレジスタ s1..sN の保存 | 割り当てで使った s の保存 | スロット | 配列 | ra] *)
 type frame = {
   out_bytes : int;               (* スタック引数の領域の大きさ *)
   arrays : (int * int) list;     (* 配列の番号 -> sp からのオフセット *)
   ra_off : int;                  (* ra を置く場所 *)
   size : int;                    (* フレーム全体の大きさ F(4の倍数) *)
   nbases : int;                  (* 遠いスロット用のベースレジスタ(s1, s2, ...)の数 *)
-  slot_base : int;               (* vreg のスロットが始まる場所(sp からの距離) *)
+  saved : string list;           (* 割り当てで使ったので、入口でしまい出口でもどす s レジスタ *)
+  slot_base : int;               (* スロットが始まる場所(sp からの距離) *)
+  loc : vreg -> Regalloc.loc;    (* vreg の置き場所 *)
 }
-(*コンパイラのモード*)
-type mode = Off | Math | Isect
-(*アーキテクチャ指定*)
-type march = I | Im | Im_zbb
 
-let make_frame (f : func) =
-  (* 呼び出し時に必要なスタック引数・戻り値領域の最大ワード数 *)
-  let max_outgoing_words =
-    List.fold_left (fun m b ->
-      List.fold_left (fun m i ->
-        match i with
-        | Call (rs, _, args) ->
-            let stack_args = max 0 (List.length args - 8) in
-            let stack_results = max 0 (List.length rs - 8) in
-            max m (max stack_args stack_results)
-        | _ -> m
-      ) m b.body
-    ) 0 f.blocks
-  in
-  let out_bytes = 4 * max_outgoing_words in
-  let rough = out_bytes + 4 * 11 + 4 * f.nvregs
-              + List.fold_left (fun acc (_, bytes) -> acc + bytes) 0 f.arrays + 4 in
-  let nbases = if rough <= 2048 then 0 else min 11 ((rough - 1 + 2048) / 4096) in
-  let slot_base = out_bytes + 4 * nbases in      (* [スタック引数 | s1..sN の保存 | スロット | 配列 | ra] *)
-  let arr_base = slot_base + 4 * f.nvregs in
+(* 呼び出し時に必要なスタック引数・戻り値領域の大きさ(バイト) *)
+let outgoing_bytes (f : func) =
+  4 * List.fold_left (fun m b ->
+    List.fold_left (fun m i ->
+      match i with
+      | Call (rs, _, args) ->
+          max m (max (max 0 (List.length args - 8)) (max 0 (List.length rs - 8)))
+      | _ -> m) m b.body) 0 f.blocks
+
+let array_bytes (f : func) = List.fold_left (fun acc (_, bytes) -> acc + bytes) 0 f.arrays
+
+(* フレームの大きさが rough のとき、必要なベースレジスタの数 *)
+let bases_for rough = if rough <= 2048 then 0 else min 11 ((rough - 1 + 2048) / 4096)
+
+(* 置き場所が決まったあとの、残りの計算 *)
+let layout (f : func) ~out_bytes ~nbases ~saved ~nslots ~loc =
+  let slot_base = out_bytes + 4 * nbases + 4 * List.length saved in
+  let arr_base = slot_base + 4 * nslots in
   let arrays, arr_end =
     List.fold_left
       (fun (acc, off) (id, bytes) -> ((id, off) :: acc, off + bytes))
       ([], arr_base) f.arrays
   in
   let size = arr_end + 4 in
-  { out_bytes; arrays; ra_off = size - 4; size; nbases; slot_base }
+  { out_bytes; arrays; ra_off = size - 4; size; nbases; saved; slot_base; loc }
+
+(* 割り当てなし:vreg v はスロット v(今までどおり、全部スタック) *)
+let make_frame (f : func) =
+  let out_bytes = outgoing_bytes f in
+  let rough = out_bytes + 4 * 11 + 4 * f.nvregs + array_bytes f + 4 in
+  layout f ~out_bytes ~nbases:(bases_for rough) ~saved:[] ~nslots:f.nvregs
+    ~loc:(fun v -> Regalloc.Slot v)
+
+(* 割り当てあり:Regalloc の結果で置き場所を決める。
+   フレームが大きくてベースレジスタが要るときは、その s を外して割り当てをやり直す *)
+let make_frame_ra ~accel_off ~zbb (f : func) =
+  let out_bytes = outgoing_bytes f in
+  let rec go nb =
+    let reserved = List.init nb (fun k -> Printf.sprintf "s%d" (k + 1)) in
+    let (locs, nslots, used) = Regalloc.allocate ~reserved ~accel_off ~zbb f in
+    let size = out_bytes + 4 * nb + 4 * List.length used + 4 * nslots + array_bytes f + 4 in
+    let need = bases_for size in
+    if need <= nb then (nb, locs, nslots, used) else go need
+  in
+  let (nbases, locs, nslots, saved) = go 0 in
+  let loc v =
+    match Hashtbl.find_opt locs v with
+    | Some l -> l
+    | None -> failwith (Printf.sprintf "regalloc: v%d has no location in %s" v f.name)
+  in
+  layout f ~out_bytes ~nbases ~saved ~nslots ~loc
 
    (*フレームが大きい関数では、入口で s1 = sp+4096, s2 = sp+8192, ... を作っておき、
    遠いスロットは「いちばん近いベースレジスタ + 12 ビット」で 1 命令で読み書きする。
    それでも届かない場所だけ、t6 で番地を計算する。
    s1〜s11 は、使う関数の入口でしまい、出口でもどす*)
-let fits n = -2048 <= n && n <= 2044 (*2047*) 
+let fits n = -2048 <= n && n <= 2044 (*2047*)
 
 let nbases = ref 0 (*今出している関数のベースレジスタの数*)
 
@@ -70,7 +99,7 @@ let store_to reg base off =
   if fits off then Printf.bprintf buf "sw %s, %d(%s)\n" reg off base
   else Printf.bprintf buf "li t6, %d\nadd t6, %s, t6\nsw %s, 0(t6)\n" off base reg
 
-(* sp からの読み書き(vreg のスロット、ra など) *)
+(* sp からの読み書き(スロット、ra など) *)
 let load reg off =
   match locate off with
   | Some (b, d) -> Printf.bprintf buf "lw %s, %d(%s)\n" reg d b
@@ -92,332 +121,311 @@ let move_sp delta =
   if fits delta then Printf.bprintf buf "addi sp, sp, %d\n" delta
   else Printf.bprintf buf "li t6, %d\nadd sp, sp, t6\n" delta
 
+(* ---------- vreg の読み書き(C-10) ----------
+   src tmp v   : v を読むレジスタを返す。レジスタにいなければ tmp に持ってくる
+   dst tmp v   : v に書くレジスタを返す。レジスタにいなければ tmp
+   fin tmp v   : dst で tmp を返したとき、tmp をスロットへしまう
+   src_into r v: v の値を、決まったレジスタ r に入れる(a0 など)
+   to_vreg r v : 決まったレジスタ r の値を、v に入れる *)
+let slot fr n = fr.slot_base + 4 * n
+
+let src fr tmp v =
+  match fr.loc v with
+  | Regalloc.Reg r -> r
+  | Regalloc.Slot n -> load tmp (slot fr n); tmp
+  | Regalloc.Remat k -> Printf.bprintf buf "li %s, %ld\n" tmp k; tmp
+
+let dst fr tmp v =
+  match fr.loc v with
+  | Regalloc.Reg r -> r
+  | Regalloc.Slot _ | Regalloc.Remat _ -> tmp
+
+let fin fr tmp v =
+  match fr.loc v with
+  | Regalloc.Slot n -> store tmp (slot fr n)
+  | Regalloc.Reg _ | Regalloc.Remat _ -> ()   (* Remat は使うたびに作るので、しまわない *)
+
+let src_into fr r v =
+  match fr.loc v with
+  | Regalloc.Reg r' -> if r' <> r then Printf.bprintf buf "mv %s, %s\n" r r'
+  | Regalloc.Slot n -> load r (slot fr n)
+  | Regalloc.Remat k -> Printf.bprintf buf "li %s, %ld\n" r k
+
+let to_vreg fr r v =
+  match fr.loc v with
+  | Regalloc.Reg r' -> if r' <> r then Printf.bprintf buf "mv %s, %s\n" r' r
+  | Regalloc.Slot n -> store r (slot fr n)
+  | Regalloc.Remat _ -> ()
+
 (*命令*)
 let emit_instr (md : mode) (mrc : march) fr (i : instr) =
-  let s v = fr.slot_base + 4 * v in (*vreg vのスロットの場所*)
+  let src = src fr and dst = dst fr and fin = fin fr
+  and src_into = src_into fr and to_vreg = to_vreg fr in
   match i with
   | Const (d, n) ->
-      Printf.bprintf buf "li t0, %ld\n" n;
-      store "t0" (s d)
+      (match fr.loc d with
+       | Regalloc.Remat _ -> ()                    (* 使う場所で li する *)
+       | _ ->
+           let rd = dst "t0" d in
+           Printf.bprintf buf "li %s, %ld\n" rd n;
+           fin "t0" d)
   | Move (d, a) ->
-      load "t0" (s a);
-      store "t0" (s d)
+      (match fr.loc d with
+       | Regalloc.Reg rd -> src_into rd a          (* mv / lw / li を 1 つ *)
+       | _ ->
+           let ra = src "t0" a in
+           to_vreg ra d)
   | Bin (op, d, a, b) ->
-      load "t0" (s a);
-      load "t1" (s b);
+      let ra = src "t0" a in
+      let rb = src "t1" b in
+      let rd = dst "t0" d in
+      let p fmt = Printf.bprintf buf fmt in
       (match op with
-       | Add -> Printf.bprintf buf "add t0, t0, t1\n"
-       | Sub -> Printf.bprintf buf "sub t0, t0, t1\n"
-       | Mul -> Printf.bprintf buf "mul t0, t0, t1\n"
+       | Add -> p "add %s, %s, %s\n" rd ra rb
+       | Sub -> p "sub %s, %s, %s\n" rd ra rb
+       | Mul -> p "mul %s, %s, %s\n" rd ra rb
        | QMul ->
           if md = Off then
-            (Printf.bprintf buf "mul t2, t0, t1\n";     (*積の下位 32 ビット*)
-            Printf.bprintf buf "mulh t3, t0, t1\n";     (*積の上位 32 ビット*)
-            Printf.bprintf buf "srli t2, t2, 16\n";
-            Printf.bprintf buf "slli t3, t3, 16\n";
-            Printf.bprintf buf "or t0, t2, t3\n")
+            (p "mul t2, %s, %s\n" ra rb;          (*積の下位 32 ビット*)
+             p "mulh t3, %s, %s\n" ra rb;         (*積の上位 32 ビット*)
+             p "srli t2, t2, 16\n";
+             p "slli t3, t3, 16\n";
+             p "or %s, t2, t3\n" rd)
           else
-            Printf.bprintf buf "qmul t0, t0, t1\n"
-       | Div -> Printf.bprintf buf "div t0, t0, t1\n"
-       | Rem -> Printf.bprintf buf "rem t0, t0, t1\n"
-       | Shl -> Printf.bprintf buf "sll t0, t0, t1\n"
-       | Sra -> Printf.bprintf buf "sra t0, t0, t1\n"
-       | And -> Printf.bprintf buf "and t0, t0, t1\n"
-       | Or  -> Printf.bprintf buf "or t0, t0, t1\n"
-       | Xor -> Printf.bprintf buf "xor t0, t0, t1\n"
-       | Eq  -> Printf.bprintf buf "sub t0, t0, t1\nsltiu t0, t0, 1\n"  (*差が0なら1*)
-       | Ne  -> Printf.bprintf buf "sub t0, t0, t1\nsltu t0, x0, t0\n"  (*差が0でなければ1*)
-       | Lt  -> Printf.bprintf buf "slt t0, t0, t1\n"
-       | Gt  -> Printf.bprintf buf "slt t0, t1, t0\n"                      
-       | Le  -> Printf.bprintf buf "slt t0, t1, t0\nxori t0, t0, 1\n"   (*a <= b は !(b < a)*)
-       | Ge  -> Printf.bprintf buf "slt t0, t0, t1\nxori t0, t0, 1\n"); (*a >= b は !(a < b)*)
-      store "t0" (s d)
+            p "qmul %s, %s, %s\n" rd ra rb
+       | Div -> p "div %s, %s, %s\n" rd ra rb
+       | Rem -> p "rem %s, %s, %s\n" rd ra rb
+       | Shl -> p "sll %s, %s, %s\n" rd ra rb
+       | Sra -> p "sra %s, %s, %s\n" rd ra rb
+       | And -> p "and %s, %s, %s\n" rd ra rb
+       | Or  -> p "or %s, %s, %s\n" rd ra rb
+       | Xor -> p "xor %s, %s, %s\n" rd ra rb
+       | Eq  -> p "sub %s, %s, %s\nsltiu %s, %s, 1\n" rd ra rb rd rd   (*差が0なら1*)
+       | Ne  -> p "sub %s, %s, %s\nsltu %s, x0, %s\n" rd ra rb rd rd   (*差が0でなければ1*)
+       | Lt  -> p "slt %s, %s, %s\n" rd ra rb
+       | Gt  -> p "slt %s, %s, %s\n" rd rb ra
+       | Le  -> p "slt %s, %s, %s\nxori %s, %s, 1\n" rd rb ra rd rd   (*a <= b は !(b < a)*)
+       | Ge  -> p "slt %s, %s, %s\nxori %s, %s, 1\n" rd ra rb rd rd); (*a >= b は !(a < b)*)
+      fin "t0" d
   | Un (Neg, d, a) ->
-      load "t0" (s a);
-      Printf.bprintf buf "sub t0, x0, t0\n";
-      store "t0" (s d)
+      let ra = src "t0" a in
+      let rd = dst "t0" d in
+      Printf.bprintf buf "sub %s, x0, %s\n" rd ra;
+      fin "t0" d
   | Un (Not, d, a) ->
-      load "t0" (s a);
-      Printf.bprintf buf "xori t0, t0, 1\n"; (*boolは0か1*)
-      store "t0" (s d)
+      let ra = src "t0" a in
+      let rd = dst "t0" d in
+      Printf.bprintf buf "xori %s, %s, 1\n" rd ra; (*boolは0か1*)
+      fin "t0" d
   | Intr (f, d, a) ->
       if md = Off then
-        (load "a0" (s a);
-        let name = match f with
-          | Sqrt -> "__q16_sqrt" | Rsqrt -> "__q16_rsqrt" | Rcp -> "__q16_rcp" in
-        Printf.bprintf buf "jal ra, %s\n" name;
-        store "a0" (s d))
+        (src_into "a0" a;
+         let name = match f with
+           | Sqrt -> "__q16_sqrt" | Rsqrt -> "__q16_rsqrt" | Rcp -> "__q16_rcp" in
+         Printf.bprintf buf "jal ra, %s\n" name;
+         to_vreg "a0" d)
       else
-        (load "t0" (s a);
-        let cmd = match f with
-          | Sqrt -> "qsqrt" | Rsqrt -> "qrsqrt" | Rcp -> "qrcp" in
-        Printf.bprintf buf "%s t0, t0\n" cmd;
-        store "t0" (s d))
+        (let ra = src "t0" a in
+         let rd = dst "t0" d in
+         let cmd = match f with
+           | Sqrt -> "qsqrt" | Rsqrt -> "qrsqrt" | Rcp -> "qrcp" in
+         Printf.bprintf buf "%s %s, %s\n" cmd rd ra;
+         fin "t0" d)
   | Zbb_b (op, d, a, b) ->
       if mrc = Im_zbb then
-        (load "t0" (s a);
-         load "t1" (s b);
-        (match op with
-          | Min  -> Printf.bprintf buf "min t0, t0, t1\n"
-          | Max  -> Printf.bprintf buf "max t0, t0, t1\n"
-          | Minu -> Printf.bprintf buf "minu t0, t0, t1\n"
-          | Maxu -> Printf.bprintf buf "maxu t0, t0, t1\n"
-          | Andn -> Printf.bprintf buf "andn t0, t0, t1\n"
-          | Orn  -> Printf.bprintf buf "orn t0, t0, t1\n"
-          | Xnor -> Printf.bprintf buf "xnor t0, t0, t1\n");
-        store "t0" (s d))
+        (let ra = src "t0" a in
+         let rb = src "t1" b in
+         let rd = dst "t0" d in
+         let cmd = match op with
+           | Min -> "min" | Max -> "max" | Minu -> "minu" | Maxu -> "maxu"
+           | Andn -> "andn" | Orn -> "orn" | Xnor -> "xnor" in
+         Printf.bprintf buf "%s %s, %s, %s\n" cmd rd ra rb;
+         fin "t0" d)
       else
-        (load "a0" (s a);
-         load "a1" (s b);
-        let name = match op with
-          | Min  -> "__min"
-          | Max  -> "__max"
-          | Minu -> "__minu"
-          | Maxu -> "__maxu"
-          | Andn -> "__andn"
-          | Orn  -> "__orn"
-          | Xnor -> "__xnor" in
-        Printf.bprintf buf "jal ra, %s\n" name;
-        store "a0" (s d))
+        (src_into "a0" a;
+         src_into "a1" b;
+         let name = match op with
+           | Min  -> "__min"
+           | Max  -> "__max"
+           | Minu -> "__minu"
+           | Maxu -> "__maxu"
+           | Andn -> "__andn"
+           | Orn  -> "__orn"
+           | Xnor -> "__xnor" in
+         Printf.bprintf buf "jal ra, %s\n" name;
+         to_vreg "a0" d)
   | Zbb_u (op, d, a) ->
       if mrc = Im_zbb then
-        (load "t0" (s a);
-        (match op with
-          | Clz -> Printf.bprintf buf "clz t0, t0\n"
-          | Sext_b -> Printf.bprintf buf "sext.b t0, t0\n"
-          | Sext_h -> Printf.bprintf buf "sext.h t0, t0\n");
-        store "t0" (s d))
+        (let ra = src "t0" a in
+         let rd = dst "t0" d in
+         let cmd = match op with
+           | Clz -> "clz" | Sext_b -> "sext.b" | Sext_h -> "sext.h" in
+         Printf.bprintf buf "%s %s, %s\n" cmd rd ra;
+         fin "t0" d)
       else
-        (load "a0" (s a);
-        let name = match op with
-          | Clz -> "__clz"
-          | Sext_b -> "__sext_b"
-          | Sext_h -> "__sext_h" in
-        Printf.bprintf buf "jal ra, %s\n" name;
-       store "a0" (s d))
+        (src_into "a0" a;
+         let name = match op with
+           | Clz -> "__clz"
+           | Sext_b -> "__sext_b"
+           | Sext_h -> "__sext_h" in
+         Printf.bprintf buf "jal ra, %s\n" name;
+         to_vreg "a0" d)
   | AddrLocal (d, id) ->
-      add_sp "t0" (List.assoc id fr.arrays);
-      store "t0" (s d)
+      let rd = dst "t0" d in
+      add_sp rd (List.assoc id fr.arrays);
+      fin "t0" d
   | AddrGlobal (d, name) ->
-      Printf.bprintf buf "la t0, %s\n" name;       
-      store "t0" (s d)
+      let rd = dst "t0" d in
+      Printf.bprintf buf "la %s, %s\n" rd name;
+      fin "t0" d
   | Load (d, _, a, ofs) ->
-      load "t0" (s a); (*アドレス*)
-      load_from "t0" "t0" ofs;
-      store "t0" (s d)
-  | Store (_, a, ofs, src) ->
-      load "t0" (s a); (*アドレス*)
-      load "t1" (s src); (*書く値*)
-      store_to "t1" "t0" ofs
+      let ra = src "t0" a in (*アドレス*)
+      let rd = dst "t0" d in
+      load_from rd ra ofs;
+      fin "t0" d
+  | Store (_, a, ofs, v) ->
+      let ra = src "t0" a in (*アドレス*)
+      let rv = src "t1" v in (*書く値*)
+      store_to rv ra ofs
   | Call (rs, name, args) ->
-      (* 引数: 先頭8ワードはa0〜a7、残りはsp+0, sp+4,... *)
+      (* 引数: 先頭8ワードはa0〜a7、残りはsp+0, sp+4,...
+         (Call がある関数では a2〜a7 を割り当てないので、順に入れてよい) *)
       List.iteri (fun k v ->
-        if k < 8 then
-          load (Printf.sprintf "a%d" k) (s v)
-        else begin
-          load "t0" (s v);
-          store "t0" (4 * (k - 8))
-        end
-      ) args;
+        if k < 8 then src_into (Printf.sprintf "a%d" k) v
+        else store (src "t0" v) (4 * (k - 8))) args;
       Printf.bprintf buf "jal ra, %s\n" name;
       (* 戻り値: 先頭8ワードはa0〜a7、残りはスタックから取得 *)
       List.iteri (fun k r ->
-        if k < 8 then
-          store (Printf.sprintf "a%d" k) (s r)
+        if k < 8 then to_vreg (Printf.sprintf "a%d" k) r
         else begin
-          load "t0" (4 * (k - 8));
-          store "t0" (s r)
-        end
-      ) rs
+          let rd = dst "t0" r in
+          load rd (4 * (k - 8));
+          fin "t0" r
+        end) rs
   | Bprint a ->
-      load "t0" (s a);
+      let ra = src "t0" a in
       Printf.bprintf buf "li t1, 0x10000000\n"; (*UART*)
-      Printf.bprintf buf "sb t0, 0(t1)\n" (*下位 8 ビットを送る*)
+      Printf.bprintf buf "sb %s, 0(t1)\n" ra    (*下位 8 ビットを送る*)
   | Cycles d ->
       Printf.bprintf buf "li t1, 0x20000000\n"; (* cycle_lo *)
-      Printf.bprintf buf "lw t0, 0(t1)\n";
-      store "t0" (s d)    
-(*| CyclesH d ->
-      Printf.bprintf buf "li t1, 0x20000004\n"; (* cycle_hi *)
-      Printf.bprintf buf "lw t0, 0(t1)\n";
-      store "t0" (s d)
-  | Instret d ->
-      Printf.bprintf buf "li t1, 0x20000008\n"; (* instret_lo *)
-      Printf.bprintf buf "lw t0, 0(t1)\n";
-      store "t0" (s d)
-  | InstretH d ->
-      Printf.bprintf buf "li t1, 0x2000000C\n"; (* instret_hi *)
-      Printf.bprintf buf "lw t0, 0(t1)\n";
-      store "t0" (s d) *)
+      let rd = dst "t0" d in
+      Printf.bprintf buf "lw %s, 0(t1)\n" rd;
+      fin "t0" d
   | Qabs (d, a) ->
       if mrc = Im_zbb then
-        (load "t0" (s a);
-        Printf.bprintf buf "neg t1, t0\n";
-        Printf.bprintf buf "max t0, t1, t0\n";
-        store "t0" (s d))
+        (let ra = src "t0" a in
+         Printf.bprintf buf "neg t1, %s\n" ra;
+         let rd = dst "t0" d in
+         Printf.bprintf buf "max %s, t1, %s\n" rd ra;
+         fin "t0" d)
       else
-        (load "a0" (s a);
-        Printf.bprintf buf "neg a1, a0\n";
-        Printf.bprintf buf "jal ra, __max\n";
-        store "a0" (s d))
+        (src_into "a0" a;
+         Printf.bprintf buf "neg a1, a0\n";
+         Printf.bprintf buf "jal ra, __max\n";
+         to_vreg "a0" d)
+(* emit_instr 内の Qclamp 以降を以下のように変更 *)
   | Qclamp (d, a, b, c) ->
       if mrc = Im_zbb then
-        (load "t0" (s a);
-        load "t1" (s b);
-        load "t2" (s c);
-        Printf.bprintf buf "max t0, t0, t1\n";
-        Printf.bprintf buf "min t0, t0, t2\n";
-        store "t0" (s d))
+        (let ra = src "t0" a in
+         let rb = src "t1" b in
+         let rc = src "t2" c in
+         Printf.bprintf buf "max t0, %s, %s\n" ra rb;   (* 途中の値は t0 に置く(rd = rc でもこわれない) *)
+         let rd = dst "t0" d in
+         Printf.bprintf buf "min %s, t0, %s\n" rd rc;
+         fin "t0" d)
       else
-        (load "a0" (s a);
-        load "a1" (s b);
-        Printf.bprintf buf "jal ra, __max\n";
-        load "a1" (s c);
-        Printf.bprintf buf "jal ra, __min\n";
-        store "a0" (s d))
-        Printf.bprintf buf "sw a0, %d(sp)\n" (s d))
+        (src_into "a0" a;
+         src_into "a1" b;
+         Printf.bprintf buf "jal ra, __max\n";
+         src_into "a1" c;      (* __max は a0 しかこわさないので、c がレジスタにいても大丈夫 *)
+         Printf.bprintf buf "jal ra, __min\n";
+         to_vreg "a0" d)
   | AccelSetSphere (i, x, y, z, r, r2, m) ->
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s i);
-        Printf.bprintf buf "slli t0, t0, 5\n";
-        Printf.bprintf buf "li t1, 0x30000000\n";
-        Printf.bprintf buf "add t1, t1, t0\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s x);
-        Printf.bprintf buf "sw t0, 256(t1)\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s y);
-        Printf.bprintf buf "sw t0, 260(t1)\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s z);
-        Printf.bprintf buf "sw t0, 264(t1)\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s r);
-        Printf.bprintf buf "sw t0, 268(t1)\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s r2);
-        Printf.bprintf buf "sw t0, 272(t1)\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s m);
-        Printf.bprintf buf "sw t0, 276(t1)\n"
+      if md <> Isect then failwith "accel_set_sphere requires --accel=isect";
+      let ri = src "t0" i in
+      Printf.bprintf buf "slli t0, %s, 5\n" ri;
+      Printf.bprintf buf "li t1, 0x30000000\n";
+      Printf.bprintf buf "add t1, t1, t0\n";
+      Printf.bprintf buf "sw %s, 256(t1)\n" (src "t0" x);
+      Printf.bprintf buf "sw %s, 260(t1)\n" (src "t0" y);
+      Printf.bprintf buf "sw %s, 264(t1)\n" (src "t0" z);
+      Printf.bprintf buf "sw %s, 268(t1)\n" (src "t0" r);
+      Printf.bprintf buf "sw %s, 272(t1)\n" (src "t0" r2);
+      Printf.bprintf buf "sw %s, 276(t1)\n" (src "t0" m)
   | AccelHit (d, ox, oy, oz, dx, dy, dz, tmin, tmax) ->
-        Printf.bprintf buf "li t1, 0x30000000\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s ox);
-        Printf.bprintf buf "lw t2, %d(sp)\n" (s oy);
-        Printf.bprintf buf "lw t3, %d(sp)\n" (s oz);
-        Printf.bprintf buf "lw t4, %d(sp)\n" (s dx);
-        Printf.bprintf buf "sw t0, 0(t1)\n";
-        Printf.bprintf buf "sw t2, 4(t1)\n";
-        Printf.bprintf buf "sw t3, 8(t1)\n";
-        Printf.bprintf buf "sw t4, 12(t1)\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s dy);
-        Printf.bprintf buf "lw t2, %d(sp)\n" (s dz);
-        Printf.bprintf buf "lw t3, %d(sp)\n" (s tmin);
-        Printf.bprintf buf "lw t4, %d(sp)\n" (s tmax);
-        Printf.bprintf buf "sw t0, 16(t1)\n";
-        Printf.bprintf buf "sw t2, 20(t1)\n";
-        Printf.bprintf buf "sw t3, 24(t1)\n";
-        Printf.bprintf buf "sw t4, 28(t1)\n";
-        Printf.bprintf buf "lw t0, 32(t1)\n";
-        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
+      if md <> Isect then failwith "accel_hit requires --accel=isect";
+      Printf.bprintf buf "li t1, 0x30000000\n";
+      Printf.bprintf buf "sw %s, 0(t1)\n"  (src "t0" ox);
+      Printf.bprintf buf "sw %s, 4(t1)\n"  (src "t0" oy);
+      Printf.bprintf buf "sw %s, 8(t1)\n"  (src "t0" oz);
+      Printf.bprintf buf "sw %s, 12(t1)\n" (src "t0" dx);
+      Printf.bprintf buf "sw %s, 16(t1)\n" (src "t0" dy);
+      Printf.bprintf buf "sw %s, 20(t1)\n" (src "t0" dz);
+      Printf.bprintf buf "sw %s, 24(t1)\n" (src "t0" tmin);
+      Printf.bprintf buf "sw %s, 28(t1)\n" (src "t0" tmax);
+      let rd = dst "t0" d in
+      Printf.bprintf buf "lw %s, 32(t1)\n" rd;
+      fin "t0" d
   | AccelT d ->
-        Printf.bprintf buf "li t1, 0x30000000\n";
-        Printf.bprintf buf "lw t0, 36(t1)\n";
-        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
+      if md <> Isect then failwith "accel_t requires --accel=isect";
+      Printf.bprintf buf "li t1, 0x30000000\n";
+      let rd = dst "t0" d in
+      Printf.bprintf buf "lw %s, 36(t1)\n" rd;
+      fin "t0" d
   | RngSeed a ->
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s a);
-        Printf.bprintf buf "qseed x0, t0\n"
+      if md = Off then failwith "rng_seed requires --accel=math or --accel=isect";
+      let ra = src "t0" a in
+      Printf.bprintf buf "qseed x0, %s\n" ra
   | RandQ16 d ->
-        Printf.bprintf buf "qrand t0, x0\n";
-        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
+      if md = Off then failwith "rand_q16 requires --accel=math or --accel=isect";
+      let rd = dst "t0" d in
+      Printf.bprintf buf "qrand %s, x0\n" rd;
+      fin "t0" d
   | RandQ16S d ->
-        Printf.bprintf buf "qrands t0, x0\n";
-        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
-  | AccelSetSphere (i, x, y, z, r, r2, m) ->
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s i);
-        Printf.bprintf buf "slli t0, t0, 5\n";
-        Printf.bprintf buf "li t1, 0x30000000\n";
-        Printf.bprintf buf "add t1, t1, t0\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s x);
-        Printf.bprintf buf "sw t0, 256(t1)\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s y);
-        Printf.bprintf buf "sw t0, 260(t1)\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s z);
-        Printf.bprintf buf "sw t0, 264(t1)\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s r);
-        Printf.bprintf buf "sw t0, 268(t1)\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s r2);
-        Printf.bprintf buf "sw t0, 272(t1)\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s m);
-        Printf.bprintf buf "sw t0, 276(t1)\n"
-  | AccelHit (d, ox, oy, oz, dx, dy, dz, tmin, tmax) ->
-        Printf.bprintf buf "li t1, 0x30000000\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s ox);
-        Printf.bprintf buf "lw t2, %d(sp)\n" (s oy);
-        Printf.bprintf buf "lw t3, %d(sp)\n" (s oz);
-        Printf.bprintf buf "lw t4, %d(sp)\n" (s dx);
-        Printf.bprintf buf "sw t0, 0(t1)\n";
-        Printf.bprintf buf "sw t2, 4(t1)\n";
-        Printf.bprintf buf "sw t3, 8(t1)\n";
-        Printf.bprintf buf "sw t4, 12(t1)\n";
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s dy);
-        Printf.bprintf buf "lw t2, %d(sp)\n" (s dz);
-        Printf.bprintf buf "lw t3, %d(sp)\n" (s tmin);
-        Printf.bprintf buf "lw t4, %d(sp)\n" (s tmax);
-        Printf.bprintf buf "sw t0, 16(t1)\n";
-        Printf.bprintf buf "sw t2, 20(t1)\n";
-        Printf.bprintf buf "sw t3, 24(t1)\n";
-        Printf.bprintf buf "sw t4, 28(t1)\n";
-        Printf.bprintf buf "lw t0, 32(t1)\n";
-        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
-  | AccelT d ->
-        Printf.bprintf buf "li t1, 0x30000000\n";
-        Printf.bprintf buf "lw t0, 36(t1)\n";
-        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
-  | RngSeed a ->
-        Printf.bprintf buf "lw t0, %d(sp)\n" (s a);
-        Printf.bprintf buf "qseed x0, t0\n"
-  | RandQ16 d ->
-        Printf.bprintf buf "qrand t0, x0\n";
-        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
-  | RandQ16S d ->
-        Printf.bprintf buf "qrands t0, x0\n";
-        Printf.bprintf buf "sw t0, %d(sp)\n" (s d)
+      if md = Off then failwith "rand_q16_s requires --accel=math or --accel=isect";
+      let rd = dst "t0" d in
+      Printf.bprintf buf "qrands %s, x0\n" rd;
+      fin "t0" d
+
+(* s レジスタをしまう場所:[ベースレジスタ s1..sN | 割り当てで使った s] *)
+let saved_regs fr =
+  List.init fr.nbases (fun k -> Printf.sprintf "s%d" (k + 1)) @ fr.saved
 
 (*終端*)
 (*ブロックのラベルは .L_関数名_番号*)
 let emit_term (f : func) fr (t : terminator) =
-  let s v = fr.slot_base + 4 * v in
   match t with
   | Jump l ->
       Printf.bprintf buf "j .L_%s_%d\n" f.name l
   | Branch (c, lt, lf) ->
-      load "t0" (s c);
-      Printf.bprintf buf "bnez t0, .L_%s_%d\n" f.name lt;   (*真(0以外)ならlt*)
-      Printf.bprintf buf "j .L_%s_%d\n" f.name lf        (*偽ならlf*)
+      let rc = src fr "t0" c in
+      Printf.bprintf buf "bnez %s, .L_%s_%d\n" rc f.name lt;   (*真(0以外)ならlt*)
+      Printf.bprintf buf "j .L_%s_%d\n" f.name lf              (*偽ならlf*)
   | Ret vs ->
-      (* 戻り値: 先頭8ワードはa0〜a7、残りは呼び出し側のスタックへ *)
+      (* 戻り値: 先頭8ワードはa0〜a7、残りは呼び出し側のスタックへ
+         (戻り値が 3 つ以上の関数では a2〜a7 を割り当てないので、順に入れてよい) *)
       List.iteri (fun k v ->
-        if k < 8 then
-          load (Printf.sprintf "a%d" k) (s v)
-        else begin
-          load "t0" (s v);
-          store "t0" (fr.size + 4 * (k - 8))
-        end
-      ) vs;
+        if k < 8 then src_into fr (Printf.sprintf "a%d" k) v
+        else store (src fr "t0" v) (fr.size + 4 * (k - 8))) vs;
       load "ra" fr.ra_off;
-      (* ベースレジスタを、呼び出し元の値にもどす *)
-      for k = 1 to fr.nbases do
-        Printf.bprintf buf "lw s%d, %d(sp)\n" k (fr.out_bytes + 4 * (k - 1))
-      done;
+      (* s レジスタを、呼び出し元の値にもどす *)
+      List.iteri (fun k r ->
+        Printf.bprintf buf "lw %s, %d(sp)\n" r (fr.out_bytes + 4 * k)) (saved_regs fr);
       move_sp fr.size;
       Printf.bprintf buf "jalr x0, ra, 0\n"
 
 (*関数*)
-let emit_func (md : mode) (mrc : march) (f : func) =
-  let fr = make_frame f in
-  let s v = fr.slot_base + 4 * v in (*vreg vのspからの距離*)
+let emit_func ~regalloc (md : mode) (mrc : march) (f : func) =
+  let fr =
+    if regalloc then make_frame_ra ~accel_off:(md = Off) ~zbb:(mrc = Im_zbb) f
+    else make_frame f in
   Printf.bprintf buf "\n.globl %s\n" f.name;
   Printf.bprintf buf "%s:\n" f.name;
   (*入口:フレームを取って、raと引数をしまう*)
   move_sp (- fr.size);
-  (* フレームが大きいとき:s1..sN をしまってから、s<k> = sp + 4096k を作る *)
-  for k = 1 to fr.nbases do
-    Printf.bprintf buf "sw s%d, %d(sp)\n" k (fr.out_bytes + 4 * (k - 1))
-  done;
+  (* s レジスタをしまう。それから s<k> = sp + 4096k を作る *)
+  List.iteri (fun k r ->
+    Printf.bprintf buf "sw %s, %d(sp)\n" r (fr.out_bytes + 4 * k)) (saved_regs fr);
   for k = 1 to fr.nbases do
     Printf.bprintf buf "li t6, %d\nadd s%d, sp, t6\n" (4096 * k) k
   done;
@@ -425,10 +433,11 @@ let emit_func (md : mode) (mrc : march) (f : func) =
   store "ra" fr.ra_off;
   List.iteri (fun k p ->
     if k < 8 then                                       (*先頭の8つはa0〜a7*)
-      store (Printf.sprintf "a%d" k) (s p) (*スロットにしまう*)
+      to_vreg fr (Printf.sprintf "a%d" k) p
     else begin                                          (* 残りは呼び出し側のフレームのsp+F+4k*)
-      load "t0" (fr.size + 4 * (k - 8));
-      store "t0" (s p) (*スロットにしまう*)
+      let rd = dst fr "t0" p in
+      load rd (fr.size + 4 * (k - 8));
+      fin fr "t0" p
     end) f.params;
   (*ブロック*)
   List.iter (fun b ->
@@ -658,11 +667,11 @@ __clz:
     jalr x0, ra, 0
 |}
 
-let emit_program (md : mode) (mrc : march) (p : program) : string =
+let emit_program ?(regalloc = false) (md : mode) (mrc : march) (p : program) : string =
   Buffer.clear buf;
   Printf.bprintf buf ".section .text\n";
 
-  List.iter (emit_func md mrc) p.funcs;
+  List.iter (emit_func ~regalloc md mrc) p.funcs;
   (if md = Off then Buffer.add_string buf runtime_math);
   (match mrc with
     | I -> (Buffer.add_string buf runtime_m;
