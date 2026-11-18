@@ -22,6 +22,14 @@ let map_instr vm am (i : instr) : instr =
   | Call (rs, f, args) -> Call (List.map v rs, f, List.map v args)
   | Bprint x -> Bprint (v x)
   | Cycles d -> Cycles (v d)
+  | AccelSetSphere (i, x, y, z, r, r2, m) ->
+      AccelSetSphere (v i, v x, v y, v z, v r, v r2, v m)
+  | AccelHit (d, ox, oy, oz, dx, dy, dz, tmin, tmax) ->
+      AccelHit (v d, v ox, v oy, v oz, v dx, v dy, v dz, v tmin, v tmax)
+  | AccelT d -> AccelT (v d)
+  | RngSeed x -> RngSeed (v x)
+  | RandQ16 d -> RandQ16 (v d)
+  | RandQ16S d -> RandQ16S (v d)
 
 (* 終わりの命令:vreg に dv、ラベルに dl を足す *)
 let map_term vm dl (t : terminator) : terminator =

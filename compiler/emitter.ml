@@ -323,6 +323,7 @@ let emit_instr (md : mode) (mrc : march) fr (i : instr) =
          Printf.bprintf buf "neg a1, a0\n";
          Printf.bprintf buf "jal ra, __max\n";
          to_vreg "a0" d)
+(* emit_instr 内の Qclamp 以降を以下のように変更 *)
   | Qclamp (d, a, b, c) ->
       if mrc = Im_zbb then
         (let ra = src "t0" a in
@@ -339,6 +340,52 @@ let emit_instr (md : mode) (mrc : march) fr (i : instr) =
          src_into "a1" c;      (* __max は a0 しかこわさないので、c がレジスタにいても大丈夫 *)
          Printf.bprintf buf "jal ra, __min\n";
          to_vreg "a0" d)
+  | AccelSetSphere (i, x, y, z, r, r2, m) ->
+      if md <> Isect then failwith "accel_set_sphere requires --accel=isect";
+      let ri = src "t0" i in
+      Printf.bprintf buf "slli t0, %s, 5\n" ri;
+      Printf.bprintf buf "li t1, 0x30000000\n";
+      Printf.bprintf buf "add t1, t1, t0\n";
+      Printf.bprintf buf "sw %s, 256(t1)\n" (src "t0" x);
+      Printf.bprintf buf "sw %s, 260(t1)\n" (src "t0" y);
+      Printf.bprintf buf "sw %s, 264(t1)\n" (src "t0" z);
+      Printf.bprintf buf "sw %s, 268(t1)\n" (src "t0" r);
+      Printf.bprintf buf "sw %s, 272(t1)\n" (src "t0" r2);
+      Printf.bprintf buf "sw %s, 276(t1)\n" (src "t0" m)
+  | AccelHit (d, ox, oy, oz, dx, dy, dz, tmin, tmax) ->
+      if md <> Isect then failwith "accel_hit requires --accel=isect";
+      Printf.bprintf buf "li t1, 0x30000000\n";
+      Printf.bprintf buf "sw %s, 0(t1)\n"  (src "t0" ox);
+      Printf.bprintf buf "sw %s, 4(t1)\n"  (src "t0" oy);
+      Printf.bprintf buf "sw %s, 8(t1)\n"  (src "t0" oz);
+      Printf.bprintf buf "sw %s, 12(t1)\n" (src "t0" dx);
+      Printf.bprintf buf "sw %s, 16(t1)\n" (src "t0" dy);
+      Printf.bprintf buf "sw %s, 20(t1)\n" (src "t0" dz);
+      Printf.bprintf buf "sw %s, 24(t1)\n" (src "t0" tmin);
+      Printf.bprintf buf "sw %s, 28(t1)\n" (src "t0" tmax);
+      let rd = dst "t0" d in
+      Printf.bprintf buf "lw %s, 32(t1)\n" rd;
+      fin "t0" d
+  | AccelT d ->
+      if md <> Isect then failwith "accel_t requires --accel=isect";
+      Printf.bprintf buf "li t1, 0x30000000\n";
+      let rd = dst "t0" d in
+      Printf.bprintf buf "lw %s, 36(t1)\n" rd;
+      fin "t0" d
+  | RngSeed a ->
+      if md = Off then failwith "rng_seed requires --accel=math or --accel=isect";
+      let ra = src "t0" a in
+      Printf.bprintf buf "qseed x0, %s\n" ra
+  | RandQ16 d ->
+      if md = Off then failwith "rand_q16 requires --accel=math or --accel=isect";
+      let rd = dst "t0" d in
+      Printf.bprintf buf "qrand %s, x0\n" rd;
+      fin "t0" d
+  | RandQ16S d ->
+      if md = Off then failwith "rand_q16_s requires --accel=math or --accel=isect";
+      let rd = dst "t0" d in
+      Printf.bprintf buf "qrands %s, x0\n" rd;
+      fin "t0" d
 
 (* s レジスタをしまう場所:[ベースレジスタ s1..sN | 割り当てで使った s] *)
 let saved_regs fr =
