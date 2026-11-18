@@ -106,11 +106,11 @@ let string_of_unop = function
   | Clz -> "clz" | Sext_b -> "sext.b" | Sext_h -> "sext.h"
   | Sqrt -> "sqrt" | Rsqrt -> "rsqrt" | Rcp -> "rcp"
 
-let string_of_cons = function Bprint -> "bprint" | RngSeed -> "rng_seed"
+let string_of_cons = function Bprint -> "bprint" | Qseed -> "qseed"
 
 let string_of_supp = function
   | Cycles -> "cycles" | AccelT -> "accel_t" 
-  | RandQ16 -> "rand_q16" | RandQ16S -> "rand_q16_s"
+  | Qrand -> "qrand" | Qrands -> "qrands"
 
 let v n = "v" ^ string_of_int n
 let l n = "L" ^ string_of_int n
