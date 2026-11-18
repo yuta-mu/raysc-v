@@ -177,7 +177,7 @@ let compile (ctx : Semant.context) : Ir.program =
       let nz = bin Ir.Ne c zero in            (* Branch が 0/1 前提でも安全なように明示 *)
       emit_t (Ir.Branch (nz, l_body, l_end));
       emit_l l_body;
-      emit_i (Ir.Bprint c);
+      emit_i (Ir.Consumer (Bprint, c));
       emit_i (Ir.Bin (Ir.Add, p, p, four));
       emit_t (Ir.Jump l_head);
       emit_l l_end;
@@ -272,12 +272,12 @@ let compile (ctx : Semant.context) : Ir.program =
       (* 組み込み関数 bprint *)
       | Call ("bprint", [x]) ->
           let sx = expr x in
-          emit_i (Ir.Bprint sx);
+          emit_i (Ir.Consumer (Bprint, sx));
           fresh 0
       (* 組み込み関数 *)
       | Call ("cycles", []) ->
           let d = fresh 1 in
-          emit_i (Ir.Cycles d);
+          emit_i (Ir.Supplier (Cycles, d));
           d
       (* キャスト *)
       | Call ("q16", [x]) -> let sx = expr x in bin Ir.Shl sx (const_i32 16l)
@@ -286,60 +286,60 @@ let compile (ctx : Semant.context) : Ir.program =
       | Call ("sqrt", [x]) -> intr Ir.Sqrt (expr x)
       | Call ("rsqrt", [x]) -> intr Ir.Rsqrt (expr x)
       | Call ("rcp", [x]) -> intr Ir.Rcp (expr x)
-      (* zbb組み込み関数 *)
+      (* zbb 組み込み関数 *)
       | Call (("min" | "qmin"), [x; y]) ->
           let d = fresh 1 in
           let sx = expr x in
           let sy = expr y in
-          emit_i (Ir.Zbb_b (Min, d, sx, sy));
+          emit_i (Ir.Bin (Min, d, sx, sy));
           d
       | Call (("max" | "qmax"), [x; y]) ->
           let d = fresh 1 in
           let sx = expr x in
           let sy = expr y in
-          emit_i (Ir.Zbb_b (Max, d, sx, sy));
+          emit_i (Ir.Bin (Max, d, sx, sy));
           d
       | Call ("minu", [x; y]) ->
           let d = fresh 1 in
           let sx = expr x in
           let sy = expr y in
-          emit_i (Ir.Zbb_b (Minu, d, sx, sy));
+          emit_i (Ir.Bin (Minu, d, sx, sy));
           d
       | Call ("maxu", [x; y]) ->
           let d = fresh 1 in
           let sx = expr x in
           let sy = expr y in
-          emit_i (Ir.Zbb_b (Maxu, d, sx, sy));
+          emit_i (Ir.Bin (Maxu, d, sx, sy));
           d
       | Call ("andn", [x; y]) ->
           let d = fresh 1 in
           let sx = expr x in
           let sy = expr y in
-          emit_i (Ir.Zbb_b (Andn, d, sx, sy));
+          emit_i (Ir.Bin (Andn, d, sx, sy));
           d
       | Call ("orn", [x; y]) ->
           let d = fresh 1 in
           let sx = expr x in
           let sy = expr y in
-          emit_i (Ir.Zbb_b (Orn, d, sx, sy));
+          emit_i (Ir.Bin (Orn, d, sx, sy));
           d
       | Call ("xnor", [x; y]) ->
           let d = fresh 1 in
           let sx = expr x in
           let sy = expr y in
-          emit_i (Ir.Zbb_b (Xnor, d, sx, sy));
+          emit_i (Ir.Bin (Xnor, d, sx, sy));
           d
       | Call (("clz" | "qclz"), [x]) ->
           let d = fresh 1 in
-          emit_i (Ir.Zbb_u (Clz, d, expr x));
+          emit_i (Ir.Un (Clz, d, expr x));
           d
       | Call ("sext_b", [x]) ->
           let d = fresh 1 in
-          emit_i (Ir.Zbb_u (Sext_b, d, expr x));
+          emit_i (Ir.Un (Sext_b, d, expr x));
           d
       | Call ("sext_h", [x]) ->
           let d = fresh 1 in
-          emit_i (Ir.Zbb_u (Sext_h, d, expr x));
+          emit_i (Ir.Un (Sext_h, d, expr x));
           d
       | Call ("qabs", [x]) ->
           let d = fresh 1 in
@@ -352,49 +352,47 @@ let compile (ctx : Semant.context) : Ir.program =
           let sz = expr z in
           emit_i (Ir.Qclamp (d, sx, sy, sz));
           d
-    (* 1. 文 (stmt) または void 式の Call ("bprint", [a]) の隣に追加 *)
-| Call ("accel_set_sphere", [ei; ex; ey; ez; er; er2; em]) ->
+      (* アクセラレータ組み込み関数 *)
+      | Call ("accel_set_sphere", [ei; ex; ey; ez; er; er2; em]) ->
+                let d = fresh 1 in
+          let vi  = expr ei in
+          let vx  = expr ex in
+          let vy  = expr ey in
+          let vz  = expr ez in
+          let vr  = expr er in
+          let vr2 = expr er2 in
+          let vm  = expr em in
+          emit_i (Ir.AccelSetSphere (vi, vx, vy, vz, vr, vr2, vm));
+          d
+      | Call ("accel_hit", [eox; eoy; eoz; edx; edy; edz; etmin; etmax]) ->
+                let d = fresh 1 in
+          let vox   = expr eox in
+          let voy   = expr eoy in
+          let voz   = expr eoz in
+          let vdx   = expr edx in
+          let vdy   = expr edy in
+          let vdz   = expr edz in
+          let vtmin = expr etmin in
+          let vtmax = expr etmax in
+          emit_i (Ir.AccelHit (d, vox, voy, voz, vdx, vdy, vdz, vtmin, vtmax));
+          d
+      | Call ("accel_t", []) ->
           let d = fresh 1 in
-    let vi  = expr ei in
-    let vx  = expr ex in
-    let vy  = expr ey in
-    let vz  = expr ez in
-    let vr  = expr er in
-    let vr2 = expr er2 in
-    let vm  = expr em in
-    emit_i (Ir.AccelSetSphere (vi, vx, vy, vz, vr, vr2, vm));
-    d
-
-(* 2. 式 (expr) の Call ("cycles", []) や Call ("qclamp", ...) の隣に追加 *)
-| Call ("accel_hit", [eox; eoy; eoz; edx; edy; edz; etmin; etmax]) ->
+          emit_i (Ir.Supplier (AccelT, d));
+          d
+      (* 乱数命令組み込み関数 *)
+      | Call ("qseed", [es]) ->
+          let vs = expr es in
+          emit_i (Ir.Consumer (Qseed, vs));
+          fresh 0
+      | Call ("qrand", []) ->
           let d = fresh 1 in
-    let vox   = expr eox in
-    let voy   = expr eoy in
-    let voz   = expr eoz in
-    let vdx   = expr edx in
-    let vdy   = expr edy in
-    let vdz   = expr edz in
-    let vtmin = expr etmin in
-    let vtmax = expr etmax in
-    emit_i (Ir.AccelHit (d, vox, voy, voz, vdx, vdy, vdz, vtmin, vtmax));
-    d
-
-| Call ("accel_t", []) ->
+          emit_i (Ir.Supplier (Qrand, d));
+          d
+      | Call ("qrands", []) ->
           let d = fresh 1 in
-    emit_i (Ir.AccelT d);
-    d
-    | Call ("rng_seed", [es]) ->
-    let vs = expr es in
-    emit_i (Ir.RngSeed vs);
-    fresh 0
-| Call ("rand_q16", []) ->
-    let d = fresh 1 in
-    emit_i (Ir.RandQ16 d);
-    d
-| Call ("rand_q16_s", []) ->
-    let d = fresh 1 in
-    emit_i (Ir.RandQ16S d);
-    d
+          emit_i (Ir.Supplier (Qrands, d));
+          d
       (* 一般の呼び出し *)
       | Call (n, args) ->
           let srcs = map_ltr expr args in
