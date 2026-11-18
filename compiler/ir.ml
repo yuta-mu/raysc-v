@@ -5,11 +5,12 @@ type label = int         (*基本ブロック番号*)
 type binop =
   (* I *)
   | Add | Sub
-  | Shl | Sra            
+  | Shl | Srl | Sra
   | And | Or | Xor
   | Eq | Ne | Lt | Le | Gt | Ge   (* 符号付き比較。結果は 0 か 1(bool) *)
+  | Ltu | Leu | Gtu | Geu
   (* Im *)
-  | Mul | Div | Rem   
+  | Mul | Mulh | Div | Rem   
   (* Im_zbb *)
   | Min | Max | Minu | Maxu
   | Andn | Orn | Xnor
@@ -27,10 +28,10 @@ type unop =
   | Sqrt | Rsqrt | Rcp
 
 (* 1入力 -> 0出力 の volatile な命令 *)
-type cons = Bprint | RngSeed
+type cons = Bprint | Qseed
 
 (* 0入力 -> 1出力 の volatile な命令 *)
-type supp = Cycles | AccelT | RandQ16 | RandQ16S
+type supp = Cycles | AccelT | Qrand | Qrands
 
 (*どの配列かを表す型*)
 type region = 
@@ -91,10 +92,11 @@ type program = {
 
 (* ダンプ(--dump-ir) *)
 let string_of_binop = function
-  | Add -> "add" | Sub -> "sub" | Shl -> "shl" | Sra -> "sra"
+  | Add -> "add" | Sub -> "sub" | Shl -> "shl" | Srl -> "srl" | Sra -> "sra"
   | And -> "and" | Or -> "or" | Xor -> "xor"
   | Eq -> "eq" | Ne -> "ne" | Lt -> "lt" | Le -> "le" | Gt -> "gt" | Ge -> "ge"
-  | Mul -> "mul" | Div -> "div" | Rem -> "rem" 
+  | Ltu -> "ltu" | Leu -> "leu" | Gtu -> "gtu" | Geu -> "geu"
+  | Mul -> "mul" | Mulh -> "mulh" | Div -> "div" | Rem -> "rem" 
   | Min -> "min" | Max -> "max" | Minu -> "minu" | Maxu -> "maxu"
   | Andn -> "andn" | Orn -> "orn" | Xnor -> "xnor"
   | QMul -> "qmul"
