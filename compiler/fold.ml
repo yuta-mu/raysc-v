@@ -1,65 +1,64 @@
 (*定数畳み込み*)
 open Ir
-
-let b2i b = if b then 1l else 0l (*true → 1、false → 0*)
+open Numeric
 
 (* 二項演算の答え*)
 let eval_bin op (a : int32) (b : int32) : int32 =
   match op with
-  | Add -> Int32.add a b
-  | Sub -> Int32.sub a b
-  | Mul -> Int32.mul a b
-  | QMul ->
-      let p = Int64.mul (Int64.of_int32 a) (Int64.of_int32 b) in
-      Int64.to_int32 (Int64.shift_right p 16)
-  | Div ->
-      if b = 0l then -1l
-      else if a = Int32.min_int && b = -1l then Int32.min_int
-      else Int32.div a b
-  | Rem ->
-      if b = 0l then a
-      else if a = Int32.min_int && b = -1l then 0l
-      else Int32.rem a b
-  | Shl -> Int32.shift_left a (Int32.to_int b land 31)
-  | Sra -> Int32.shift_right a (Int32.to_int b land 31)
-  | And -> Int32.logand a b
-  | Or  -> Int32.logor a b
-  | Xor -> Int32.logxor a b
-  | Eq  -> b2i (a = b)
-  | Ne  -> b2i (a <> b)
-  | Lt  -> b2i (Int32.compare a b < 0)
-  | Le  -> b2i (Int32.compare a b <= 0)
-  | Gt  -> b2i (Int32.compare a b > 0)
-  | Ge  -> b2i (Int32.compare a b >= 0)
+  | Add  -> add a b
+  | Sub  -> sub a b
+  | Shl  -> shl a b
+  | Sra  -> sra a b
+  | And  -> logand a b
+  | Or   -> logor a b
+  | Xor  -> logxor a b
+  | Eq   -> eq a b
+  | Ne   -> ne a b
+  | Lt   -> lt a b
+  | Le   -> le a b
+  | Gt   -> gt a b
+  | Ge   -> ge a b
+  | Mul  -> mul a b
+  | Div  -> div a b
+  | Rem  -> rem a b
+  | Min  -> min a b
+  | Max  -> max a b
+  | Minu -> minu a b
+  | Maxu -> maxu a b
+  | Andn -> andn a b
+  | Orn  -> orn a b
+  | Xnor -> xnor a b
+  | QMul -> qmul a b
 
 (* 単項演算の答え *)
 let eval_un op (a : int32) : int32 =
   match op with
-  | Neg -> Int32.neg a (*0-a*)
-  | Not -> Int32.logxor a 1l (*boolの反転(0↔1)*)
+  | Neg    -> neg a
+  | Not    -> lognot a
+  | Clz    -> clz a
+  | Sext_b -> sext_b a
+  | Sext_h -> sext_h a
+  | Sqrt   -> qsqrt a
+  | Rsqrt  -> qrsqrt a
+  | Rcp    -> qrcp a
 
 (*命令iが読むvregをfで置きかえる(書くvregはそのまま)*)
 let subst_uses f (i : instr) : instr =
   match i with
-  | Const _ | AddrLocal _ | AddrGlobal _ | Cycles _
-  | AccelT _ | RandQ16 _ | RandQ16S _ -> i
+  | Const _ | AddrLocal _ | AddrGlobal _ | Supplier _ -> i
   | Move (d, a) -> Move (d, f a)
   | Bin (op, d, a, b) -> Bin (op, d, f a, f b)
   | Un (op, d, a) -> Un (op, d, f a)
-  | Intr (k, d, a) -> Intr (k, d, f a)
-  | Zbb_b (op, d, a, b) -> Zbb_b (op, d, f a, f b)          
-  | Zbb_u (op, d, a) -> Zbb_u (op, d, f a)                  
-  | Qabs (d, a) -> Qabs (d, f a)                            
-  | Qclamp (d, a, b, c) -> Qclamp (d, f a, f b, f c)  
   | Load (d, r, a, o) -> Load (d, r, f a, o)
   | Store (id, a, o, s) -> Store (id, f a, o, f s)
   | Call (rs, n, args) -> Call (rs, n, List.map f args)
-  | Bprint a -> Bprint (f a)
+  | Consumer (op, a) -> Consumer (op, f a)
   | AccelSetSphere (i, x, y, z, r, r2, m) ->
       AccelSetSphere (f i, f x, f y, f z, f r, f r2, f m)
   | AccelHit (d, ox, oy, oz, dx, dy, dz, tmin, tmax) ->
       AccelHit (d, f ox, f oy, f oz, f dx, f dy, f dz, f tmin, f tmax)
-  | RngSeed a -> RngSeed (f a)
+  | Qabs (d, a) -> Qabs (d, f a)                            
+  | Qclamp (d, a, b, c) -> Qclamp (d, f a, f b, f c)  
 
 let fold_block (b : block) : block = 
   let known = Hashtbl.create 16 in (*vreg番号→値をメモ*)

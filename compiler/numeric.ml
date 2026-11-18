@@ -1,46 +1,76 @@
-open Ast
-
 let wrap_i64 x = Int64.to_int32 x
+let sx32 u = Int64.of_int32 u
 
-let i32_div a b =
+(* I *)
+let add a b = Int32.add a b
+let sub a b = Int32.sub a b
+let shl a b = Int32.shift_left a (Int32.to_int b land 31)
+let sra a b = Int32.shift_right a (Int32.to_int b land 31)
+let logand a b = Int32.logand a b
+let logor a b = Int32.logor a b
+let logxor a b = Int32.logxor a b
+let eq a b = if a = b then 1l else 0l
+let ne a b = if a <> b then 1l else 0l
+let lt a b = if Int32.compare a b < 0 then 1l else 0l
+let le a b = if Int32.compare a b <= 0 then 1l else 0l
+let gt a b = if Int32.compare a b > 0 then 1l else 0l
+let ge a b = if Int32.compare a b >= 0 then 1l else 0l
+
+let neg a = Int32.neg a
+let lognot a = Int32.logxor a 1l
+
+(* Im *)
+let mul a b = Int32.mul a b
+let div a b =
   if b = 0l then -1l
   else if a = Int32.min_int && b = -1l then Int32.min_int
   else Int32.div a b
-
-let i32_rem a b =
+let rem a b =
   if b = 0l then a
   else if a = Int32.min_int && b = -1l then 0l
   else Int32.rem a b
 
+(* Im_zbb *)
+let ucmp a b =
+  Int64.compare (Int64.logand (sx32 a) 0xFFFFFFFFL)
+                (Int64.logand (sx32 b) 0xFFFFFFFFL)
+
+let min a b = if Int32.compare a b < 0 then a else b
+let max a b = if Int32.compare a b > 0 then a else b
+let minu a b = if ucmp a b < 0 then a else b
+let maxu a b = if ucmp a b > 0 then a else b
+let andn a b = Int32.logand a (Int32.lognot b)
+let orn a b  = Int32.logor a (Int32.lognot b)
+let xnor a b = Int32.lognot (Int32.logxor a b)
+
+let clz x =
+  if x = 0l then 32l
+  else
+    let rec loop i mask =
+      if Int32.logand x mask <> 0l then i
+      else loop (Int32.add i 1l) (Int32.shift_right_logical mask 1)
+    in
+    loop 0l 0x80000000l
+let sext_b a = Int32.shift_right (Int32.shift_left a 24) 24
+let sext_h a = Int32.shift_right (Int32.shift_left a 16) 16
+
+(* Math *)
+(*
 let floor_div_pow2 x n =
   let d = Int64.shift_left 1L n in
   let q = Int64.div x d in
   let r = Int64.rem x d in
   if r < 0L then Int64.sub q 1L else q
-
+*)
 let q16_floor_shift16 val_ =
   let q = Int64.div val_ 65536L in
   let r = Int64.rem val_ 65536L in
   let q' = if r < 0L then Int64.sub q 1L else q in
   wrap_i64 q'
 
-let sx32 u = Int64.of_int32 u
-
 let qmul a b =
   let prod = Int64.mul (sx32 a) (sx32 b) in
   q16_floor_shift16 prod
-
-let q16_rcp x_raw =
-  if x_raw = 0l then 0x7fffffffl
-  else
-    let x_val = sx32 x_raw in
-    let num = 4294967296L in
-    let q = Int64.div num x_val in
-    let r = Int64.rem num x_val in
-    let q' = if x_val < 0L && r <> 0L then Int64.sub q 1L else q in
-    if q' > 2147483647L then 0x7fffffffl
-    else if q' < -2147483648L then Int32.min_int
-    else wrap_i64 q'
 
 let isqrt n =
   if n <= 0L then 0L
@@ -56,16 +86,29 @@ let isqrt n =
 let qsqrt x =
   if x <= 0l then 0l
   else
-    let n = Int64.shift_left (Int64.logand (Int64.of_int32 x) 0xFFFFFFFFL) 16 in
+    let n = Int64.shift_left (Int64.logand (sx32 x) 0xFFFFFFFFL) 16 in
     wrap_i64 (isqrt n)
 
 let qrsqrt x =
   if x <= 0l then 0l
-  else wrap_i64 (isqrt (Int64.div 281474976710656L (Int64.of_int32 x)))   (* 281474976710656 = 2^48 *)
+  else wrap_i64 (isqrt (Int64.div 281474976710656L (sx32 x)))   (* 281474976710656 = 2^48 *)
 
+let qrcp x_raw =
+  if x_raw = 0l then 0x7fffffffl
+  else
+    let x_val = sx32 x_raw in
+    let num = 4294967296L in
+    let q = Int64.div num x_val in
+    let r = Int64.rem num x_val in
+    let q' = if x_val < 0L && r <> 0L then Int64.sub q 1L else q in
+    if q' > 2147483647L then 0x7fffffffl
+    else if q' < -2147483648L then Int32.min_int
+    else wrap_i64 q'
+
+(* parser *)
 let parse_i32 s =
   let v = Int64.of_string s in
-  Int64.to_int32 v
+  wrap_i64 v
 
 let parse_q16 s =
   let dot = String.index s '.' in
@@ -94,5 +137,4 @@ let parse_q16 s =
     then Int64.add q 1L else q
   in
   let raw = Int64.add (Int64.mul w 65536L) rounded_frac in
-  Int64.to_int32 raw
-
+  wrap_i64 raw
