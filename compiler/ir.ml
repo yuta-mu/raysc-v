@@ -3,30 +3,34 @@ type label = int         (*基本ブロック番号*)
 
 (*二項演算*)
 type binop =
+  (* I *)
   | Add | Sub
-  | Mul                  
-  | QMul                 
-  | Div | Rem           
   | Shl | Sra            
   | And | Or | Xor
   | Eq | Ne | Lt | Le | Gt | Ge   (* 符号付き比較。結果は 0 か 1(bool) *)
+  (* Im *)
+  | Mul | Div | Rem   
+  (* Im_zbb *)
+  | Min | Max | Minu | Maxu
+  | Andn | Orn | Xnor
+  (* Math *)
+  | QMul  
 
 (*単項演算*)
 type unop =
+  (* I *)
   | Neg                  (*反転*)
   | Not                  (*boolの否定*)
-
-(*平方根,平方根の逆数,逆数*)
-type intrinsic = Sqrt | Rsqrt | Rcp
-
-(*zbb二項演算*)
-type zbb_binop =
-  | Min | Max | Minu | Maxu
-  | Andn | Orn | Xnor
-
-(*zbb単項演算*)
-type zbb_unop =
+  (* Im_zbb *)
   | Clz | Sext_b | Sext_h
+  (* Math *)
+  | Sqrt | Rsqrt | Rcp
+
+(* 1入力 -> 0出力 の volatile な命令 *)
+type cons = Bprint | RngSeed
+
+(* 0入力 -> 1出力 の volatile な命令 *)
+type supp = Cycles | AccelT | RandQ16 | RandQ16S
 
 (*どの配列かを表す型*)
 type region = 
@@ -39,10 +43,6 @@ type instr =
   | Move   of vreg * vreg                       (*d=a(コピー)*)
   | Bin   of binop * vreg * vreg * vreg        (*二項演算*)
   | Un    of unop * vreg * vreg                (*単項*)
-  | Intr  of intrinsic * vreg * vreg           (*d=sqrt(a)など*)
-  (*zbb*)
-  | Zbb_b of zbb_binop * vreg * vreg * vreg
-  | Zbb_u of zbb_unop * vreg * vreg
   (*メモリの命令 配列を読み書き*)
   | AddrLocal  of vreg * int   (*d = 局所配列の先頭アドレス*)
   | AddrGlobal of vreg * string  (*d = constの先頭アドレス*)
@@ -50,19 +50,16 @@ type instr =
   | Store of int * vreg * int * vreg                    (*mem[addr + ofs] = src(書けるのは局所配列だけ。int は局所配列の番号)*)
   (*関数呼び出し*)
   | Call  of vreg list * string * vreg list    (*戻り値を入れる仮想レジスタのリスト,関数名,引数の仮想レジスタ*)
-  (*MMIO呼び出し(仕様 §11):消去・並べ替え禁止。他の命令もこの前後を越えて動かさない
-    print("...") は translate で const(1文字1ワード、末尾 0)と Load / Bprint のループに分解する*)
-  | Bprint of vreg                             (*下位8ビットをUARTに送る*)
-  (*組み込み関数*)
-  | Cycles of vreg                             (*d = cycles()*)
-  | Qabs of vreg * vreg
-  | Qclamp of vreg * vreg * vreg * vreg
+  (*volatile:消去・並べ替え禁止。他の命令もこの前後を越えて動かさない
+    print("...") は translate で const(1文字1ワード、末尾 0)と Load / Bprint のループに分解する
+    bprint は下位 8 ビットを UART に送る*)
+  | Consumer of cons * vreg
+  | Supplier of supp * vreg
   | AccelSetSphere of vreg * vreg * vreg * vreg * vreg * vreg * vreg
   | AccelHit of vreg * vreg * vreg * vreg * vreg * vreg * vreg * vreg * vreg
-  | AccelT of vreg
-  | RngSeed of vreg
-  | RandQ16 of vreg
-  | RandQ16S of vreg
+  (*組み込み関数*)
+  | Qabs of vreg * vreg
+  | Qclamp of vreg * vreg * vreg * vreg
 
 (*基本ブロックの終端*)
 type terminator =
@@ -94,20 +91,24 @@ type program = {
 
 (* ダンプ(--dump-ir) *)
 let string_of_binop = function
-  | Add -> "add" | Sub -> "sub" | Mul -> "mul" | QMul -> "qmul"
-  | Div -> "div" | Rem -> "rem" | Shl -> "shl" | Sra -> "sra"
+  | Add -> "add" | Sub -> "sub" | Shl -> "shl" | Sra -> "sra"
   | And -> "and" | Or -> "or" | Xor -> "xor"
   | Eq -> "eq" | Ne -> "ne" | Lt -> "lt" | Le -> "le" | Gt -> "gt" | Ge -> "ge"
-
-let string_of_unop = function Neg -> "neg" | Not -> "not"
-
-let string_of_intrinsic = function Sqrt -> "sqrt" | Rsqrt -> "rsqrt" | Rcp -> "rcp"
-
-let string_of_zbb_b = function
+  | Mul -> "mul" | Div -> "div" | Rem -> "rem" 
   | Min -> "min" | Max -> "max" | Minu -> "minu" | Maxu -> "maxu"
   | Andn -> "andn" | Orn -> "orn" | Xnor -> "xnor"
+  | QMul -> "qmul"
 
-let string_of_zbb_u = function Clz -> "clz" | Sext_b -> "sext.b" | Sext_h -> "sext.h"
+let string_of_unop = function
+  | Neg -> "neg" | Not -> "not"
+  | Clz -> "clz" | Sext_b -> "sext.b" | Sext_h -> "sext.h"
+  | Sqrt -> "sqrt" | Rsqrt -> "rsqrt" | Rcp -> "rcp"
+
+let string_of_cons = function Bprint -> "bprint" | RngSeed -> "rng_seed"
+
+let string_of_supp = function
+  | Cycles -> "cycles" | AccelT -> "accel_t" 
+  | RandQ16 -> "rand_q16" | RandQ16S -> "rand_q16_s"
 
 let v n = "v" ^ string_of_int n
 let l n = "L" ^ string_of_int n
@@ -122,29 +123,22 @@ let string_of_instr = function
   | Move (d, a)         -> Printf.sprintf "%s = %s" (v d) (v a)
   | Bin (op, d, a, b)   -> Printf.sprintf "%s = %s %s, %s" (v d) (string_of_binop op) (v a) (v b)
   | Un (op, d, a)       -> Printf.sprintf "%s = %s %s" (v d) (string_of_unop op) (v a)
-  | Intr (f, d, a)      -> Printf.sprintf "%s = %s %s" (v d) (string_of_intrinsic f) (v a)
-  | Zbb_b (op, d, a, b) -> Printf.sprintf "%s = %s %s, %s" (v d) (string_of_zbb_b op) (v a) (v b)
-  | Zbb_u (op, d, a)    -> Printf.sprintf "%s = %s %s" (v d) (string_of_zbb_u op) (v a)
   | AddrLocal (d, id)   -> Printf.sprintf "%s = &array%d" (v d) id
   | AddrGlobal (d, s)   -> Printf.sprintf "%s = &%s" (v d) s
   | Load (d, r, a, ofs) -> Printf.sprintf "%s = load %s[%s + %d]" (v d) (string_of_region r) (v a) ofs
   | Store (id, a, ofs, s)-> Printf.sprintf "store array%d[%s + %d] = %s" id (v a) ofs (v s)
   | Call ([], f, args)  -> Printf.sprintf "call %s(%s)" f (vs args)
   | Call (rs, f, args)  -> Printf.sprintf "%s = call %s(%s)" (vs rs) f (vs args)
-  | Bprint a            -> Printf.sprintf "bprint %s" (v a)
-  | Cycles d            -> Printf.sprintf "%s = cycles" (v d)
-  | Qabs (d, a)         -> Printf.sprintf "%s = qabs(%s)" (v d) (v a)
-  | Qclamp (d, a, b, c) -> Printf.sprintf "%s = qclamp(%s, %s, %s)" (v d) (v a) (v b) (v c)
+  | Consumer (op, a)    -> Printf.sprintf "%s(%s)" (string_of_cons op) (v a)
+  | Supplier (op, d)    -> Printf.sprintf "%s = %s" (v d) (string_of_supp op)
   | AccelSetSphere (i, x, y, z, r, r2, m) ->
       Printf.sprintf "accel_set_sphere(%s, %s, %s, %s, %s, %s, %s)"
         (v i) (v x) (v y) (v z) (v r) (v r2) (v m)
   | AccelHit (d, ox, oy, oz, dx, dy, dz, tmin, tmax) ->
       Printf.sprintf "%s = accel_hit(%s, %s, %s, %s, %s, %s, %s, %s)"
         (v d) (v ox) (v oy) (v oz) (v dx) (v dy) (v dz) (v tmin) (v tmax)
-  | AccelT d -> Printf.sprintf "%s = accel_t" (v d)
-  | RngSeed a  -> Printf.sprintf "rng_seed(%s)" (v a)
-  | RandQ16 d  -> Printf.sprintf "%s = rand_q16" (v d)
-  | RandQ16S d -> Printf.sprintf "%s = rand_q16_s" (v d)
+  | Qabs (d, a)         -> Printf.sprintf "%s = qabs(%s)" (v d) (v a)
+  | Qclamp (d, a, b, c) -> Printf.sprintf "%s = qclamp(%s, %s, %s)" (v d) (v a) (v b) (v c)
 
 let string_of_term = function
   | Jump t              -> Printf.sprintf "jump %s" (l t)
@@ -207,27 +201,24 @@ let blocks_of_items (items : item list) : block list =
 
 (*命令が書き込む vreg*)
   let defs = function
-  | Const (d, _) | Move (d, _) | Bin (_, d, _, _) | Un (_, d, _) | Intr (_, d, _)
-  | Zbb_b (_, d, _, _) | Zbb_u (_, d, _)
-  | AddrLocal (d, _) | AddrGlobal (d, _) | Load (d, _, _, _) | Cycles d
-  | Qabs (d, _) | Qclamp (d, _, _, _)
-  | AccelHit (d, _, _, _, _, _, _, _, _) | AccelT d -> [d]
+  | Const (d, _) | Move (d, _) | Bin (_, d, _, _) | Un (_, d, _)
+  | AddrLocal (d, _) | AddrGlobal (d, _) | Load (d, _, _, _)
+  | Supplier (_, d) | AccelHit (d, _, _, _, _, _, _, _, _)
+  | Qabs (d, _) | Qclamp (d, _, _, _) -> [d]
   | Call (rs, _, _) -> rs
-  | Store _ | Bprint _ | AccelSetSphere _ | RngSeed _ -> []
-  | RandQ16 d | RandQ16S d -> [d]
+  | Store _ | Consumer _ | AccelSetSphere _ -> []
 
 (*命令が読み込む vreg*)
 let uses = function
-  | Const _ | AddrLocal _ | AddrGlobal _ | Cycles _ | AccelT _ | RandQ16 _ | RandQ16S _ -> []
-  | Move (_, a) | Un (_, _, a) | Intr (_, _, a) | Zbb_u (_, _, a)
-  | Load (_, _, a, _) | Bprint a | Qabs (_, a) -> [a]
-  | Bin (_, _, a, b) | Zbb_b (_, _, a, b) -> [a; b]
+  | Const _ | AddrLocal _ | AddrGlobal _ | Supplier _ -> []
+  | Move (_, a) | Un (_, _, a)| Load (_, _, a, _)
+  | Consumer (_, a) | Qabs (_, a) -> [a]
+  | Bin (_, _, a, b) -> [a; b]
   | Store (_, a, _, s) -> [a; s]
   | Qclamp (_, a, b, c) -> [a; b; c]
   | AccelSetSphere (i, x, y, z, r, r2, m) -> [i; x; y; z; r; r2; m]
   | AccelHit (_, ox, oy, oz, dx, dy, dz, tmin, tmax) -> [ox; oy; oz; dx; dy; dz; tmin; tmax]
   | Call (_, _, args) -> args
-  | RngSeed a -> [a]
 
 (*終端が読み込む vreg*)
 let term_uses = function
@@ -242,11 +233,9 @@ let successors = function
   | Ret _ -> []
 
 (*副作用の判定*)
-(*副作用の判定*)
 let has_side_effect = function
-  | Bprint _ | Cycles _ | Call _ | Store _
-  | AccelSetSphere _ | AccelHit _ | AccelT _
-  | RngSeed _ | RandQ16 _ | RandQ16S _ -> true
+  | Store _ | Call _ | Consumer _ | Supplier _
+  | AccelSetSphere _ | AccelHit _ -> true
   | _ -> false
 
 (*Storeがどの配列に書き込んでいるか*)
