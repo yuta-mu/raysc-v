@@ -1,6 +1,6 @@
-# RayQ 言語仕様 v1.5
+# RayQ 言語仕様 v1.6
 
-RaySC-V プロジェクト / 2026-11-04
+RaySC-V プロジェクト / 2026-11-18
 
 コンパイラ: `rayqc` / ターゲット: RV32IM + custom-0 (Artix-7, ベアメタル)
 
@@ -236,6 +236,9 @@ Primary     ::= IDENT | INT_LIT | Q16_LIT | CHAR_LIT | BOOL_LIT | STR_LIT
 | `sqrt(x)` | `(q16) -> q16` | custom-0 (§9) |
 | `rcp(x)` | `(q16) -> q16` | custom-0 (§9) |
 | `rsqrt(x)` | `(q16) -> q16` | custom-0 (§9) |
+| `qseed(x)` | `(i32) -> void` | custom-0 (§9) |
+| `qrand()` | `() -> q16` | custom-0 (§9) |
+| `qrands()` | `() -> q16` | custom-0 (§9) |
 | `min(x, y)` | `(i32, i32) -> i32` | `min rd, rs1, rs2` |
 | `max(x, y)` | `(i32, i32) -> i32` | `max rd, rs1, rs2` |
 | `qmin(x, y)` | `(q16, q16) -> q16` | `min rd, rs1, rs2` |
@@ -251,9 +254,13 @@ Primary     ::= IDENT | INT_LIT | Q16_LIT | CHAR_LIT | BOOL_LIT | STR_LIT
 | `sext_h(x)` | `(i32) -> i32` | `sext.h rd, rs` |
 | `qabs(x)` | `(q16) -> q16` | `neg t0, rs1; max rd, rs1, t0` |
 | `qclamp(x, lo, hi)` | `(q16, q16, q16) -> q16` | `max t0, rs1, rs2; min rd, t0, rs3` |
+| `accel_set_sphere(i, x, y, z, r, r2, m)` | `(i32, q16, q16, q16, q16, q16, i32) -> void` | 球データの登録 (MMIO `0x3000_0000` + `256`) |
+| `accel_hit(ox, oy, oz, dx, dy, dz, tmin, tmax)` | `(q16, q16, q16, q16, q16, q16, q16, q16) -> i32` | レイ交差判定と結果取得 (MMIO `0x3000_0000` + `0`〜`32`) |
+| `accel_t()` | `() -> q16` | 交差距離の取得 (MMIO `0x3000_0000` + `36`) |
 
 - `norm` は組み込みではなく、利用者が `fn norm(v: vec3) -> vec3 { return v * rsqrt(v <.> v); }` と書く。
-- `bprint`、`print`、`cycles` を **MMIO 呼び出し** と呼ぶ。MMIO は volatile で、消去や順序入れ替えは禁止する (§11)。
+- `bprint`、`print`、`cycles`、`accel_set_sphere`、`accel_hit`、`accel_t` を **MMIO 呼び出し** と呼ぶ。
+- MMIO 呼び出しと、内部状態を持つ乱数命令 (`qseed`、`qrand`、`qrands`) は volatile であり、消去や順序入れ替えは禁止する (§11)。
 - 区間計測は `cycles()` の差 (`end - start`、32bit ラップ減算)。出力前に値を保存しておくこと。
 - `cycles()` の値は、ISS と RTL の一致検証の対象外とする。
 
@@ -291,6 +298,9 @@ static inline uint32_t q16_rcp(uint32_t x_raw) {
 | `qsqrt rd, rs1` | 2 | 0 | `x0` | `sqrt` と同一ビット |
 | `qrsqrt rd, rs1` | 3 | 0 | `x0` | `rsqrt` と同一ビット |
 | `qrcp rd, rs1` | 4 | 0 | `x0` | `rcp` と同一ビット |
+| `qseed x0, rs1` | 5 | 0 | `x0` | 乱数シードの設定 |
+| `qrand rd, x0` | 6 | 0 | `x0` | [0.0, 1.0) の Q16 乱数生成 |
+| `qrands rd, x0` | 7 | 0 | `x0` | [-1.0, 1.0) の Q16 乱数生成 |
 
 ## 10. サンプル
 
@@ -351,7 +361,7 @@ fn main() -> void {
 
 1. **算術結果は §3 と §9 の定義とビット単位で同一**であること。
 2. **UART に出力されるバイト列は同一**であること。
-3. **MMIO 呼び出し (`bprint`、`print`、`cycles`) の実行回数と順序を変えない。** MMIO 呼び出しは並べ替えの壁として扱い、他の命令をその前後に越えて移動しない (`cycles()` で測る区間の意味を保つため)。
+3. **MMIO 呼び出し (`bprint`、`print`、`cycles`) と乱数命令の実行回数と順序を変えない。** これらは並べ替えの壁として扱い、他の命令をその前後に越えて移動しない (`cycles()` で測る区間の意味を保つため)。
 4. 未定義とされる動作 (方針の節) に依存した最適化の結果は、保証しない。
 5. **置き換えの条件**: 算術を `custom-0` 命令に置き換えるのは常に許される (§9 が同一ビットを定める)。ライブラリ関数をアクセラレータの呼び出しに置き換えるのは、元の関数のソフト実装と同一ビットの結果を返す場合に限る (アクセラレータの仕様は別紙)。
 
