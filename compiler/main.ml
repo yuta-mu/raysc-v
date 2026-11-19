@@ -70,14 +70,16 @@ let () =
   let do_inline = !inline_flag || !opt_level >= 1 in
   let do_fold = !fold_flag || !opt_level >= 1 in
   let do_regalloc = !regalloc_flag || !opt_level >= 2 in
+  let do_o3 = !opt_level >= 3 in 
   let ir = if do_inline then Inline.run ir else ir in   (* 先に関数を展開して *)
   let ir = if do_fold then Fold.run ir else ir in       (* 見えた定数を畳みこみ *)
+  let ir = if do_o3 then Strength.run ir else ir in     (* mul → shift *)
   let ir = if do_inline || do_fold then Dce.run ir else ir in   (* 使われなくなったものを消す *)
 
   if !dump_ir then Ir.dump_program stdout ir;   (* --dump-ir のときは IR を表示 *)
 
   let asm =
-    try Emitter.emit_program ~regalloc:do_regalloc md mrc ir with
+    try Emitter.emit_program ~regalloc:do_regalloc ~opt3:do_o3 md mrc ir with
     | Failure msg -> prerr_endline msg; exit 1    (* frame too large など *)
   in
   let out = open_out !output_file in

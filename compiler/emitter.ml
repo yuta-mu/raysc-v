@@ -19,6 +19,7 @@ type frame = {
   saved : string list;           (* 割り当てで使ったので、入口でしまい出口でもどす s レジスタ *)
   slot_base : int;               (* スロットが始まる場所(sp からの距離) *)
   loc : vreg -> Regalloc.loc;    (* vreg の置き場所 *)
+  imm : bool;                    (* 定数のシフト量をslli/srai の即値にする *)
 }
 
 (* 呼び出し時に必要なスタック引数・戻り値領域の大きさ(バイト) *)
@@ -36,7 +37,7 @@ let array_bytes (f : func) = List.fold_left (fun acc (_, bytes) -> acc + bytes) 
 let bases_for rough = if rough <= 2048 then 0 else min 11 ((rough - 1 + 2048) / 4096)
 
 (* 置き場所が決まったあとの、残りの計算 *)
-let layout (f : func) ~out_bytes ~nbases ~saved ~nslots ~loc =
+let layout ?(imm = false) (f : func) ~out_bytes ~nbases ~saved ~nslots ~loc =
   let slot_base = out_bytes + 4 * nbases + 4 * List.length saved in
   let arr_base = slot_base + 4 * nslots in
   let arrays, arr_end =
@@ -45,7 +46,7 @@ let layout (f : func) ~out_bytes ~nbases ~saved ~nslots ~loc =
       ([], arr_base) f.arrays
   in
   let size = arr_end + 4 in
-  { out_bytes; arrays; ra_off = size - 4; size; nbases; saved; slot_base; loc }
+  { out_bytes; arrays; ra_off = size - 4; size; nbases; saved; slot_base; loc; imm }
 
 (* 割り当てなし:vreg v はスロット v(今までどおり、全部スタック) *)
 let make_frame (f : func) =
@@ -56,11 +57,11 @@ let make_frame (f : func) =
 
 (* 割り当てあり:Regalloc の結果で置き場所を決める。
    フレームが大きくてベースレジスタが要るときは、その s を外して割り当てをやり直す *)
-let make_frame_ra ~accel_off ~zbb (f : func) =
+let make_frame_ra ?(imm = false) ~accel_off ~zbb (f : func) =
   let out_bytes = outgoing_bytes f in
   let rec go nb =
     let reserved = List.init nb (fun k -> Printf.sprintf "s%d" (k + 1)) in
-    let (locs, nslots, used) = Regalloc.allocate ~reserved ~accel_off ~zbb f in
+    let (locs, nslots, used) = Regalloc.allocate ~reserved ~imm_shift:imm ~accel_off ~zbb f in
     let size = out_bytes + 4 * nb + 4 * List.length used + 4 * nslots + array_bytes f + 4 in
     let need = bases_for size in
     if need <= nb then (nb, locs, nslots, used) else go need
@@ -71,7 +72,7 @@ let make_frame_ra ~accel_off ~zbb (f : func) =
     | Some l -> l
     | None -> failwith (Printf.sprintf "regalloc: v%d has no location in %s" v f.name)
   in
-  layout f ~out_bytes ~nbases ~saved ~nslots ~loc
+  layout ~imm f ~out_bytes ~nbases ~saved ~nslots ~loc
 
    (*フレームが大きい関数では、入口で s1 = sp+4096, s2 = sp+8192, ... を作っておき、
    遠いスロットは「いちばん近いベースレジスタ + 12 ビット」で 1 命令で読み書きする。
@@ -175,6 +176,14 @@ let emit_instr (md : mode) (mrc : march) fr (i : instr) =
        | _ ->
            let ra = src "t0" a in
            to_vreg ra d)
+  | Bin ((Shl | Sra) as op, d, a, b)
+    when fr.imm && (match fr.loc b with Regalloc.Remat k -> 0l <= k && k <= 31l | _ -> false) ->
+      (* シフト量が定数:slli / srai の即値にする(-O3) *)
+      let k = match fr.loc b with Regalloc.Remat k -> k | _ -> assert false in
+      let ra = src "t0" a in
+      let rd = dst "t0" d in
+      Printf.bprintf buf "%s %s, %s, %ld\n" (if op = Shl then "slli" else "srai") rd ra k;
+      fin "t0" d
   | Bin (op, d, a, b) ->
       let ra = src "t0" a in
       let rb = src "t1" b in
@@ -368,9 +377,9 @@ let emit_term (f : func) fr (t : terminator) =
       Printf.bprintf buf "jalr x0, ra, 0\n"
 
 (*関数*)
-let emit_func ~regalloc (md : mode) (mrc : march) (f : func) =
+let emit_func ~regalloc ~opt3 (md : mode) (mrc : march) (f : func) =
   let fr =
-    if regalloc then make_frame_ra ~accel_off:(md = Off) ~zbb:(mrc = Im_zbb) f
+    if regalloc then make_frame_ra ~imm:opt3 ~accel_off:(md = Off) ~zbb:(mrc = Im_zbb) f
     else make_frame f in
   Printf.bprintf buf "\n.globl %s\n" f.name;
   Printf.bprintf buf "%s:\n" f.name;
@@ -620,11 +629,11 @@ __clz:
     jalr x0, ra, 0
 |}
 
-let emit_program ?(regalloc = false) (md : mode) (mrc : march) (p : program) : string =
+let emit_program ?(regalloc = false) ?(opt3 = false) (md : mode) (mrc : march) (p : program) : string =
   Buffer.clear buf;
   Printf.bprintf buf ".section .text\n";
 
-  List.iter (emit_func ~regalloc md mrc) p.funcs;
+  List.iter (emit_func ~regalloc ~opt3 md mrc) p.funcs;
   (if md = Off then Buffer.add_string buf runtime_math);
   (match mrc with
     | I -> (Buffer.add_string buf runtime_m;
