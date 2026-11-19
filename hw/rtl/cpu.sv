@@ -1,8 +1,12 @@
 `include "rv32i_types.svh"
 
 module cpu #(
-    parameter bit ENABLE_M       = 1'b1,
-    parameter bit ENABLE_CUSTOM0 = 1'b1
+    parameter bit ENABLE_M            = 1'b1,
+    parameter bit ENABLE_ZBB          = 1'b1,
+    parameter bit ENABLE_CUSTOM0      = 1'b1,
+    parameter bit ENABLE_SPHERE_ACCEL = 1'b1,
+    parameter bit PIPE_MUL            = 1'b0,
+    parameter bit QMUL_STALL          = 1'b1
 )(
     input  logic        clk,
     input  logic        rst_n,
@@ -50,7 +54,11 @@ module cpu #(
     logic        alu_src_b;
     logic        reg_write_ctrl;
 
-    controller u_controller (
+    controller #(
+        .ENABLE_M       (ENABLE_M),
+        .ENABLE_ZBB     (ENABLE_ZBB),
+        .ENABLE_CUSTOM0 (ENABLE_CUSTOM0)
+    ) u_controller (
         .*,
         .mem_read  (mem_read_ctrl),
         .mem_write (mem_write_ctrl),
@@ -80,7 +88,14 @@ module cpu #(
         end
     end
 
-    datapath u_datapath (
+    datapath #(
+        .ENABLE_M            (ENABLE_M),
+        .ENABLE_ZBB          (ENABLE_ZBB),
+        .ENABLE_CUSTOM0      (ENABLE_CUSTOM0),
+        .ENABLE_SPHERE_ACCEL (ENABLE_SPHERE_ACCEL),
+        .PIPE_MUL            (PIPE_MUL),
+        .QMUL_STALL          (QMUL_STALL)
+    ) u_datapath (
         .clk            (clk),
         .rst_n          (rst_n),
         .halted         (halted_reg),

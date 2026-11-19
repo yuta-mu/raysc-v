@@ -1,6 +1,13 @@
 `include "rv32i_types.svh"
 
-module datapath (
+module datapath #(
+    parameter bit ENABLE_M            = 1'b1,
+    parameter bit ENABLE_ZBB          = 1'b1,
+    parameter bit ENABLE_CUSTOM0      = 1'b1,
+    parameter bit ENABLE_SPHERE_ACCEL = 1'b1,
+    parameter bit PIPE_MUL            = 1'b0,
+    parameter bit QMUL_STALL          = 1'b1
+)(
     input  logic        clk,
     input  logic        rst_n,
 
@@ -122,7 +129,7 @@ module datapath (
 
     assign id_uses_rs1 = (id_opcode != OP_LUI) && (id_opcode != OP_AUIPC) && (id_opcode != OP_JAL);
     assign id_uses_rs2 = (id_opcode == OP_REG) || (id_opcode == OP_STORE) ||
-                         (id_opcode == OP_BRANCH) || (id_opcode == OP_CUSTOM0);
+                         (id_opcode == OP_BRANCH) || (ENABLE_CUSTOM0 && (id_opcode == OP_CUSTOM0));
 
     logic        wb_valid;
     logic        wb_reg_write;
@@ -253,7 +260,9 @@ module datapath (
     assign alu_src_a_data = ex_alu_src_a ? ex_pc  : rs1_fwd;
     assign alu_src_b_data = ex_alu_src_b ? ex_imm : rs2_fwd;
 
-    alu u_alu (
+    alu #(
+        .ENABLE_ZBB (ENABLE_ZBB)
+    ) u_alu (
         .a      (alu_src_a_data),
         .b      (alu_src_b_data),
         .alu_op (ex_alu_op),
@@ -275,66 +284,107 @@ module datapath (
     assign ex_pc_src    = ex_valid && (ex_jump || ex_branch_taken);
 
     // --- M拡張: 乗算器 & 除算器 ---
-    logic [31:0] ex_mul_comb, ex_mul_q, ex_div_result, ex_mdu_result;
-    logic        is_mul_op, mul_done_q, mul_stall;
-    logic        div_busy, div_done, is_div_op, div_start, div_stall;
+    logic [31:0] ex_mdu_result;
+    logic        mul_stall, div_stall;
 
-    multiplier u_multiplier (
-        .a      (rs1_fwd),
-        .b      (rs2_fwd),
-        .funct3 (ex_funct3),
-        .result (ex_mul_comb)
-    );
+    generate
+        if (ENABLE_M) begin : gen_m
+            logic [31:0] ex_mul_result, ex_div_result;
+            logic        is_mul_op;
+            logic        div_busy, div_done, is_div_op, div_start;
 
-    assign is_mul_op = ex_valid && (ex_result_src == RESULT_MDU) && !ex_funct3[2] && !halted;
-    assign mul_stall = is_mul_op && !mul_done_q;
+            assign is_mul_op = ex_valid && (ex_result_src == RESULT_MDU) && !ex_funct3[2] && !halted;
 
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            mul_done_q <= 1'b0;
-            ex_mul_q   <= 32'h0;
-        end else if (is_mul_op && !mul_done_q && !stall_mem) begin
-            mul_done_q <= 1'b1;
-            ex_mul_q   <= ex_mul_comb;
-        end else if (!stall_mem) begin
-            mul_done_q <= 1'b0;
+            if (PIPE_MUL) begin : gen_mul_pipe
+                multiplier_pipe u_multiplier_pipe (
+                    .clk       (clk),
+                    .rst_n     (rst_n),
+                    .valid     (is_mul_op),
+                    .stall_mem (stall_mem),
+                    .a         (rs1_fwd),
+                    .b         (rs2_fwd),
+                    .funct3    (ex_funct3),
+                    .result    (ex_mul_result),
+                    .stall     (mul_stall)
+                );
+            end else begin : gen_mul_comb
+                logic [31:0] ex_mul_comb, ex_mul_q;
+                logic        mul_done_q;
+
+                multiplier u_multiplier (
+                    .a      (rs1_fwd),
+                    .b      (rs2_fwd),
+                    .funct3 (ex_funct3),
+                    .result (ex_mul_comb)
+                );
+
+                assign mul_stall = is_mul_op && !mul_done_q;
+
+                always_ff @(posedge clk or negedge rst_n) begin
+                    if (!rst_n) begin
+                        mul_done_q <= 1'b0;
+                        ex_mul_q   <= 32'h0;
+                    end else if (is_mul_op && !mul_done_q && !stall_mem) begin
+                        mul_done_q <= 1'b1;
+                        ex_mul_q   <= ex_mul_comb;
+                    end else if (!stall_mem) begin
+                        mul_done_q <= 1'b0;
+                    end
+                end
+
+                assign ex_mul_result = ex_mul_q;
+            end
+
+            assign is_div_op = ex_valid && (ex_result_src == RESULT_MDU) && ex_funct3[2] && !halted;
+            assign div_start = is_div_op && !div_busy && !div_done && !stall_mem;
+            assign div_stall = is_div_op && !div_done;
+
+            divider u_divider (
+                .clk    (clk),
+                .rst_n  (rst_n),
+                .start  (div_start),
+                .funct3 (ex_funct3),
+                .a      (rs1_fwd),
+                .b      (rs2_fwd),
+                .result (ex_div_result),
+                .busy   (div_busy),
+                .done   (div_done)
+            );
+
+            assign ex_mdu_result = ex_funct3[2] ? ex_div_result : ex_mul_result;
+        end else begin : gen_no_m
+            assign mul_stall     = 1'b0;
+            assign div_stall     = 1'b0;
+            assign ex_mdu_result = 32'd0;
         end
-    end
-
-    assign is_div_op = ex_valid && (ex_result_src == RESULT_MDU) && ex_funct3[2] && !halted;
-    assign div_start = is_div_op && !div_busy && !div_done && !stall_mem;
-    assign div_stall = is_div_op && !div_done;
-
-    divider u_divider (
-        .clk    (clk),
-        .rst_n  (rst_n),
-        .start  (div_start),
-        .funct3 (ex_funct3),
-        .a      (rs1_fwd),
-        .b      (rs2_fwd),
-        .result (ex_div_result),
-        .busy   (div_busy),
-        .done   (div_done)
-    );
-
-    assign ex_mdu_result = ex_funct3[2] ? ex_div_result : ex_mul_q;
+    endgenerate
 
     // --- custom-0 演算器 ---
-    logic        is_custom0, c0_stall;
+    logic        c0_stall;
     logic [31:0] ex_c0_result;
 
-    assign is_custom0 = ex_valid && (ex_result_src == RESULT_C0) && !halted && !stall_mem;
+    generate
+        if (ENABLE_CUSTOM0) begin : gen_custom0
+            logic is_custom0;
+            assign is_custom0 = ex_valid && (ex_result_src == RESULT_C0) && !halted && !stall_mem;
 
-    custom0 u_custom0 (
-        .clk    (clk),
-        .rst_n  (rst_n),
-        .valid  (is_custom0),
-        .a      (rs1_fwd),
-        .b      (rs2_fwd),
-        .funct3 (ex_funct3),
-        .result (ex_c0_result),
-        .stall  (c0_stall)
-    );
+            custom0 #(
+                .QMUL_STALL (QMUL_STALL)
+            ) u_custom0 (
+                .clk    (clk),
+                .rst_n  (rst_n),
+                .valid  (is_custom0),
+                .a      (rs1_fwd),
+                .b      (rs2_fwd),
+                .funct3 (ex_funct3),
+                .result (ex_c0_result),
+                .stall  (c0_stall)
+            );
+        end else begin : gen_no_custom0
+            assign c0_stall     = 1'b0;
+            assign ex_c0_result = 32'd0;
+        end
+    endgenerate
 
     // --- EXステージ演算結果の統合 ---
     logic [31:0] ex_exec_result;
@@ -395,11 +445,9 @@ module datapath (
     assign mem_addr = mem_exec_result;
 
     // 0x3000_0000 〜 0x3000_0FFF を球交差判定アクセラレータに割り当て
-    wire        is_accel_mmio = mem_valid && (mem_addr[31:12] == 20'h30000) && !halted;
-    wire        accel_we      = is_accel_mmio && mem_mem_write;
-    wire        accel_re      = is_accel_mmio && mem_mem_read;
-    wire [31:0] accel_rdata;
-    wire        accel_stall;
+    logic        is_accel_mmio;
+    logic [31:0] accel_rdata;
+    logic        accel_stall;
 
     // アクセラレータアクセス時は外部メモリバス (BRAM等) の read/write を抑止
     assign mem_read  = mem_valid && mem_mem_read  && !is_accel_mmio && !halted;
@@ -443,19 +491,32 @@ module datapath (
         endcase
     end
 
-    sphere_accel #(
-        .USE_ROUND(1'b1)
-    ) u_sphere_accel (
-        .clk         (clk),
-        .rst_n       (rst_n),
-        .sel         (is_accel_mmio),
-        .we          (accel_we),
-        .re          (accel_re),
-        .addr_offset (mem_addr[11:0]),
-        .wdata       (mem_wdata),
-        .rdata       (accel_rdata),
-        .stall       (accel_stall)
-    );
+    generate
+        if (ENABLE_SPHERE_ACCEL) begin : gen_sphere_accel
+            wire accel_we = is_accel_mmio && mem_mem_write;
+            wire accel_re = is_accel_mmio && mem_mem_read;
+
+            assign is_accel_mmio = mem_valid && (mem_addr[31:12] == 20'h30000) && !halted;
+
+            sphere_accel #(
+                .USE_ROUND(1'b1)
+            ) u_sphere_accel (
+                .clk         (clk),
+                .rst_n       (rst_n),
+                .sel         (is_accel_mmio),
+                .we          (accel_we),
+                .re          (accel_re),
+                .addr_offset (mem_addr[11:0]),
+                .wdata       (mem_wdata),
+                .rdata       (accel_rdata),
+                .stall       (accel_stall)
+            );
+        end else begin : gen_no_sphere_accel
+            assign is_accel_mmio = 1'b0;
+            assign accel_rdata   = 32'd0;
+            assign accel_stall   = 1'b0;
+        end
+    endgenerate
 
     // --- MEM/WB パイプラインレジスタ ---
     logic        wb_is_ebreak;

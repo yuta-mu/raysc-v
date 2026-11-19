@@ -1,6 +1,8 @@
 `include "rv32i_types.svh"
 
-module alu_control (
+module alu_control #(
+    parameter bit ENABLE_ZBB = 1'b1
+)(
     input  alu_op_mode_t alu_op,
     input  logic [2:0]   funct3,
     input  logic [6:0]   funct7,
@@ -17,7 +19,7 @@ module alu_control (
             ALU_OP_BRANCH: alu_ctrl = ALU_SUB;
 
             ALU_OP_RTYPE: begin
-                if (funct7 == FUNCT7_ZBB_MINMAX) begin
+                if (ENABLE_ZBB && (funct7 == FUNCT7_ZBB_MINMAX)) begin
                     case (funct3)
                         FUNCT3_MIN:   alu_ctrl = ALU_MIN;
                         FUNCT3_MINU:  alu_ctrl = ALU_MINU;
@@ -31,10 +33,10 @@ module alu_control (
                         FUNCT3_SLL:  alu_ctrl = ALU_SLL;
                         FUNCT3_SLT:  alu_ctrl = ALU_SLT;
                         FUNCT3_SLTU: alu_ctrl = ALU_SLTU;
-                        FUNCT3_XOR:  alu_ctrl = alu_op_t'(funct7_5 ? ALU_XNOR : ALU_XOR);
+                        FUNCT3_XOR:  alu_ctrl = alu_op_t'((ENABLE_ZBB && funct7_5) ? ALU_XNOR : ALU_XOR);
                         FUNCT3_SRL:  alu_ctrl = alu_op_t'(funct7_5 ? ALU_SRA  : ALU_SRL);
-                        FUNCT3_OR:   alu_ctrl = alu_op_t'(funct7_5 ? ALU_ORN  : ALU_OR);
-                        FUNCT3_AND:  alu_ctrl = alu_op_t'(funct7_5 ? ALU_ANDN : ALU_AND);
+                        FUNCT3_OR:   alu_ctrl = alu_op_t'((ENABLE_ZBB && funct7_5) ? ALU_ORN  : ALU_OR);
+                        FUNCT3_AND:  alu_ctrl = alu_op_t'((ENABLE_ZBB && funct7_5) ? ALU_ANDN : ALU_AND);
                         default: ;
                     endcase
                 end
@@ -43,7 +45,7 @@ module alu_control (
             ALU_OP_ITYPE: begin
                 case (funct3)
                     FUNCT3_ADDI:  alu_ctrl = ALU_ADD;
-                    FUNCT3_SLLI:  alu_ctrl = alu_op_t'((funct7 == FUNCT7_ZBB_UNARY) ? ALU_ZBB_UNARY : ALU_SLL);
+                    FUNCT3_SLLI:  alu_ctrl = alu_op_t'((ENABLE_ZBB && (funct7 == FUNCT7_ZBB_UNARY)) ? ALU_ZBB_UNARY : ALU_SLL);
                     FUNCT3_SLTI:  alu_ctrl = ALU_SLT;
                     FUNCT3_SLTIU: alu_ctrl = ALU_SLTU;
                     FUNCT3_XORI:  alu_ctrl = ALU_XOR;

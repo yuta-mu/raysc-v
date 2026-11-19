@@ -1,4 +1,6 @@
-module custom0 (
+module custom0 #(
+    parameter bit QMUL_STALL = 1'b1
+)(
     input  logic        clk,
     input  logic        rst_n,
     input  logic        valid,
@@ -9,26 +11,40 @@ module custom0 (
     output logic        stall
 );
 
-    // 1. qmul (funct3 = 3'b000): Q16.16 固定小数点乗算 (DSPパイプライン化)
-    logic        qmul_start;
-    logic        qmul_done_q;
-    logic [31:0] qmul_res_q;
+    // 1. qmul (funct3 = 3'b000): Q16.16 固定小数点乗算
     logic signed [63:0] qmul_prod;
+    logic [31:0]        qmul_res_out;
+    logic               qmul_stall_out;
 
-    assign qmul_start = valid && (funct3 == 3'b000) && !qmul_done_q;
-    assign qmul_prod  = 64'(signed'(a)) * 64'(signed'(b));
+    assign qmul_prod = 64'(signed'(a)) * 64'(signed'(b));
 
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            qmul_done_q <= 1'b0;
-            qmul_res_q  <= 32'd0;
-        end else if (qmul_start) begin
-            qmul_done_q <= 1'b1;
-            qmul_res_q  <= qmul_prod[47:16];
-        end else begin
-            qmul_done_q <= 1'b0;
+    generate
+        if (QMUL_STALL) begin : gen_qmul_stall
+            logic        qmul_start;
+            logic        qmul_done_q;
+            logic [31:0] qmul_res_q;
+
+            assign qmul_start = valid && (funct3 == 3'b000) && !qmul_done_q;
+
+            always_ff @(posedge clk or negedge rst_n) begin
+                if (!rst_n) begin
+                    qmul_done_q <= 1'b0;
+                    qmul_res_q  <= 32'd0;
+                end else if (qmul_start) begin
+                    qmul_done_q <= 1'b1;
+                    qmul_res_q  <= qmul_prod[47:16];
+                end else begin
+                    qmul_done_q <= 1'b0;
+                end
+            end
+
+            assign qmul_res_out   = qmul_res_q;
+            assign qmul_stall_out = !qmul_done_q;
+        end else begin : gen_qmul_comb
+            assign qmul_res_out   = qmul_prod[47:16];
+            assign qmul_stall_out = 1'b0;
         end
-    end
+    endgenerate
 
     // 2. qsqrt (funct3 = 3'b010): 開平演算器
     logic        sqrt_start, sqrt_busy, sqrt_done;
@@ -114,8 +130,8 @@ module custom0 (
         if (valid) begin
             case (funct3)
                 3'b000: begin
-                    result = qmul_res_q;
-                    stall  = !qmul_done_q;
+                    result = qmul_res_out;
+                    stall  = qmul_stall_out;
                 end
                 3'b010: begin
                     result = sqrt_res;
