@@ -74,6 +74,7 @@ let () =
   let ir = if do_inline then Inline.run ir else ir in   (* 先に関数を展開して *)
   let ir = if do_fold then Fold.run ir else ir in       (* 見えた定数を畳みこみ *)
   let ir = if do_o3 then Strength.run ir else ir in     (* mul → shift *)
+  let ir = if do_o3 then Fold.run (Cse.run ir) else ir in       (* 同じ計算をコピーにして、Fold で置きかえる *)
   let ir = if do_inline || do_fold then Dce.run ir else ir in   (* 使われなくなったものを消す *)
 
   if !dump_ir then Ir.dump_program stdout ir;   (* --dump-ir のときは IR を表示 *)
