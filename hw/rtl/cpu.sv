@@ -6,6 +6,7 @@ module cpu #(
     parameter bit ENABLE_CUSTOM0      = 1'b1,
     parameter bit ENABLE_SPHERE_ACCEL = 1'b1,
     parameter bit PIPE_MUL            = 1'b0,
+    parameter bit MUL_STALL           = 1'b1,
     parameter bit QMUL_STALL          = 1'b1
 )(
     input  logic        clk,
@@ -94,6 +95,7 @@ module cpu #(
         .ENABLE_CUSTOM0      (ENABLE_CUSTOM0),
         .ENABLE_SPHERE_ACCEL (ENABLE_SPHERE_ACCEL),
         .PIPE_MUL            (PIPE_MUL),
+        .MUL_STALL           (MUL_STALL),
         .QMUL_STALL          (QMUL_STALL)
     ) u_datapath (
         .clk            (clk),

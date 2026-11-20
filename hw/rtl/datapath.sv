@@ -6,6 +6,7 @@ module datapath #(
     parameter bit ENABLE_CUSTOM0      = 1'b1,
     parameter bit ENABLE_SPHERE_ACCEL = 1'b1,
     parameter bit PIPE_MUL            = 1'b0,
+    parameter bit MUL_STALL           = 1'b1,
     parameter bit QMUL_STALL          = 1'b1
 )(
     input  logic        clk,
@@ -308,8 +309,7 @@ module datapath #(
                     .stall     (mul_stall)
                 );
             end else begin : gen_mul_comb
-                logic [31:0] ex_mul_comb, ex_mul_q;
-                logic        mul_done_q;
+                logic [31:0] ex_mul_comb;
 
                 multiplier u_multiplier (
                     .a      (rs1_fwd),
@@ -318,21 +318,29 @@ module datapath #(
                     .result (ex_mul_comb)
                 );
 
-                assign mul_stall = is_mul_op && !mul_done_q;
+                if (MUL_STALL) begin : gen_mul_comb_stall
+                    logic [31:0] ex_mul_q;
+                    logic        mul_done_q;
 
-                always_ff @(posedge clk or negedge rst_n) begin
-                    if (!rst_n) begin
-                        mul_done_q <= 1'b0;
-                        ex_mul_q   <= 32'h0;
-                    end else if (is_mul_op && !mul_done_q && !stall_mem) begin
-                        mul_done_q <= 1'b1;
-                        ex_mul_q   <= ex_mul_comb;
-                    end else if (!stall_mem) begin
-                        mul_done_q <= 1'b0;
+                    assign mul_stall = is_mul_op && !mul_done_q;
+
+                    always_ff @(posedge clk or negedge rst_n) begin
+                        if (!rst_n) begin
+                            mul_done_q <= 1'b0;
+                            ex_mul_q   <= 32'h0;
+                        end else if (is_mul_op && !mul_done_q && !stall_mem) begin
+                            mul_done_q <= 1'b1;
+                            ex_mul_q   <= ex_mul_comb;
+                        end else if (!stall_mem) begin
+                            mul_done_q <= 1'b0;
+                        end
                     end
-                end
 
-                assign ex_mul_result = ex_mul_q;
+                    assign ex_mul_result = ex_mul_q;
+                end else begin : gen_mul_comb_nostall
+                    assign mul_stall     = 1'b0;
+                    assign ex_mul_result = ex_mul_comb;
+                end
             end
 
             assign is_div_op = ex_valid && (ex_result_src == RESULT_MDU) && ex_funct3[2] && !halted;

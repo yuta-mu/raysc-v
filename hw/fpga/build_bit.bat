@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 
 if "%~2"=="" (
     echo Usage: %~nx0 ^<config^> ^<hex_path^> [clk_div=16]
-    echo   Configs: RV32I RV32IM_base RV32IM_pipemul RV32IM_Zbb RV32IM_Zbb_C0 RV32IM_Zbb_C0_nostall RV32IM_Zbb_C0_Accel full full_nostall
+    echo   Configs: RV32I RV32IM_base RV32IM_pipemul RV32IM_Zbb RV32IM_Zbb_C0 RV32IM_Zbb_C0_nostall RV32IM_Zbb_C0_Accel full full_nostall full_zerostall
     echo   Example: %~nx0 RV32IM_Zbb_C0_Accel build\programs\raytracer\main_ar.hex 16
     exit /b 1
 )

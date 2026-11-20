@@ -17,17 +17,18 @@ set SWEEP_CONFIGS [list \
 ]
 
 # 各構成の top.sv パラメータ定義
-#   ENABLE_M ENABLE_ZBB ENABLE_CUSTOM0 ENABLE_SPHERE_ACCEL PIPE_MUL QMUL_STALL
+#   ENABLE_M ENABLE_ZBB ENABLE_CUSTOM0 ENABLE_SPHERE_ACCEL PIPE_MUL MUL_STALL QMUL_STALL
 array set CONFIG_PARAMS {
-    RV32I                   {0 0 0 0 0 1}
-    RV32IM_base             {1 0 0 0 0 1}
-    RV32IM_pipemul          {1 0 0 0 1 1}
-    RV32IM_Zbb              {1 1 0 0 1 1}
-    RV32IM_Zbb_C0           {1 1 1 0 1 1}
-    RV32IM_Zbb_C0_nostall   {1 1 1 0 1 0}
-    RV32IM_Zbb_C0_Accel     {1 1 1 1 1 1}
-    full                    {1 1 1 1 0 1}
-    full_nostall            {1 1 1 1 1 0}
+    RV32I                   {0 0 0 0 0 1 1}
+    RV32IM_base             {1 0 0 0 0 1 1}
+    RV32IM_pipemul          {1 0 0 0 1 1 1}
+    RV32IM_Zbb              {1 1 0 0 1 1 1}
+    RV32IM_Zbb_C0           {1 1 1 0 1 1 1}
+    RV32IM_Zbb_C0_nostall   {1 1 1 0 1 1 0}
+    RV32IM_Zbb_C0_Accel     {1 1 1 1 1 1 1}
+    full                    {1 1 1 1 0 1 1}
+    full_nostall            {1 1 1 1 1 1 0}
+    full_zerostall          {1 1 1 1 0 0 0}
 }
 
 proc get_config_generic_args {cfg_name} {
@@ -36,13 +37,14 @@ proc get_config_generic_args {cfg_name} {
         set valid [lsort [array names CONFIG_PARAMS]]
         error "Unknown config '$cfg_name'. Valid configs: $valid"
     }
-    lassign $CONFIG_PARAMS($cfg_name) en_m en_zbb en_c0 en_accel pipe_mul qmul_stall
+    lassign $CONFIG_PARAMS($cfg_name) en_m en_zbb en_c0 en_accel pipe_mul mul_stall qmul_stall
     return [list \
         -generic "ENABLE_M=$en_m" \
         -generic "ENABLE_ZBB=$en_zbb" \
         -generic "ENABLE_CUSTOM0=$en_c0" \
         -generic "ENABLE_SPHERE_ACCEL=$en_accel" \
         -generic "PIPE_MUL=$pipe_mul" \
+        -generic "MUL_STALL=$mul_stall" \
         -generic "QMUL_STALL=$qmul_stall" \
     ]
 }

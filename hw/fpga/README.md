@@ -36,7 +36,7 @@ hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel explore
 | `RV32IM_Zbb_C0_nostall` | ON | ON | ON | OFF | ON | OFF (組合せ) |
 | `RV32IM_Zbb_C0_Accel` | ON | ON | ON | ON | ON | ON |
 
-※ 実機用デフォルト互換構成として `full` (`main` 既定値と同一: `PIPE_MUL=0`)，`full_nostall` も `build_bit.bat` で指定可能．
+※ 実機用デフォルト互換構成として `full` (`main` 既定値と同一: `PIPE_MUL=0`)，`full_nostall` (`qmul` 0ストール)，`full_zerostall` (`mul` も `qmul` も完全 0 ストール / 50MHz 理論最速) も `build_bit.bat` で指定可能．
 
 ### 結果の確認
 
