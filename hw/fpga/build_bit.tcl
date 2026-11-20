@@ -1,13 +1,13 @@
 # ==============================================================================
 # RaySC-V Bitstream Builder with Easy .hex Swapping & Incremental PnR
 # Usage:
-#   vivado -mode batch -source hw/fpga/build_bit.tcl -tclargs <config> <hex_path> [clk_div]
+#   vivado -mode batch -source hw/fpga/build_bit.tcl -tclargs <config> <hex_path> [clk_div] [incremental]
 #   Example:
 #     vivado -mode batch -source hw/fpga/build_bit.tcl -tclargs RV32IM_Zbb_C0_Accel build/programs/raytracer/main_ar.hex 16
 # ==============================================================================
 
 if {$argc < 2} {
-    puts "ERROR: Usage: vivado -mode batch -source hw/fpga/build_bit.tcl -tclargs <config> <hex_path> \[clk_div=16\]"
+    puts "ERROR: Usage: vivado -mode batch -source hw/fpga/build_bit.tcl -tclargs <config> <hex_path> \[clk_div=16\] \[incremental=0\]"
     exit 1
 }
 
@@ -18,8 +18,12 @@ source [file join $script_dir "configs.tcl"]
 set cfg_name [lindex $argv 0]
 set hex_in   [lindex $argv 1]
 set clk_div  16
+set allow_inc 0
 if {$argc >= 3 && [lindex $argv 2] ne ""} {
     set clk_div [lindex $argv 2]
+}
+if {$argc >= 4 && [lindex $argv 3] eq "1"} {
+    set allow_inc 1
 }
 
 if {![info exists CONFIG_PARAMS($cfg_name)]} {
@@ -73,7 +77,7 @@ fix_ramb36_cascade_addr15
 
 set ref_dcp [file join $cfg_dir "routed_ref_div${clk_div}.dcp"]
 set use_inc 0
-if {[file exists $ref_dcp]} {
+if {$allow_inc && [file exists $ref_dcp]} {
     set ref_mtime [file mtime $ref_dcp]
     set src_files [concat \
         [glob -nocomplain [file join $rtl_dir "*.sv"]] \
@@ -92,17 +96,9 @@ if {[file exists $ref_dcp]} {
     }
 }
 
-set inc_blocked 0
 if {$use_inc} {
-    puts "Trying incremental implementation using reference: $ref_dcp"
-    if {[catch {read_checkpoint -incremental $ref_dcp} inc_err]} {
-        puts "INFO: Incremental implementation unavailable under current license/design ($inc_err); falling back to full Performance_Explore PnR."
-        set use_inc 0
-        set inc_blocked 1
-    }
-}
-
-if {$use_inc} {
+    puts "Incremental implementation enabled using reference: $ref_dcp"
+    read_checkpoint -incremental $ref_dcp
     place_design
     phys_opt_design
     fix_ramb36_cascade_addr15
@@ -113,7 +109,7 @@ if {$use_inc} {
     phys_opt_design -directive Explore
     fix_ramb36_cascade_addr15
     route_design -directive Explore
-    if {!$inc_blocked} {
+    if {$allow_inc} {
         write_checkpoint -force $ref_dcp
     }
 }
