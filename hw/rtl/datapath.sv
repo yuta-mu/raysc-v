@@ -2,8 +2,14 @@
 
 module datapath #(
     parameter bit ENABLE_M            = 1'b1,
+    parameter bit ENABLE_DIV          = 1'b1,
     parameter bit ENABLE_ZBB          = 1'b1,
     parameter bit ENABLE_CUSTOM0      = 1'b1,
+    parameter bit ENABLE_QMUL         = 1'b1,
+    parameter bit ENABLE_QSQRT        = 1'b1,
+    parameter bit ENABLE_QRSQRT       = 1'b1,
+    parameter bit ENABLE_QRCP         = 1'b1,
+    parameter bit ENABLE_QRAND        = 1'b1,
     parameter bit ENABLE_SPHERE_ACCEL = 1'b1,
     parameter bit PIPE_MUL            = 1'b0,
     parameter bit MUL_STALL           = 1'b1,
@@ -128,9 +134,12 @@ module datapath #(
     assign id_rs2       = id_inst[24:20];
     assign id_is_ebreak = id_valid && (id_inst == 32'h0010_0073);
 
+    localparam bit ANY_CUSTOM0 = ENABLE_CUSTOM0 &&
+                                 (ENABLE_QMUL || ENABLE_QSQRT || ENABLE_QRSQRT || ENABLE_QRCP || ENABLE_QRAND);
+
     assign id_uses_rs1 = (id_opcode != OP_LUI) && (id_opcode != OP_AUIPC) && (id_opcode != OP_JAL);
     assign id_uses_rs2 = (id_opcode == OP_REG) || (id_opcode == OP_STORE) ||
-                         (id_opcode == OP_BRANCH) || (ENABLE_CUSTOM0 && (id_opcode == OP_CUSTOM0));
+                         (id_opcode == OP_BRANCH) || (ANY_CUSTOM0 && ENABLE_QMUL && (id_opcode == OP_CUSTOM0));
 
     logic        wb_valid;
     logic        wb_reg_write;
@@ -292,7 +301,6 @@ module datapath #(
         if (ENABLE_M) begin : gen_m
             logic [31:0] ex_mul_result, ex_div_result;
             logic        is_mul_op;
-            logic        div_busy, div_done, is_div_op, div_start;
 
             assign is_mul_op = ex_valid && (ex_result_src == RESULT_MDU) && !ex_funct3[2] && !halted;
 
@@ -343,23 +351,30 @@ module datapath #(
                 end
             end
 
-            assign is_div_op = ex_valid && (ex_result_src == RESULT_MDU) && ex_funct3[2] && !halted;
-            assign div_start = is_div_op && !div_busy && !div_done && !stall_mem;
-            assign div_stall = is_div_op && !div_done;
+            if (ENABLE_DIV) begin : gen_div
+                logic div_busy, div_done, is_div_op, div_start;
 
-            divider u_divider (
-                .clk    (clk),
-                .rst_n  (rst_n),
-                .start  (div_start),
-                .funct3 (ex_funct3),
-                .a      (rs1_fwd),
-                .b      (rs2_fwd),
-                .result (ex_div_result),
-                .busy   (div_busy),
-                .done   (div_done)
-            );
+                assign is_div_op = ex_valid && (ex_result_src == RESULT_MDU) && ex_funct3[2] && !halted;
+                assign div_start = is_div_op && !div_busy && !div_done && !stall_mem;
+                assign div_stall = is_div_op && !div_done;
 
-            assign ex_mdu_result = ex_funct3[2] ? ex_div_result : ex_mul_result;
+                divider u_divider (
+                    .clk    (clk),
+                    .rst_n  (rst_n),
+                    .start  (div_start),
+                    .funct3 (ex_funct3),
+                    .a      (rs1_fwd),
+                    .b      (rs2_fwd),
+                    .result (ex_div_result),
+                    .busy   (div_busy),
+                    .done   (div_done)
+                );
+            end else begin : gen_no_div
+                assign div_stall     = 1'b0;
+                assign ex_div_result = 32'd0;
+            end
+
+            assign ex_mdu_result = (ENABLE_DIV && ex_funct3[2]) ? ex_div_result : ex_mul_result;
         end else begin : gen_no_m
             assign mul_stall     = 1'b0;
             assign div_stall     = 1'b0;
@@ -372,12 +387,17 @@ module datapath #(
     logic [31:0] ex_c0_result;
 
     generate
-        if (ENABLE_CUSTOM0) begin : gen_custom0
+        if (ANY_CUSTOM0) begin : gen_custom0
             logic is_custom0;
             assign is_custom0 = ex_valid && (ex_result_src == RESULT_C0) && !halted && !stall_mem;
 
             custom0 #(
-                .QMUL_STALL (QMUL_STALL)
+                .QMUL_STALL    (QMUL_STALL),
+                .ENABLE_QMUL   (ENABLE_QMUL),
+                .ENABLE_QSQRT  (ENABLE_QSQRT),
+                .ENABLE_QRSQRT (ENABLE_QRSQRT),
+                .ENABLE_QRCP   (ENABLE_QRCP),
+                .ENABLE_QRAND  (ENABLE_QRAND)
             ) u_custom0 (
                 .clk    (clk),
                 .rst_n  (rst_n),

@@ -26,15 +26,21 @@ hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel explore
 
 ### 評価される構成一覧 (`configs.tcl`)
 
-| 構成名 | M拡張 | Zbb | custom-0 | 球アクセラレータ | PIPE_MUL | QMUL_STALL |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| `RV32I` | OFF | OFF | OFF | OFF | - | - |
-| `RV32IM_base` | ON | OFF | OFF | OFF | OFF (現状) | - |
-| `RV32IM_pipemul` | ON | OFF | OFF | OFF | ON (3サイクル) | - |
-| `RV32IM_Zbb` | ON | ON | OFF | OFF | ON | - |
-| `RV32IM_Zbb_C0` | ON | ON | ON | OFF | ON | ON (1ストール) |
-| `RV32IM_Zbb_C0_nostall` | ON | ON | ON | OFF | ON | OFF (組合せ) |
-| `RV32IM_Zbb_C0_Accel` | ON | ON | ON | ON | ON | ON |
+| 構成名 | M (MUL/DIV) | Zbb | custom-0 内訳 | 球アクセラレータ | PIPE_MUL / STALL |
+| --- | :---: | :---: | --- | :---: | :---: |
+| `RV32I` | OFF | OFF | - | OFF | - |
+| `RV32I_MulOnly` | MULのみ | OFF | - | OFF | PIPE=1 |
+| `RV32IM_base` | MUL+DIV | OFF | - | OFF | PIPE=0, STALL=1 |
+| `RV32IM_pipemul` | MUL+DIV | OFF | - | OFF | PIPE=1 |
+| `RV32IM_Zbb` | MUL+DIV | ON | - | OFF | PIPE=1 |
+| `RV32IM_Zbb_Rand` | MUL+DIV | ON | **`QRAND` のみ** | OFF | PIPE=1 |
+| `RV32IM_Zbb_QmulSqrt` | MUL+DIV | ON | **`QMUL` + `QSQRT` のみ** | OFF | PIPE=1 |
+| `RV32IM_Zbb_MathOnly` | MUL+DIV | ON | `QMUL/QSQRT/QRSQRT/QRCP` (`QRAND=0`) | OFF | PIPE=1 |
+| `RV32IM_Zbb_C0` | MUL+DIV | ON | 全部 (`QMUL/QSQRT/QRSQRT/QRCP/QRAND`) | OFF | PIPE=1, QMUL_STALL=1 |
+| `RV32IM_Zbb_C0_nostall` | MUL+DIV | ON | 全部 | OFF | PIPE=1, QMUL_STALL=0 |
+| `RV32IM_Zbb_Rand_Accel` | MUL+DIV | ON | **`QRAND` のみ** | ON | PIPE=1 |
+| `RV32IM_Zbb_C0_Accel` | MUL+DIV | ON | 全部 | ON | PIPE=1, QMUL_STALL=1 |
+| `full_zerostall` | MUL+DIV | ON | 全部 | ON | PIPE=0, MUL/QMUL 0ストール |
 
 ※ 実機用デフォルト互換構成として `full` (`main` 既定値と同一: `PIPE_MUL=0`)，`full_nostall` (`qmul` 0ストール)，`full_zerostall` (`mul` も `qmul` も完全 0 ストール / 50MHz 理論最速) も `build_bit.bat` で指定可能．
 

@@ -5,30 +5,41 @@
 
 set FPGA_PART "xc7a100tcsg324-1"
 
-# sweep.tcl で評価する構成順 (機能追加とパイプライン化のトレードオフ階段)
+# sweep.tcl で評価する構成順 (機能追加・切り分けとパイプライン化のトレードオフ階段)
 set SWEEP_CONFIGS [list \
     "RV32I" \
+    "RV32I_MulOnly" \
     "RV32IM_base" \
     "RV32IM_pipemul" \
     "RV32IM_Zbb" \
+    "RV32IM_Zbb_Rand" \
+    "RV32IM_Zbb_QmulSqrt" \
+    "RV32IM_Zbb_MathOnly" \
     "RV32IM_Zbb_C0" \
     "RV32IM_Zbb_C0_nostall" \
+    "RV32IM_Zbb_Rand_Accel" \
     "RV32IM_Zbb_C0_Accel" \
+    "full_zerostall" \
 ]
 
 # 各構成の top.sv パラメータ定義
-#   ENABLE_M ENABLE_ZBB ENABLE_CUSTOM0 ENABLE_SPHERE_ACCEL PIPE_MUL MUL_STALL QMUL_STALL
+#   M  DIV ZBB C0 QMUL QSQRT QRSQRT QRCP QRAND ACCEL PIPE_MUL MUL_STALL QMUL_STALL
 array set CONFIG_PARAMS {
-    RV32I                   {0 0 0 0 0 1 1}
-    RV32IM_base             {1 0 0 0 0 1 1}
-    RV32IM_pipemul          {1 0 0 0 1 1 1}
-    RV32IM_Zbb              {1 1 0 0 1 1 1}
-    RV32IM_Zbb_C0           {1 1 1 0 1 1 1}
-    RV32IM_Zbb_C0_nostall   {1 1 1 0 1 1 0}
-    RV32IM_Zbb_C0_Accel     {1 1 1 1 1 1 1}
-    full                    {1 1 1 1 0 1 1}
-    full_nostall            {1 1 1 1 1 1 0}
-    full_zerostall          {1 1 1 1 0 0 0}
+    RV32I                   {0 0 0 0 0 0 0 0 0 0 0 1 1}
+    RV32I_MulOnly           {1 0 0 0 0 0 0 0 0 0 1 1 1}
+    RV32IM_base             {1 1 0 0 0 0 0 0 0 0 0 1 1}
+    RV32IM_pipemul          {1 1 0 0 0 0 0 0 0 0 1 1 1}
+    RV32IM_Zbb              {1 1 1 0 0 0 0 0 0 0 1 1 1}
+    RV32IM_Zbb_Rand         {1 1 1 1 0 0 0 0 1 0 1 1 1}
+    RV32IM_Zbb_QmulSqrt     {1 1 1 1 1 1 0 0 0 0 1 1 1}
+    RV32IM_Zbb_MathOnly     {1 1 1 1 1 1 1 1 0 0 1 1 1}
+    RV32IM_Zbb_C0           {1 1 1 1 1 1 1 1 1 0 1 1 1}
+    RV32IM_Zbb_C0_nostall   {1 1 1 1 1 1 1 1 1 0 1 1 0}
+    RV32IM_Zbb_Rand_Accel   {1 1 1 1 0 0 0 0 1 1 1 1 1}
+    RV32IM_Zbb_C0_Accel     {1 1 1 1 1 1 1 1 1 1 1 1 1}
+    full                    {1 1 1 1 1 1 1 1 1 1 0 1 1}
+    full_nostall            {1 1 1 1 1 1 1 1 1 1 1 1 0}
+    full_zerostall          {1 1 1 1 1 1 1 1 1 1 0 0 0}
 }
 
 proc get_config_generic_args {cfg_name} {
@@ -37,11 +48,18 @@ proc get_config_generic_args {cfg_name} {
         set valid [lsort [array names CONFIG_PARAMS]]
         error "Unknown config '$cfg_name'. Valid configs: $valid"
     }
-    lassign $CONFIG_PARAMS($cfg_name) en_m en_zbb en_c0 en_accel pipe_mul mul_stall qmul_stall
+    lassign $CONFIG_PARAMS($cfg_name) \
+        en_m en_div en_zbb en_c0 en_qmul en_qsqrt en_qrsqrt en_qrcp en_qrand en_accel pipe_mul mul_stall qmul_stall
     return [list \
         -generic "ENABLE_M=$en_m" \
+        -generic "ENABLE_DIV=$en_div" \
         -generic "ENABLE_ZBB=$en_zbb" \
         -generic "ENABLE_CUSTOM0=$en_c0" \
+        -generic "ENABLE_QMUL=$en_qmul" \
+        -generic "ENABLE_QSQRT=$en_qsqrt" \
+        -generic "ENABLE_QRSQRT=$en_qrsqrt" \
+        -generic "ENABLE_QRCP=$en_qrcp" \
+        -generic "ENABLE_QRAND=$en_qrand" \
         -generic "ENABLE_SPHERE_ACCEL=$en_accel" \
         -generic "PIPE_MUL=$pipe_mul" \
         -generic "MUL_STALL=$mul_stall" \
