@@ -92,20 +92,30 @@ if {[file exists $ref_dcp]} {
     }
 }
 
+set inc_blocked 0
 if {$use_inc} {
-    puts "Incremental implementation enabled using reference: $ref_dcp"
-    read_checkpoint -incremental $ref_dcp
+    puts "Trying incremental implementation using reference: $ref_dcp"
+    if {[catch {read_checkpoint -incremental $ref_dcp} inc_err]} {
+        puts "INFO: Incremental implementation unavailable under current license/design ($inc_err); falling back to full Performance_Explore PnR."
+        set use_inc 0
+        set inc_blocked 1
+    }
+}
+
+if {$use_inc} {
     place_design
     phys_opt_design
     fix_ramb36_cascade_addr15
     route_design
 } else {
-    puts "Running full Performance_Explore PnR (reference checkpoint will be saved for future fast .hex swaps)..."
+    puts "Running full Performance_Explore PnR..."
     place_design -directive Explore
     phys_opt_design -directive Explore
     fix_ramb36_cascade_addr15
     route_design -directive Explore
-    write_checkpoint -force $ref_dcp
+    if {!$inc_blocked} {
+        write_checkpoint -force $ref_dcp
+    }
 }
 
 set util_str [report_utilization -return_string]
