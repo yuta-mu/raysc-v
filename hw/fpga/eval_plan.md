@@ -74,10 +74,10 @@ hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel_pipe1 explore
 | `O3_isect` | `programs/raytracer/main_ar.rq` | `-O3 --march=rv32im_zbb --accel=isect` | `RV32IM_Zbb_C0_Accel_pipe1` |
 | `O3_isect_comb0` | `programs/raytracer/main_ar.rq` | `-O3 --march=rv32im_zbb --accel=isect` | `RV32IM_Zbb_C0_Accel_comb0` |
 
-### Step C: 実機書き込みと `.hex` 高速差し替え
+### Step C: 実機書き込みと `.hex` 差し替えビルド
 
 ```bat
-:: 1. 指定した構成と .hex でビットストリーム生成 (初回のみ Performance_Explore, 2回目以降は高速 Incremental)
+:: 1. 指定した構成と .hex でビットストリーム生成 (既定は毎回 Performance_Explore)
 hw\fpga\build_bit.bat RV32IM_Zbb_C0_Accel_pipe1 build\programs\raytracer\main_ar.hex
 
 :: 2. FPGA へ書き込み (50 MHz 動作で PPM 完全一致と cycles / instret を記録)
@@ -110,7 +110,7 @@ python3 tools/eval_table.py --cycles cycles.csv --baseline O0_base --out-csv bui
 
 - [x] HW パラメータ化・評価スクリプト整備 (`hw/fpga/configs.tcl` 命名規則統一済み)
 - [x] `uart_tx_fifo.sv` の Distributed RAM 分離（VGA 合流前の回路規模最適化）
-- [ ] 全20構成の面積・Post-Route $F_{\max}$ 計測 (`hw\fpga\run_sweep.bat`)
+- [x] 全20構成の面積・Post-Route $F_{\max}$ 計測 (`hw\fpga\run_sweep.bat`)
 - [ ] `-O0` / `-O1` / `-O2` / `-O3` の `.hex` を `build_bit.bat` で差し替えて実測 `cycles` / `instret` を記録
 - [ ] `tools/eval_table.py` で発表用比較表・CSV を出力
 - [ ] `feat/video_sub`（VGA 出力）合流後、`ENABLE_VGA=1` 相当で最終 SoC リソース・$F_{\max}$ を更新（必要なら `run_sweep.bat search RV32IM_Zbb_C0_Accel_pipe1 explore`）

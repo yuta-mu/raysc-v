@@ -57,7 +57,7 @@ hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel_pipe1 explore
 | `RV32IM_Zbb_C0_Accel_pipe1` | MUL+DIV | ON | 全部 | ON | `_pipe1` |
 
 ※ `build_bit.bat` では `RV32IM_Zbb_C0_Accel_pipe1_q0`（`_pipe1_q0`、全機能 ON）も指定可能です．
-※ `sweep` 全 20 構成をまとめて回す場合は時間がかかるため，特定構成のみを `hw\fpga\run_sweep.bat search <構成名>` で個別追加計測することもできます(`summary.csv` に追記されます)．
+※ `sweep` 全 20 構成をまとめて回す場合は時間がかかるため，特定構成のみを `hw\fpga\run_sweep.bat search <構成名>` で個別追加計測することもできます(`summary.csv` の該当行を上書き・追記します)．
 
 ### 結果の確認
 
@@ -82,8 +82,8 @@ hw\fpga\build_bit.bat RV32IM_pipe1 build\tests\hex\smoke.hex 10
 ```
 
 * 出力先: `build\vivado_bit\<構成名>\<hexファイル名>.bit` および `build\vivado_bit\latest.bit`
-* 初回 PnR は自動で **`Performance_Explore` (`-directive Explore`)** を使用して高品質な基準チェックポイント (`routed_ref_div<CLK_DIV>.dcp`) を保存．
-* 同じ `<構成名>` と `CLK_DIV` での 2 回目以降は **Incremental Implementation** が自動有効化され，`.hex` 差し替えビルドが高速化されます．RTL (`hw/rtl/*.sv`, `*.svh`) または XDC を更新した場合は，タイムスタンプ比較により自動でフル PnR をやり直して基準チェックポイントを更新．
+* 既定では毎回 **`Performance_Explore` (`-directive Explore` での `opt`/`place`/`phys_opt`/`route`)** を使用して高品質なビットストリームを生成します(Vivado Standard/BASIC ライセンスでの Incremental 制限 `[Vivado 12-29181]` を回避するため既定 OFF)．
+* 有償ライセンス環境等で Incremental Implementation を使う場合は，第 4 引数 `1` を指定して `build_bit.tcl` を実行すると基準チェックポイント (`routed_ref_div<CLK_DIV>.dcp`) を利用できます．
 
 ---
 

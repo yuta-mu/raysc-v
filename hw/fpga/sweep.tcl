@@ -68,10 +68,46 @@ if {[llength $rtl_files] == 0} {
 }
 
 set csv_path [file join $out_root "summary.csv"]
+set csv_header "config,mode,strategy,lut_50m,ff_50m,bram_50m,dsp_50m,cpu_lut_50m,cpu_ff_50m,wns_50m_ns,fmax_pass_mhz,pass_period_ns,wns_pass_ns,est_fmax_mhz,lut_fmax,ff_fmax,dsp_fmax,crit_startpoint,crit_endpoint"
 if {$cfg_filter eq "all" || ![file exists $csv_path]} {
     set fcsv [open $csv_path w]
-    puts $fcsv "config,mode,strategy,lut_50m,ff_50m,bram_50m,dsp_50m,cpu_lut_50m,cpu_ff_50m,wns_50m_ns,fmax_pass_mhz,pass_period_ns,wns_pass_ns,est_fmax_mhz,lut_fmax,ff_fmax,dsp_fmax,crit_startpoint,crit_endpoint"
+    puts $fcsv $csv_header
     close $fcsv
+}
+
+proc upsert_summary_row {csv_path csv_header cfg_name new_row} {
+    set rows [list]
+    if {[file exists $csv_path]} {
+        set fp [open $csv_path r]
+        set lines [split [string trimright [read $fp] "\r\n"] "\n"]
+        close $fp
+        if {[llength $lines] > 0} {
+            set rows [lrange $lines 1 end]
+        }
+    }
+    set updated 0
+    set out_rows [list]
+    foreach line $rows {
+        if {[string trim $line] eq ""} { continue }
+        set first_col [lindex [split $line ","] 0]
+        if {$first_col eq $cfg_name} {
+            if {!$updated} {
+                lappend out_rows $new_row
+                set updated 1
+            }
+        } else {
+            lappend out_rows $line
+        }
+    }
+    if {!$updated} {
+        lappend out_rows $new_row
+    }
+    set fp [open $csv_path w]
+    puts $fp $csv_header
+    foreach line $out_rows {
+        puts $fp $line
+    }
+    close $fp
 }
 
 proc fmt_num {fmt val} {
@@ -171,8 +207,8 @@ foreach cfg $target_configs {
     write_checkpoint -force $opt_dcp
     close_project
 
-    # --- Pass 0: 50 MHz (20.000 ns) 基準計測 ---
-    set res50 [run_pnr_pass $opt_dcp 20.000 0 $strategy $cfg_dir "50mhz"]
+    # --- Pass 0: 50 MHz (20.000 ns) 基準計測 (build_bit.tcl と条件を揃えるため phys_opt_design を有効化) ---
+    set res50 [run_pnr_pass $opt_dcp 20.000 1 $strategy $cfg_dir "50mhz"]
     lassign $res50 pass50 wns50 p50 lut50 ff50 bram50 dsp50 sp50 ep50 cpu_lut50 cpu_ff50
     puts [format {  [50MHz] LUT=%s (u_cpu=%s) FF=%s (u_cpu=%s) BRAM=%s DSP=%s WNS=%s ns} \
         $lut50 $cpu_lut50 $ff50 $cpu_ff50 $bram50 $dsp50 $wns50]
@@ -187,23 +223,23 @@ foreach cfg $target_configs {
         set target_p [round_025 [expr {max(6.0, (20.0 - $wns50) * 0.90)}]]
         set res_fast [run_pnr_pass $opt_dcp $target_p 1 $strategy $cfg_dir ""]
         lassign $res_fast p_ok wns_f p_f lut_f ff_f bram_f dsp_f sp_f ep_f
-        set est_fmax [format "%.2f" [expr {1000.0 / ($p_f - $wns_f)}]]
+        set est_fmax [expr {($wns_f ne "NA") ? [format "%.2f" [expr {1000.0 / ($p_f - $wns_f)}]] : "NA"}]
         if {$p_ok} {
             save_winning_reports $cfg_dir
             set fmax_pass [format "%.2f" [expr {1000.0 / $p_f}]]
             set pass_p    [format "%.2f" $p_f]
-            set wns_pass  [format "%.3f" $wns_f]
+            set wns_pass  [fmt_num "%.3f" $wns_f]
             set lut_fm $lut_f; set ff_fm $ff_f; set dsp_fm $dsp_f; set sp_fm $sp_f; set ep_fm $ep_f
         } elseif {$pass50} {
             set fmax_pass "50.00"
             set pass_p    "20.00"
-            set wns_pass  [format "%.3f" $wns50]
+            set wns_pass  [fmt_num "%.3f" $wns50]
             set lut_fm $lut50; set ff_fm $ff50; set dsp_fm $dsp50; set sp_fm $sp50; set ep_fm $ep50
         } else {
             save_winning_reports $cfg_dir
             set fmax_pass "FAIL"
             set pass_p    "NA"
-            set wns_pass  [format "%.3f" $wns_f]
+            set wns_pass  [fmt_num "%.3f" $wns_f]
             set lut_fm $lut_f; set ff_fm $ff_f; set dsp_fm $dsp_f; set sp_fm $sp_f; set ep_fm $ep_f
         }
     } else {
@@ -297,13 +333,13 @@ foreach cfg $target_configs {
             lassign $best_pass_res ok_f wns_f p_f lut_fm ff_fm bram_fm dsp_fm sp_fm ep_fm
             set fmax_pass [format "%.2f" [expr {1000.0 / $p_f}]]
             set pass_p    [format "%.2f" $p_f]
-            set wns_pass  [format "%.3f" $wns_f]
-            set est_fmax  [format "%.2f" [expr {1000.0 / ($p_f - $wns_f)}]]
+            set wns_pass  [fmt_num "%.3f" $wns_f]
+            set est_fmax  [expr {($wns_f ne "NA") ? [format "%.2f" [expr {1000.0 / ($p_f - $wns_f)}]] : "NA"}]
         } else {
             set fmax_pass "FAIL"
             set pass_p    "NA"
-            set wns_pass  [format "%.3f" $wns50]
-            set est_fmax  [format "%.2f" [expr {1000.0 / (20.0 - $wns50)}]]
+            set wns_pass  [fmt_num "%.3f" $wns50]
+            set est_fmax  [expr {($wns50 ne "NA") ? [format "%.2f" [expr {1000.0 / (20.0 - $wns50)}]] : "NA"}]
             set lut_fm $lut50; set ff_fm $ff50; set dsp_fm $dsp50; set sp_fm $sp50; set ep_fm $ep50
         }
     }
@@ -316,9 +352,7 @@ foreach cfg $target_configs {
         $fmax_pass $pass_p $wns_pass $est_fmax $lut_fm $ff_fm $dsp_fm \
         "\"$sp_fm\"" "\"$ep_fm\""] ","]
 
-    set fcsv [open $csv_path a]
-    puts $fcsv $row
-    close $fcsv
+    upsert_summary_row $csv_path $csv_header $cfg $row
     puts "  ==> RESULT $cfg: Fmax_pass=$fmax_pass MHz (period=$pass_p ns, WNS=$wns_pass ns, LUT_50m=$lut50, u_cpu_LUT=$cpu_lut50, DSP_50m=$dsp50)"
 }
 
