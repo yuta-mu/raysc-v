@@ -5,54 +5,59 @@
 
 set FPGA_PART "xc7a100tcsg324-1"
 
-# sweep.tcl で評価する構成順 (機能追加・切り分け × 乗算パイプライン有無のトレードオフ階段)
+# sweep.tcl で評価する構成順 (機能追加・切り分け × 乗算/ストール方式のトレードオフ階段)
+# 命名規則: <ISA/機能スタック>[_<乗算方式>]
+#   _comb1    : PIPE_MUL=0, MUL_STALL=1, QMUL_STALL=1 (組合せ乗算 1ストール = 2cyc)
+#   _comb0    : PIPE_MUL=0, MUL_STALL=0, QMUL_STALL=0 (組合せ乗算 0ストール = 1cyc)
+#   _pipe1    : PIPE_MUL=1, MUL_STALL=1, QMUL_STALL=1 (3段パイプライン乗算 = 3cyc)
+#   _pipe1_q0 : PIPE_MUL=1, MUL_STALL=1, QMUL_STALL=0 (3段パイプライン乗算 + qmul 0ストール)
 set SWEEP_CONFIGS [list \
     "RV32I" \
-    "RV32I_MulOnly" \
-    "RV32IM_base" \
-    "RV32IM_zerostall" \
-    "RV32IM_pipemul" \
-    "RV32IM_Zbb_base" \
-    "RV32IM_Zbb_zerostall" \
-    "RV32IM_Zbb" \
-    "RV32IM_Zbb_Rand_base" \
-    "RV32IM_Zbb_Rand" \
-    "RV32IM_Zbb_QmulSqrt" \
-    "RV32IM_Zbb_MathOnly" \
-    "RV32IM_Zbb_C0_base" \
-    "RV32IM_Zbb_C0_zerostall" \
-    "RV32IM_Zbb_C0" \
-    "RV32IM_Zbb_C0_nostall" \
-    "RV32IM_Zbb_Rand_Accel" \
-    "full" \
-    "full_zerostall" \
-    "RV32IM_Zbb_C0_Accel" \
+    "RV32I_MulOnly_pipe1" \
+    "RV32IM_comb1" \
+    "RV32IM_comb0" \
+    "RV32IM_pipe1" \
+    "RV32IM_Zbb_comb1" \
+    "RV32IM_Zbb_comb0" \
+    "RV32IM_Zbb_pipe1" \
+    "RV32IM_Zbb_Rand_comb1" \
+    "RV32IM_Zbb_Rand_pipe1" \
+    "RV32IM_Zbb_QmulSqrt_pipe1" \
+    "RV32IM_Zbb_MathOnly_pipe1" \
+    "RV32IM_Zbb_C0_comb1" \
+    "RV32IM_Zbb_C0_comb0" \
+    "RV32IM_Zbb_C0_pipe1" \
+    "RV32IM_Zbb_C0_pipe1_q0" \
+    "RV32IM_Zbb_Rand_Accel_pipe1" \
+    "RV32IM_Zbb_C0_Accel_comb1" \
+    "RV32IM_Zbb_C0_Accel_comb0" \
+    "RV32IM_Zbb_C0_Accel_pipe1" \
 ]
 
 # 各構成の top.sv パラメータ定義
 #   M  DIV ZBB C0 QMUL QSQRT QRSQRT QRCP QRAND ACCEL PIPE_MUL MUL_STALL QMUL_STALL
 array set CONFIG_PARAMS {
-    RV32I                   {0 0 0 0 0 0 0 0 0 0 0 1 1}
-    RV32I_MulOnly           {1 0 0 0 0 0 0 0 0 0 1 1 1}
-    RV32IM_base             {1 1 0 0 0 0 0 0 0 0 0 1 1}
-    RV32IM_zerostall        {1 1 0 0 0 0 0 0 0 0 0 0 1}
-    RV32IM_pipemul          {1 1 0 0 0 0 0 0 0 0 1 1 1}
-    RV32IM_Zbb_base         {1 1 1 0 0 0 0 0 0 0 0 1 1}
-    RV32IM_Zbb_zerostall    {1 1 1 0 0 0 0 0 0 0 0 0 1}
-    RV32IM_Zbb              {1 1 1 0 0 0 0 0 0 0 1 1 1}
-    RV32IM_Zbb_Rand_base    {1 1 1 1 0 0 0 0 1 0 0 1 1}
-    RV32IM_Zbb_Rand         {1 1 1 1 0 0 0 0 1 0 1 1 1}
-    RV32IM_Zbb_QmulSqrt     {1 1 1 1 1 1 0 0 0 0 1 1 1}
-    RV32IM_Zbb_MathOnly     {1 1 1 1 1 1 1 1 0 0 1 1 1}
-    RV32IM_Zbb_C0_base      {1 1 1 1 1 1 1 1 1 0 0 1 1}
-    RV32IM_Zbb_C0_zerostall {1 1 1 1 1 1 1 1 1 0 0 0 0}
-    RV32IM_Zbb_C0           {1 1 1 1 1 1 1 1 1 0 1 1 1}
-    RV32IM_Zbb_C0_nostall   {1 1 1 1 1 1 1 1 1 0 1 1 0}
-    RV32IM_Zbb_Rand_Accel   {1 1 1 1 0 0 0 0 1 1 1 1 1}
-    RV32IM_Zbb_C0_Accel     {1 1 1 1 1 1 1 1 1 1 1 1 1}
-    full                    {1 1 1 1 1 1 1 1 1 1 0 1 1}
-    full_nostall            {1 1 1 1 1 1 1 1 1 1 1 1 0}
-    full_zerostall          {1 1 1 1 1 1 1 1 1 1 0 0 0}
+    RV32I                       {0 0 0 0 0 0 0 0 0 0 0 1 1}
+    RV32I_MulOnly_pipe1         {1 0 0 0 0 0 0 0 0 0 1 1 1}
+    RV32IM_comb1                {1 1 0 0 0 0 0 0 0 0 0 1 1}
+    RV32IM_comb0                {1 1 0 0 0 0 0 0 0 0 0 0 0}
+    RV32IM_pipe1                {1 1 0 0 0 0 0 0 0 0 1 1 1}
+    RV32IM_Zbb_comb1            {1 1 1 0 0 0 0 0 0 0 0 1 1}
+    RV32IM_Zbb_comb0            {1 1 1 0 0 0 0 0 0 0 0 0 0}
+    RV32IM_Zbb_pipe1            {1 1 1 0 0 0 0 0 0 0 1 1 1}
+    RV32IM_Zbb_Rand_comb1       {1 1 1 1 0 0 0 0 1 0 0 1 1}
+    RV32IM_Zbb_Rand_pipe1       {1 1 1 1 0 0 0 0 1 0 1 1 1}
+    RV32IM_Zbb_QmulSqrt_pipe1   {1 1 1 1 1 1 0 0 0 0 1 1 1}
+    RV32IM_Zbb_MathOnly_pipe1   {1 1 1 1 1 1 1 1 0 0 1 1 1}
+    RV32IM_Zbb_C0_comb1         {1 1 1 1 1 1 1 1 1 0 0 1 1}
+    RV32IM_Zbb_C0_comb0         {1 1 1 1 1 1 1 1 1 0 0 0 0}
+    RV32IM_Zbb_C0_pipe1         {1 1 1 1 1 1 1 1 1 0 1 1 1}
+    RV32IM_Zbb_C0_pipe1_q0      {1 1 1 1 1 1 1 1 1 0 1 1 0}
+    RV32IM_Zbb_Rand_Accel_pipe1 {1 1 1 1 0 0 0 0 1 1 1 1 1}
+    RV32IM_Zbb_C0_Accel_comb1   {1 1 1 1 1 1 1 1 1 1 0 1 1}
+    RV32IM_Zbb_C0_Accel_comb0   {1 1 1 1 1 1 1 1 1 1 0 0 0}
+    RV32IM_Zbb_C0_Accel_pipe1   {1 1 1 1 1 1 1 1 1 1 1 1 1}
+    RV32IM_Zbb_C0_Accel_pipe1_q0 {1 1 1 1 1 1 1 1 1 1 1 1 0}
 }
 
 proc get_config_generic_args {cfg_name} {

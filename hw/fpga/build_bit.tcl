@@ -3,7 +3,7 @@
 # Usage:
 #   vivado -mode batch -source hw/fpga/build_bit.tcl -tclargs <config> <hex_path> [clk_div] [incremental]
 #   Example:
-#     vivado -mode batch -source hw/fpga/build_bit.tcl -tclargs RV32IM_Zbb_C0_Accel build/programs/raytracer/main_ar.hex 16
+#     vivado -mode batch -source hw/fpga/build_bit.tcl -tclargs RV32IM_Zbb_C0_Accel_pipe1 build/programs/raytracer/main_ar.hex 16
 # ==============================================================================
 
 if {$argc < 2} {

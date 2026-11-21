@@ -18,38 +18,45 @@ hw\fpga\run_sweep.bat
 hw\fpga\run_sweep.bat fast
 
 :: 特定の 1 構成だけ計測したい場合
-hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel
+hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel_pipe1
 
 :: Performance_Explore (-directive Explore) で配置配線を頑張って計測したい場合 (VGA 合流後など)
-hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel explore
+hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel_pipe1 explore
 ```
 
 ### 評価される構成一覧 (`configs.tcl`)
 
-| 構成名 | M (MUL/DIV) | Zbb | custom-0 内訳 | 球アクセラレータ | 乗算方式 (`PIPE_MUL` / `MUL_STALL` / `QMUL_STALL`) |
+命名規則: **`<ISA/機能スタック>[_<乗算方式>]`**
+
+* `_comb1` : `PIPE_MUL=0, MUL_STALL=1, QMUL_STALL=1`（組合せ乗算 1ストール = 2cyc、`main` 既定）
+* `_comb0` : `PIPE_MUL=0, MUL_STALL=0, QMUL_STALL=0`（組合せ乗算 0ストール = 1cyc）
+* `_pipe1` : `PIPE_MUL=1, MUL_STALL=1, QMUL_STALL=1`（3段パイプライン乗算 = 3cyc）
+* `_pipe1_q0` : `PIPE_MUL=1, MUL_STALL=1, QMUL_STALL=0`（3段パイプライン乗算 + `qmul` 0ストール）
+
+| 構成名 | M (MUL/DIV) | Zbb | custom-0 内訳 | 球アクセラレータ | 乗算方式 |
 | --- | :---: | :---: | --- | :---: | --- |
 | `RV32I` | OFF | OFF | - | OFF | - |
-| `RV32I_MulOnly` | MULのみ | OFF | - | OFF | `PIPE=1` (3cyc) |
-| `RV32IM_base` | MUL+DIV | OFF | - | OFF | `PIPE=0, MUL_STALL=1` (2cyc) |
-| `RV32IM_zerostall` | MUL+DIV | OFF | - | OFF | `PIPE=0, MUL_STALL=0` (1cyc) |
-| `RV32IM_pipemul` | MUL+DIV | OFF | - | OFF | `PIPE=1` (3cyc) |
-| `RV32IM_Zbb_base` | MUL+DIV | ON | - | OFF | `PIPE=0, MUL_STALL=1` (2cyc) |
-| `RV32IM_Zbb_zerostall` | MUL+DIV | ON | - | OFF | `PIPE=0, MUL_STALL=0` (1cyc) |
-| `RV32IM_Zbb` | MUL+DIV | ON | - | OFF | `PIPE=1` (3cyc) |
-| `RV32IM_Zbb_Rand_base` | MUL+DIV | ON | **`QRAND` のみ** | OFF | `PIPE=0, MUL_STALL=1` (2cyc) |
-| `RV32IM_Zbb_Rand` | MUL+DIV | ON | **`QRAND` のみ** | OFF | `PIPE=1` (3cyc) |
-| `RV32IM_Zbb_QmulSqrt` | MUL+DIV | ON | **`QMUL` + `QSQRT` のみ** | OFF | `PIPE=1` (3cyc) |
-| `RV32IM_Zbb_MathOnly` | MUL+DIV | ON | `QMUL/QSQRT/QRSQRT/QRCP` (`QRAND=0`) | OFF | `PIPE=1` (3cyc) |
-| `RV32IM_Zbb_C0_base` | MUL+DIV | ON | 全部 (`QMUL/QSQRT/QRSQRT/QRCP/QRAND`) | OFF | `PIPE=0, MUL_STALL=1, QMUL_STALL=1` |
-| `RV32IM_Zbb_C0_zerostall` | MUL+DIV | ON | 全部 | OFF | `PIPE=0, MUL_STALL=0, QMUL_STALL=0` (1cyc) |
-| `RV32IM_Zbb_C0` | MUL+DIV | ON | 全部 | OFF | `PIPE=1, QMUL_STALL=1` |
-| `RV32IM_Zbb_C0_nostall` | MUL+DIV | ON | 全部 | OFF | `PIPE=1, QMUL_STALL=0` |
-| `RV32IM_Zbb_Rand_Accel` | MUL+DIV | ON | **`QRAND` のみ** | ON | `PIPE=1` (3cyc) |
-| `full` | MUL+DIV | ON | 全部 | ON | `PIPE=0, MUL_STALL=1, QMUL_STALL=1` (`main` 既定値) |
-| `full_zerostall` | MUL+DIV | ON | 全部 | ON | `PIPE=0, MUL_STALL=0, QMUL_STALL=0` (50MHz 理論最速) |
-| `RV32IM_Zbb_C0_Accel` | MUL+DIV | ON | 全部 | ON | `PIPE=1, QMUL_STALL=1` |
+| `RV32I_MulOnly_pipe1` | MULのみ | OFF | - | OFF | `_pipe1` |
+| `RV32IM_comb1` | MUL+DIV | OFF | - | OFF | `_comb1` |
+| `RV32IM_comb0` | MUL+DIV | OFF | - | OFF | `_comb0` |
+| `RV32IM_pipe1` | MUL+DIV | OFF | - | OFF | `_pipe1` |
+| `RV32IM_Zbb_comb1` | MUL+DIV | ON | - | OFF | `_comb1` |
+| `RV32IM_Zbb_comb0` | MUL+DIV | ON | - | OFF | `_comb0` |
+| `RV32IM_Zbb_pipe1` | MUL+DIV | ON | - | OFF | `_pipe1` |
+| `RV32IM_Zbb_Rand_comb1` | MUL+DIV | ON | **`QRAND` のみ** | OFF | `_comb1` |
+| `RV32IM_Zbb_Rand_pipe1` | MUL+DIV | ON | **`QRAND` のみ** | OFF | `_pipe1` |
+| `RV32IM_Zbb_QmulSqrt_pipe1` | MUL+DIV | ON | **`QMUL` + `QSQRT` のみ** | OFF | `_pipe1` |
+| `RV32IM_Zbb_MathOnly_pipe1` | MUL+DIV | ON | `QMUL/QSQRT/QRSQRT/QRCP` (`QRAND=0`) | OFF | `_pipe1` |
+| `RV32IM_Zbb_C0_comb1` | MUL+DIV | ON | 全部 (`QMUL/QSQRT/QRSQRT/QRCP/QRAND`) | OFF | `_comb1` |
+| `RV32IM_Zbb_C0_comb0` | MUL+DIV | ON | 全部 | OFF | `_comb0` |
+| `RV32IM_Zbb_C0_pipe1` | MUL+DIV | ON | 全部 | OFF | `_pipe1` |
+| `RV32IM_Zbb_C0_pipe1_q0` | MUL+DIV | ON | 全部 | OFF | `_pipe1_q0` |
+| `RV32IM_Zbb_Rand_Accel_pipe1` | MUL+DIV | ON | **`QRAND` のみ** | ON | `_pipe1` |
+| `RV32IM_Zbb_C0_Accel_comb1` | MUL+DIV | ON | 全部 | ON | `_comb1` |
+| `RV32IM_Zbb_C0_Accel_comb0` | MUL+DIV | ON | 全部 | ON | `_comb0` |
+| `RV32IM_Zbb_C0_Accel_pipe1` | MUL+DIV | ON | 全部 | ON | `_pipe1` |
 
-※ `build_bit.bat` では `full_nostall` (`PIPE=1, MUL_STALL=1, QMUL_STALL=0`, 全機能 ON) も指定可能です．
+※ `build_bit.bat` では `RV32IM_Zbb_C0_Accel_pipe1_q0`（`_pipe1_q0`、全機能 ON）も指定可能です．
 ※ `sweep` 全 20 構成をまとめて回す場合は時間がかかるため，特定構成のみを `hw\fpga\run_sweep.bat search <構成名>` で個別追加計測することもできます(`summary.csv` に追記されます)．
 
 ### 結果の確認
@@ -68,10 +75,10 @@ hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel explore
 
 ```bat
 :: 50 MHz (CLK_DIV=16) でビットストリームを生成
-hw\fpga\build_bit.bat RV32IM_Zbb_C0_Accel build\programs\raytracer\main_ar.hex
+hw\fpga\build_bit.bat RV32IM_Zbb_C0_Accel_pipe1 build\programs\raytracer\main_ar.hex
 
 :: 周波数を変えて試す場合 (例: CLK_DIV=10 -> 800/10 = 80 MHz, UART ボーレート自動追従)
-hw\fpga\build_bit.bat RV32IM_pipemul build\tests\hex\smoke.hex 10
+hw\fpga\build_bit.bat RV32IM_pipe1 build\tests\hex\smoke.hex 10
 ```
 
 * 出力先: `build\vivado_bit\<構成名>\<hexファイル名>.bit` および `build\vivado_bit\latest.bit`
@@ -87,5 +94,5 @@ hw\fpga\build_bit.bat RV32IM_pipemul build\tests\hex\smoke.hex 10
 hw\fpga\program_fpga.bat
 
 :: 任意の .bit を指定して書き込む場合
-hw\fpga\program_fpga.bat build\vivado_bit\RV32IM_Zbb_C0_Accel\main_ar.bit
+hw\fpga\program_fpga.bat build\vivado_bit\RV32IM_Zbb_C0_Accel_pipe1\main_ar.bit
 ```

@@ -3,8 +3,8 @@ setlocal EnableDelayedExpansion
 
 if "%~2"=="" (
     echo Usage: %~nx0 ^<config^> ^<hex_path^> [clk_div=16]
-    echo   Configs: RV32I RV32I_MulOnly RV32IM_base RV32IM_zerostall RV32IM_pipemul RV32IM_Zbb_base RV32IM_Zbb_zerostall RV32IM_Zbb RV32IM_Zbb_Rand_base RV32IM_Zbb_Rand RV32IM_Zbb_QmulSqrt RV32IM_Zbb_MathOnly RV32IM_Zbb_C0_base RV32IM_Zbb_C0_zerostall RV32IM_Zbb_C0 RV32IM_Zbb_C0_nostall RV32IM_Zbb_Rand_Accel full full_nostall full_zerostall RV32IM_Zbb_C0_Accel
-    echo   Example: %~nx0 RV32IM_Zbb_C0_Accel build\programs\raytracer\main_ar.hex 16
+    echo   Configs: RV32I RV32I_MulOnly_pipe1 RV32IM_comb1 RV32IM_comb0 RV32IM_pipe1 RV32IM_Zbb_comb1 RV32IM_Zbb_comb0 RV32IM_Zbb_pipe1 RV32IM_Zbb_Rand_comb1 RV32IM_Zbb_Rand_pipe1 RV32IM_Zbb_QmulSqrt_pipe1 RV32IM_Zbb_MathOnly_pipe1 RV32IM_Zbb_C0_comb1 RV32IM_Zbb_C0_comb0 RV32IM_Zbb_C0_pipe1 RV32IM_Zbb_C0_pipe1_q0 RV32IM_Zbb_Rand_Accel_pipe1 RV32IM_Zbb_C0_Accel_comb1 RV32IM_Zbb_C0_Accel_comb0 RV32IM_Zbb_C0_Accel_pipe1 RV32IM_Zbb_C0_Accel_pipe1_q0
+    echo   Example: %~nx0 RV32IM_Zbb_C0_Accel_pipe1 build\programs\raytracer\main_ar.hex 16
     exit /b 1
 )
 
