@@ -11,7 +11,7 @@ Vivado の場所は `PATH`(`vivado.bat`)，環境変数 `VIVADO_BIN`，または
 リポジトリルートで以下を実行します(コマンドプロンプト / PowerShell 共通)．
 
 ```bat
-:: 全7構成を 50MHz 基準計測 + 二分探索 Fmax 計測 (推奨)
+:: 全20構成を 50MHz 基準計測 + 二分探索 Fmax 計測 (推奨)
 hw\fpga\run_sweep.bat
 
 :: 高速見積もりモード (50MHz + 1回のタイト制約のみ)
@@ -26,23 +26,31 @@ hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel explore
 
 ### 評価される構成一覧 (`configs.tcl`)
 
-| 構成名 | M (MUL/DIV) | Zbb | custom-0 内訳 | 球アクセラレータ | PIPE_MUL / STALL |
-| --- | :---: | :---: | --- | :---: | :---: |
+| 構成名 | M (MUL/DIV) | Zbb | custom-0 内訳 | 球アクセラレータ | 乗算方式 (`PIPE_MUL` / `MUL_STALL` / `QMUL_STALL`) |
+| --- | :---: | :---: | --- | :---: | --- |
 | `RV32I` | OFF | OFF | - | OFF | - |
-| `RV32I_MulOnly` | MULのみ | OFF | - | OFF | PIPE=1 |
-| `RV32IM_base` | MUL+DIV | OFF | - | OFF | PIPE=0, STALL=1 |
-| `RV32IM_pipemul` | MUL+DIV | OFF | - | OFF | PIPE=1 |
-| `RV32IM_Zbb` | MUL+DIV | ON | - | OFF | PIPE=1 |
-| `RV32IM_Zbb_Rand` | MUL+DIV | ON | **`QRAND` のみ** | OFF | PIPE=1 |
-| `RV32IM_Zbb_QmulSqrt` | MUL+DIV | ON | **`QMUL` + `QSQRT` のみ** | OFF | PIPE=1 |
-| `RV32IM_Zbb_MathOnly` | MUL+DIV | ON | `QMUL/QSQRT/QRSQRT/QRCP` (`QRAND=0`) | OFF | PIPE=1 |
-| `RV32IM_Zbb_C0` | MUL+DIV | ON | 全部 (`QMUL/QSQRT/QRSQRT/QRCP/QRAND`) | OFF | PIPE=1, QMUL_STALL=1 |
-| `RV32IM_Zbb_C0_nostall` | MUL+DIV | ON | 全部 | OFF | PIPE=1, QMUL_STALL=0 |
-| `RV32IM_Zbb_Rand_Accel` | MUL+DIV | ON | **`QRAND` のみ** | ON | PIPE=1 |
-| `RV32IM_Zbb_C0_Accel` | MUL+DIV | ON | 全部 | ON | PIPE=1, QMUL_STALL=1 |
-| `full_zerostall` | MUL+DIV | ON | 全部 | ON | PIPE=0, MUL/QMUL 0ストール |
+| `RV32I_MulOnly` | MULのみ | OFF | - | OFF | `PIPE=1` (3cyc) |
+| `RV32IM_base` | MUL+DIV | OFF | - | OFF | `PIPE=0, MUL_STALL=1` (2cyc) |
+| `RV32IM_zerostall` | MUL+DIV | OFF | - | OFF | `PIPE=0, MUL_STALL=0` (1cyc) |
+| `RV32IM_pipemul` | MUL+DIV | OFF | - | OFF | `PIPE=1` (3cyc) |
+| `RV32IM_Zbb_base` | MUL+DIV | ON | - | OFF | `PIPE=0, MUL_STALL=1` (2cyc) |
+| `RV32IM_Zbb_zerostall` | MUL+DIV | ON | - | OFF | `PIPE=0, MUL_STALL=0` (1cyc) |
+| `RV32IM_Zbb` | MUL+DIV | ON | - | OFF | `PIPE=1` (3cyc) |
+| `RV32IM_Zbb_Rand_base` | MUL+DIV | ON | **`QRAND` のみ** | OFF | `PIPE=0, MUL_STALL=1` (2cyc) |
+| `RV32IM_Zbb_Rand` | MUL+DIV | ON | **`QRAND` のみ** | OFF | `PIPE=1` (3cyc) |
+| `RV32IM_Zbb_QmulSqrt` | MUL+DIV | ON | **`QMUL` + `QSQRT` のみ** | OFF | `PIPE=1` (3cyc) |
+| `RV32IM_Zbb_MathOnly` | MUL+DIV | ON | `QMUL/QSQRT/QRSQRT/QRCP` (`QRAND=0`) | OFF | `PIPE=1` (3cyc) |
+| `RV32IM_Zbb_C0_base` | MUL+DIV | ON | 全部 (`QMUL/QSQRT/QRSQRT/QRCP/QRAND`) | OFF | `PIPE=0, MUL_STALL=1, QMUL_STALL=1` |
+| `RV32IM_Zbb_C0_zerostall` | MUL+DIV | ON | 全部 | OFF | `PIPE=0, MUL_STALL=0, QMUL_STALL=0` (1cyc) |
+| `RV32IM_Zbb_C0` | MUL+DIV | ON | 全部 | OFF | `PIPE=1, QMUL_STALL=1` |
+| `RV32IM_Zbb_C0_nostall` | MUL+DIV | ON | 全部 | OFF | `PIPE=1, QMUL_STALL=0` |
+| `RV32IM_Zbb_Rand_Accel` | MUL+DIV | ON | **`QRAND` のみ** | ON | `PIPE=1` (3cyc) |
+| `full` | MUL+DIV | ON | 全部 | ON | `PIPE=0, MUL_STALL=1, QMUL_STALL=1` (`main` 既定値) |
+| `full_zerostall` | MUL+DIV | ON | 全部 | ON | `PIPE=0, MUL_STALL=0, QMUL_STALL=0` (50MHz 理論最速) |
+| `RV32IM_Zbb_C0_Accel` | MUL+DIV | ON | 全部 | ON | `PIPE=1, QMUL_STALL=1` |
 
-※ 実機用デフォルト互換構成として `full` (`main` 既定値と同一: `PIPE_MUL=0`)，`full_nostall` (`qmul` 0ストール)，`full_zerostall` (`mul` も `qmul` も完全 0 ストール / 50MHz 理論最速) も `build_bit.bat` で指定可能．
+※ `build_bit.bat` では `full_nostall` (`PIPE=1, MUL_STALL=1, QMUL_STALL=0`, 全機能 ON) も指定可能です．
+※ `sweep` 全 20 構成をまとめて回す場合は時間がかかるため，特定構成のみを `hw\fpga\run_sweep.bat search <構成名>` で個別追加計測することもできます(`summary.csv` に追記されます)．
 
 ### 結果の確認
 

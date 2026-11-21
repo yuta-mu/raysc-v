@@ -13,17 +13,14 @@
 | --- | --- |
 | `RV32I` | DSP=0・最小回路面積・ベースライン上限 $F_{\max}$ の確認用 |
 | `RV32I_MulOnly` | **M拡張の内訳切り分け**: `MUL` だけ（`DIV=0`）にして LUT の大半が除算器であることを示す |
-| `RV32IM_base` | 組合せ乗算器 (`PIPE_MUL=0`) による $F_{\max}$ 律速の Before 基準 |
-| `RV32IM_pipemul` | 3サイクルパイプライン乗算 (`PIPE_MUL=1`) 後の標準 RV32IM 基準 |
-| `RV32IM_Zbb` | **反例①**: Zbb 追加で命令数は微減するが $F_{\max}$ が低下し、限界周波数実時間が悪化し得ることを示す |
-| `RV32IM_Zbb_Rand` | **コスパ最強**: `custom-0` のうち `QRAND`（約数十LUT・0 DSP・0ストール）だけの面積/$F_{\max}$/速度効果 |
+| `RV32IM_base` / `RV32IM_zerostall` / `RV32IM_pipemul` | **乗算パイプライン化の効用と代償**: 組合せ (1ストール / 0ストール) vs 3サイクルパイプライン ($F_{\max}$ 向上 vs サイクル増) |
+| `RV32IM_Zbb_base` / `RV32IM_Zbb_zerostall` / `RV32IM_Zbb` | **反例①**: Zbb 追加で命令数は微減するが $F_{\max}$ が低下し、限界周波数実時間が悪化し得ることを示す（`PIPE=0/1` 両方比較） |
+| `RV32IM_Zbb_Rand_base` / `RV32IM_Zbb_Rand` | **コスパ最強**: `custom-0` のうち `QRAND`（約数十LUT・0 DSP・0ストール）だけの面積/$F_{\max}$/速度効果（`PIPE=0/1` 比較） |
 | `RV32IM_Zbb_QmulSqrt` | **犯人特定**: `qrsqrt`/`qrcp` を抜いた `qmul+qsqrt` だけの $F_{\max}$ を測り、55MHz 低下の主因を切り分け |
 | `RV32IM_Zbb_MathOnly` | `custom-0` 算術4種のみ（`QRAND=0`）と `Rand` の比較 |
-| `RV32IM_Zbb_C0` | **反例②**: `custom-0` 全部入り（`qrsqrt` 律速で $F_{\max}$ 低下するトレードオフ） |
-| `RV32IM_Zbb_C0_nostall` | `qmul` 組合せ化 (`QMUL_STALL=0`) による「50MHz 固定なら得・限界周波数なら一長一短」の比較 |
+| `RV32IM_Zbb_C0_base` / `RV32IM_Zbb_C0_zerostall` / `RV32IM_Zbb_C0` / `RV32IM_Zbb_C0_nostall` | **反例②**: `custom-0` 全部入り（`qrsqrt` 律速で $F_{\max}$ が下がるため、`PIPE_MUL=1` がむしろ逆効果になり得る検証） |
 | `RV32IM_Zbb_Rand_Accel` | **アクセラレータ単体の $F_{\max}$ 検証**: `qrcp`/`qrsqrt` なしで `Accel + QRAND` のみの限界周波数と性能 |
-| `RV32IM_Zbb_C0_Accel` | **本命**: DSP 192 個 (80%)・LUT 増・配線混雑による $F_{\max}$ 低下を、並列交差判定のサイクル激減で逆転 |
-| `full_zerostall` | **50MHz 理論最速**: `mul` も `qmul` も完全 0 ストール（CPI 最小 vs $F_{\max}$ の直接対決） |
+| `full` / `full_zerostall` / `RV32IM_Zbb_C0_Accel` | **本命**: DSP 192 個 (80%)・LUT 増・配線混雑下での `PIPE=0 (1ストール / 0ストール)` vs `PIPE=1` の直接対決 |
 
 ---
 

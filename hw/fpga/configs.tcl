@@ -5,21 +5,28 @@
 
 set FPGA_PART "xc7a100tcsg324-1"
 
-# sweep.tcl で評価する構成順 (機能追加・切り分けとパイプライン化のトレードオフ階段)
+# sweep.tcl で評価する構成順 (機能追加・切り分け × 乗算パイプライン有無のトレードオフ階段)
 set SWEEP_CONFIGS [list \
     "RV32I" \
     "RV32I_MulOnly" \
     "RV32IM_base" \
+    "RV32IM_zerostall" \
     "RV32IM_pipemul" \
+    "RV32IM_Zbb_base" \
+    "RV32IM_Zbb_zerostall" \
     "RV32IM_Zbb" \
+    "RV32IM_Zbb_Rand_base" \
     "RV32IM_Zbb_Rand" \
     "RV32IM_Zbb_QmulSqrt" \
     "RV32IM_Zbb_MathOnly" \
+    "RV32IM_Zbb_C0_base" \
+    "RV32IM_Zbb_C0_zerostall" \
     "RV32IM_Zbb_C0" \
     "RV32IM_Zbb_C0_nostall" \
     "RV32IM_Zbb_Rand_Accel" \
-    "RV32IM_Zbb_C0_Accel" \
+    "full" \
     "full_zerostall" \
+    "RV32IM_Zbb_C0_Accel" \
 ]
 
 # 各構成の top.sv パラメータ定義
@@ -28,11 +35,17 @@ array set CONFIG_PARAMS {
     RV32I                   {0 0 0 0 0 0 0 0 0 0 0 1 1}
     RV32I_MulOnly           {1 0 0 0 0 0 0 0 0 0 1 1 1}
     RV32IM_base             {1 1 0 0 0 0 0 0 0 0 0 1 1}
+    RV32IM_zerostall        {1 1 0 0 0 0 0 0 0 0 0 0 1}
     RV32IM_pipemul          {1 1 0 0 0 0 0 0 0 0 1 1 1}
+    RV32IM_Zbb_base         {1 1 1 0 0 0 0 0 0 0 0 1 1}
+    RV32IM_Zbb_zerostall    {1 1 1 0 0 0 0 0 0 0 0 0 1}
     RV32IM_Zbb              {1 1 1 0 0 0 0 0 0 0 1 1 1}
+    RV32IM_Zbb_Rand_base    {1 1 1 1 0 0 0 0 1 0 0 1 1}
     RV32IM_Zbb_Rand         {1 1 1 1 0 0 0 0 1 0 1 1 1}
     RV32IM_Zbb_QmulSqrt     {1 1 1 1 1 1 0 0 0 0 1 1 1}
     RV32IM_Zbb_MathOnly     {1 1 1 1 1 1 1 1 0 0 1 1 1}
+    RV32IM_Zbb_C0_base      {1 1 1 1 1 1 1 1 1 0 0 1 1}
+    RV32IM_Zbb_C0_zerostall {1 1 1 1 1 1 1 1 1 0 0 0 0}
     RV32IM_Zbb_C0           {1 1 1 1 1 1 1 1 1 0 1 1 1}
     RV32IM_Zbb_C0_nostall   {1 1 1 1 1 1 1 1 1 0 1 1 0}
     RV32IM_Zbb_Rand_Accel   {1 1 1 1 0 0 0 0 1 1 1 1 1}
