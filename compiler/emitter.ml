@@ -634,6 +634,12 @@ let emit_program ?(regalloc = false) ?(opt3 = false) (md : mode) (mrc : march) (
   Printf.bprintf buf ".section .text\n";
 
   List.iter (emit_func ~regalloc ~opt3 md mrc) p.funcs;
+  (*ロード使用ハザードを避けるように並べかえる(runtime対象外)*)
+  if opt3 then begin
+    let s = Buffer.contents buf in
+    Buffer.clear buf;
+    Buffer.add_string buf (Schedule.run s)
+  end;                                                                                       
   (if md = Off then Buffer.add_string buf runtime_math);
   (match mrc with
     | I -> (Buffer.add_string buf runtime_m;
