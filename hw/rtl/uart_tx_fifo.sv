@@ -29,13 +29,18 @@ module uart_tx_fifo #(
 
     assign uart_stall = uart_write && fifo_full;
 
-    // FIFO Write
+    // FIFO Write (Distributed RAM 推論のため配列書込から非同期リセットを分離)
+    always_ff @(posedge clk) begin
+        if (uart_write && !fifo_full) begin
+            fifo_mem[waddr] <= uart_wdata;
+        end
+    end
+
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             wptr <= '0;
         end else if (uart_write && !fifo_full) begin
-            fifo_mem[waddr] <= uart_wdata;
-            wptr            <= wptr + 1'b1;
+            wptr <= wptr + 1'b1;
         end
     end
 

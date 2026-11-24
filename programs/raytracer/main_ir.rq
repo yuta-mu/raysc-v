@@ -1,0 +1,579 @@
+const WIDTH: i32 = 320;
+const HEIGHT: i32 = 180;
+const SAMPLES_PER_PIXEL: i32 = 100;
+const MAX_DEPTH: i32 = 20;
+const NUM_SPHERES: i32 = 64;
+
+const Q_INF: q16 = 32767.0;
+const Q_PI: q16 = 3.141592653589793;
+const Q_EPS: q16 = 0.00390625;
+const Q_NEAR_ZERO: q16 = 0.0005;
+const Q_UNIT_MIN_LENSQ: q16 = 0.01;
+const ULP: q16 = 0.0000152587890625;
+
+const MAT_LAMBERTIAN: i32 = 0;
+const MAT_METAL: i32 = 1;
+const MAT_DIELECTRIC: i32 = 2;
+
+const SPHERE_X: [q16; 64] = [
+    0.00, -4.00, 4.00, -5.68, 6.86, -7.90, 6.19, -8.13,
+    -3.54, 7.53, -6.02, 1.48, -0.44, 7.84, 7.96, -7.17,
+    -3.50, -4.94, 5.71, -7.55, -4.70, 3.31, 7.07, 1.08,
+    8.13, 5.08, -1.92, -7.83, 4.38, -1.02, 8.38, 6.15,
+    -5.80, -0.17, -4.10, 1.01, 0.61, -1.43, -3.83, 6.02,
+    2.36, 4.13, -2.05, 9.00, 1.93, -2.26, -4.48, -1.12,
+    3.47, -2.06, -5.37, 6.57, 8.94, 5.16, 7.21, -6.80,
+    0.95, -2.54, -6.16, -8.42, 7.48, -7.67, 0.35, -7.26
+];
+
+const SPHERE_Y: [q16; 64] = [
+    1.00, 1.00, 1.00, 0.20, 0.20, 0.20, 0.20, 0.20,
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20,
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20,
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20,
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20,
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20,
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20,
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20
+];
+
+const SPHERE_Z: [q16; 64] = [
+    0.00, 0.00, 0.00, -3.72, 3.37, -0.49, -0.04, -2.10,
+    1.71, 1.77, 0.66, 1.55, 2.15, -0.29, 1.13, 2.23,
+    3.07, -1.37, 1.48, 0.94, 1.25, -1.03, -3.62, -1.13,
+    -3.04, 0.61, -0.43, 2.91, 1.72, 2.72, 2.52, -1.04,
+    1.68, -1.50, -3.27, -2.68, 2.69, 0.39, -1.97, 3.76,
+    -0.42, -2.13, 3.52, -3.38, 3.07, -2.64, 3.58, 1.67,
+    2.92, 2.73, -2.22, 1.91, 0.73, -0.59, 2.52, -1.17,
+    -3.45, 0.00, -0.35, -3.22, -2.21, -3.01, 3.71, -2.18
+];
+
+const SPHERE_R: [q16; 64] = [
+    1.00, 1.00, 1.00, 0.20, 0.20, 0.20, 0.20, 0.20,
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20,
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20,
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20,
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20,
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20,
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20,
+    0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20
+];
+
+const SPHERE_R2: [q16; 64] = [
+    1.00, 1.00, 1.00, 0.04, 0.04, 0.04, 0.04, 0.04,
+    0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04,
+    0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04,
+    0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04,
+    0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04,
+    0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04,
+    0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04,
+    0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04
+];
+
+const SPHERE_MAT: [i32; 64] = [
+    2, 0, 1, 2, 1, 0, 2, 0,
+    0, 1, 0, 2, 2, 1, 0, 2,
+    0, 0, 1, 0, 1, 0, 2, 1,
+    0, 1, 1, 0, 1, 0, 0, 0,
+    1, 0, 0, 0, 0, 0, 2, 1,
+    1, 0, 0, 0, 1, 0, 1, 0,
+    0, 0, 0, 2, 0, 0, 0, 0,
+    0, 1, 0, 0, 0, 2, 0, 0
+];
+
+const SPHERE_AR: [q16; 64] = [
+    1.00, 0.50, 0.80, 1.00, 0.87, 0.09, 1.00, 0.15,
+    0.86, 0.37, 0.87, 1.00, 1.00, 0.95, 0.11, 1.00,
+    0.88, 0.13, 0.28, 0.10, 0.40, 0.28, 1.00, 0.86,
+    0.16, 0.42, 0.34, 0.43, 0.46, 0.86, 0.65, 0.13,
+    0.86, 0.05, 0.77, 0.05, 0.66, 0.62, 1.00, 0.92,
+    0.83, 0.87, 0.93, 0.06, 0.56, 0.49, 0.73, 0.85,
+    0.90, 0.71, 0.54, 1.00, 0.25, 0.85, 0.93, 0.64,
+    0.82, 0.93, 0.30, 0.89, 0.95, 1.00, 0.07, 0.06
+];
+
+const SPHERE_AG: [q16; 64] = [
+    1.00, 0.90, 0.70, 1.00, 0.46, 0.09, 1.00, 0.90,
+    0.83, 0.90, 0.69, 1.00, 1.00, 0.46, 0.94, 1.00,
+    0.10, 0.87, 0.87, 0.87, 0.89, 0.06, 1.00, 0.82,
+    0.90, 0.95, 0.94, 0.16, 0.50, 0.09, 0.88, 0.85,
+    0.42, 0.82, 0.87, 0.86, 0.07, 0.92, 1.00, 0.61,
+    0.91, 0.06, 0.13, 0.87, 0.93, 0.05, 0.30, 0.06,
+    0.64, 0.90, 0.07, 1.00, 0.89, 0.09, 0.87, 0.93,
+    0.88, 0.29, 0.88, 0.05, 0.09, 1.00, 0.96, 0.24
+];
+
+const SPHERE_AB: [q16; 64] = [
+    1.00, 1.00, 0.60, 1.00, 0.47, 0.90, 1.00, 0.23,
+    0.07, 0.49, 0.06, 1.00, 1.00, 0.90, 0.51, 1.00,
+    0.15, 0.65, 0.88, 0.16, 0.81, 0.92, 1.00, 0.36,
+    0.74, 0.75, 0.60, 0.87, 0.95, 0.95, 0.10, 0.20,
+    0.58, 0.93, 0.08, 0.44, 0.91, 0.07, 1.00, 0.46,
+    0.42, 0.31, 0.37, 0.71, 0.46, 0.89, 0.91, 0.61,
+    0.09, 0.14, 0.89, 1.00, 0.09, 0.05, 0.09, 0.09,
+    0.08, 0.60, 0.04, 0.23, 0.37, 1.00, 0.87, 0.86
+];
+
+const SPHERE_PARAM: [q16; 64] = [
+    1.50, 0.00, 0.00, 1.50, 0.14, 0.00, 1.50, 0.00,
+    0.00, 0.05, 0.00, 1.50, 1.50, 0.04, 0.00, 1.50,
+    0.00, 0.00, 0.14, 0.00, 0.15, 0.00, 1.50, 0.12,
+    0.00, 0.16, 0.16, 0.00, 0.08, 0.00, 0.00, 0.00,
+    0.09, 0.00, 0.00, 0.00, 0.00, 0.00, 1.50, 0.14,
+    0.05, 0.00, 0.00, 0.00, 0.02, 0.00, 0.01, 0.00,
+    0.00, 0.00, 0.00, 1.50, 0.00, 0.00, 0.00, 0.00,
+    0.00, 0.14, 0.00, 0.00, 0.00, 1.50, 0.00, 0.00
+];
+
+struct Ray {
+    o: vec3,
+    d: vec3,
+}
+
+struct Camera {
+    center: vec3,
+    viewport_upper_left: vec3,
+    viewport_u: vec3,
+    viewport_v: vec3,
+    defocus_disk_u: vec3,
+    defocus_disk_v: vec3,
+    use_defocus: i32,
+}
+
+struct ScatterResult {
+    did_scatter: i32,
+    attenuation: vec3,
+    scattered: Ray,
+}
+
+fn init_accel_spheres() -> void {
+    for i in 0..NUM_SPHERES {
+        accel_set_sphere(
+            i,
+            SPHERE_X[i],
+            SPHERE_Y[i],
+            SPHERE_Z[i],
+            SPHERE_R[i],
+            SPHERE_R2[i],
+            SPHERE_MAT[i]
+        );
+    }
+}
+
+fn ratio_i32(n: i32, d: i32) -> q16 {
+    return ULP * ((n << 16) / d);
+}
+
+fn degrees_to_radians(degrees: q16) -> q16 {
+    return (degrees * Q_PI) * rcp(q16(180));
+}
+
+fn q_tan_small(x: q16) -> q16 {
+    let x2: q16;
+    let x3: q16;
+    let x5: q16;
+    let term1: q16;
+    let term2: q16;
+    x2 = x * x;
+    x3 = x2 * x;
+    x5 = x3 * x2;
+    term1 = x3 * rcp(q16(3));
+    term2 = (2.0 * x5) * rcp(q16(15));
+    return x + term1 + term2;
+}
+
+fn vec3_cross(a: vec3, b: vec3) -> vec3 {
+    return vec3(
+        a.y * b.z - a.z * b.y,
+        a.z * b.x - a.x * b.z,
+        a.x * b.y - a.y * b.x
+    );
+}
+
+fn vec3_unit(v: vec3) -> vec3 {
+    let lensq: q16;
+    lensq = v <.> v;
+    if (lensq <= 0.0) {
+        return vec3(0.0, 1.0, 0.0);
+    }
+    return v * rsqrt(lensq);
+}
+
+fn vec3_unit_big(v: vec3) -> vec3 {
+    let m: q16;
+    let sh: i32;
+    let s: vec3;
+    m = qabs(v.x) | qabs(v.y) | qabs(v.z);
+    sh = max(15 - qclz(m), 0);
+    s = v >> sh;
+    if ((s <.> s) > 2.0) {
+        s = s * 0.5;
+        if ((s <.> s) > 2.0) {
+            s = s * 0.5;
+        }
+    }
+    return vec3_unit(s);
+}
+
+fn vec3_near_zero(v: vec3) -> i32 {
+    if (qabs(v.x) >= Q_NEAR_ZERO) {
+        return 0;
+    }
+    if (qabs(v.y) >= Q_NEAR_ZERO) {
+        return 0;
+    }
+    if (qabs(v.z) >= Q_NEAR_ZERO) {
+        return 0;
+    }
+    return 1;
+}
+
+fn vec3_reflect(v: vec3, n: vec3) -> vec3 {
+    return v - n * (2.0 * (v <.> n));
+}
+
+fn vec3_refract(uv: vec3, n: vec3, ratio: q16) -> vec3 {
+    let cos_theta: q16;
+    let r_out_perp: vec3;
+    let perp_len2: q16;
+    let parallel_mag: q16;
+    cos_theta = qmin((-uv) <.> n, 1.0);
+    r_out_perp = (uv + n * cos_theta) * ratio;
+    perp_len2 = r_out_perp <.> r_out_perp;
+    parallel_mag = sqrt(qabs(1.0 - perp_len2));
+    return r_out_perp + n * (-parallel_mag);
+}
+
+fn random_unit_vector() -> vec3 {
+    let rx: q16;
+    let ry: q16;
+    let rz: q16;
+    let sample: vec3;
+    let lensq: q16;
+    for attempt in 0..64 {
+        rx = rand_q16_s();
+        ry = rand_q16_s();
+        rz = rand_q16_s();
+        sample = vec3(rx, ry, rz);
+        lensq = sample <.> sample;
+        if (lensq >= Q_UNIT_MIN_LENSQ && lensq <= 1.0) {
+            return sample * rsqrt(lensq);
+        }
+    }
+    return vec3(0.0, 1.0, 0.0);
+}
+
+fn random_in_unit_disk() -> vec3 {
+    let rx: q16;
+    let ry: q16;
+    let p: vec3;
+    for attempt in 0..64 {
+        rx = rand_q16_s();
+        ry = rand_q16_s();
+        p = vec3(rx, ry, 0.0);
+        if ((p <.> p) < 1.0) {
+            return p;
+        }
+    }
+    return vec3(0.0, 0.0, 0.0);
+}
+
+fn make_ray(origin: vec3, direction: vec3) -> Ray {
+    let ray: Ray;
+    ray.o = origin;
+    ray.d = vec3_unit(direction);
+    return ray;
+}
+
+fn ray_at(ray: Ray, t: q16) -> vec3 {
+    return ray.o + ray.d * t;
+}
+
+fn schlick_reflectance(cosine: q16, refraction_index: q16) -> q16 {
+    let r0_base: q16;
+    let r0: q16;
+    let one_minus_cos: q16;
+    let c2: q16;
+    let c4: q16;
+    let c5: q16;
+    r0_base = (1.0 - refraction_index) * rcp(1.0 + refraction_index);
+    r0 = r0_base * r0_base;
+    one_minus_cos = 1.0 - cosine;
+    c2 = one_minus_cos * one_minus_cos;
+    c4 = c2 * c2;
+    c5 = c4 * one_minus_cos;
+    return r0 + (1.0 - r0) * c5;
+}
+
+fn scatter_sphere(index: i32, ray_in: Ray, t: q16) -> ScatterResult {
+    let out: ScatterResult;
+    let center: vec3;
+    let radius: q16;
+    let n: vec3;
+    let p: vec3;
+    let normal: vec3;
+    let front_face: i32;
+    let mat_kind: i32;
+    let param: q16;
+    let scatter_dir: vec3;
+    let reflected: vec3;
+    let ratio: q16;
+    let cos_theta: q16;
+    let sin_theta: q16;
+    let direction: vec3;
+
+    center = vec3(SPHERE_X[index], SPHERE_Y[index], SPHERE_Z[index]);
+    radius = SPHERE_R[index];
+    n = vec3_unit(ray_at(ray_in, t) - center);
+    p = center + n * radius;
+
+    if ((ray_in.d <.> n) < 0.0) {
+        front_face = 1;
+        normal = n;
+    } else {
+        front_face = 0;
+        normal = -n;
+    }
+
+    mat_kind = SPHERE_MAT[index];
+    param = SPHERE_PARAM[index];
+    out.did_scatter = 0;
+    out.attenuation = vec3(SPHERE_AR[index], SPHERE_AG[index], SPHERE_AB[index]);
+    out.scattered = ray_in;
+
+    if (mat_kind == MAT_LAMBERTIAN) {
+        scatter_dir = normal + random_unit_vector();
+        if (vec3_near_zero(scatter_dir) != 0) {
+            scatter_dir = normal;
+        }
+        out.scattered = make_ray(p, scatter_dir);
+        out.did_scatter = 1;
+        return out;
+    }
+
+    if (mat_kind == MAT_METAL) {
+        reflected = vec3_reflect(ray_in.d, normal);
+        scatter_dir = vec3_unit(reflected) + random_unit_vector() * param;
+        out.scattered = make_ray(p, scatter_dir);
+        if ((out.scattered.d <.> normal) > 0.0) {
+            out.did_scatter = 1;
+        }
+        return out;
+    }
+
+    if (front_face != 0) {
+        ratio = rcp(param);
+    } else {
+        ratio = param;
+    }
+    cos_theta = qmin((-ray_in.d) <.> normal, 1.0);
+    sin_theta = sqrt(qabs(1.0 - cos_theta * cos_theta));
+    if (ratio * sin_theta > 1.0) {
+        direction = vec3_reflect(ray_in.d, normal);
+    } else {
+        if (schlick_reflectance(cos_theta, ratio) > rand_q16()) {
+            direction = vec3_reflect(ray_in.d, normal);
+        } else {
+            direction = vec3_refract(ray_in.d, normal, ratio);
+        }
+    }
+    out.scattered = make_ray(p, direction);
+    out.did_scatter = 1;
+    return out;
+}
+
+fn camera_init() -> Camera {
+    let cam: Camera;
+    let theta: q16;
+    let h: q16;
+    let viewport_height: q16;
+    let aspect: q16;
+    let viewport_width: q16;
+    let w: vec3;
+    let u: vec3;
+    let v: vec3;
+    let lookfrom: vec3;
+    let lookat: vec3;
+    let vup: vec3;
+    let focus_dist: q16;
+    let defocus_angle: q16;
+    let defocus_rad: q16;
+
+    lookfrom = vec3(13.0, 2.0, 3.0);
+    lookat = vec3(0.0, 0.0, 0.0);
+    vup = vec3(0.0, 1.0, 0.0);
+    focus_dist = 10.0;
+    defocus_angle = 0.6;
+
+    theta = degrees_to_radians(20.0);
+    h = q_tan_small(theta * 0.5);
+    viewport_height = (2.0 * h) * focus_dist;
+    aspect = ratio_i32(WIDTH, HEIGHT);
+    viewport_width = viewport_height * aspect;
+
+    w = vec3_unit_big(lookfrom - lookat);
+    u = vec3_unit(vec3_cross(vup, w));
+    v = vec3_cross(w, u);
+
+    cam.center = lookfrom;
+    cam.viewport_u = u * viewport_width;
+    cam.viewport_v = (-v) * viewport_height;
+    cam.viewport_upper_left = cam.center - w * focus_dist - cam.viewport_u * 0.5 - cam.viewport_v * 0.5;
+
+    if (defocus_angle <= 0.0) {
+        cam.use_defocus = 0;
+        cam.defocus_disk_u = vec3(0.0, 0.0, 0.0);
+        cam.defocus_disk_v = vec3(0.0, 0.0, 0.0);
+    } else {
+        cam.use_defocus = 1;
+        defocus_rad = focus_dist * q_tan_small(degrees_to_radians(defocus_angle * 0.5));
+        cam.defocus_disk_u = u * defocus_rad;
+        cam.defocus_disk_v = v * defocus_rad;
+    }
+    return cam;
+}
+
+fn camera_get_ray(cam: Camera, fx_base: q16, fy_base: q16, inv_w: q16, inv_h: q16) -> Ray {
+    let rx: q16;
+    let ry: q16;
+    let disk: vec3;
+    let fx: q16;
+    let fy: q16;
+    let pixel_sample: vec3;
+    let ray_origin: vec3;
+    let ray: Ray;
+
+    rx = rand_q16();
+    ry = rand_q16();
+    fx = fx_base + rx * inv_w;
+    fy = fy_base + ry * inv_h;
+    pixel_sample = cam.viewport_upper_left + cam.viewport_u * fx + cam.viewport_v * fy;
+
+    ray_origin = cam.center;
+    if (cam.use_defocus != 0) {
+        disk = random_in_unit_disk();
+        ray_origin = cam.center + cam.defocus_disk_u * disk.x + cam.defocus_disk_v * disk.y;
+    }
+    ray.o = ray_origin;
+    ray.d = vec3_unit_big(pixel_sample - ray_origin);
+    return ray;
+}
+
+fn ray_color(initial_ray: Ray) -> vec3 {
+    let current_ray: Ray;
+    let throughput: vec3;
+    let hit_idx: i32;
+    let hit_t: q16;
+    let p: vec3;
+    let normal: vec3;
+    let scatter_dir: vec3;
+    let scatter: ScatterResult;
+    let a: q16;
+    let sky: vec3;
+
+    current_ray = initial_ray;
+    throughput = vec3(1.0, 1.0, 1.0);
+
+    for depth in 0..MAX_DEPTH {
+        // 地面 (64) と 64球 (0..63) を 35 クロックで一括ハードウェア判定
+        hit_idx = accel_hit(
+            current_ray.o.x, current_ray.o.y, current_ray.o.z,
+            current_ray.d.x, current_ray.d.y, current_ray.d.z,
+            Q_EPS, Q_INF
+        );
+
+        if (hit_idx < 0) {
+            a = 0.5 * (current_ray.d.y + 1.0);
+            sky = vec3(
+                1.0 * (1.0 - a) + 0.5 * a,
+                1.0 * (1.0 - a) + 0.7 * a,
+                1.0 * (1.0 - a) + 1.0 * a
+            );
+            return throughput <*> sky;
+        }
+
+        hit_t = accel_t();
+
+        if (hit_idx == NUM_SPHERES) {
+            // 地面ヒット時: HitRecord 構造体を経由せず直接 Lambertian 散乱を計算
+            p = ray_at(current_ray, hit_t);
+            normal = vec3_unit(vec3(
+                p.x * 0.001,
+                1.0 + p.y * 0.001,
+                p.z * 0.001
+            ));
+            scatter_dir = normal + random_unit_vector();
+            if (vec3_near_zero(scatter_dir) != 0) {
+                scatter_dir = normal;
+            }
+            current_ray = make_ray(p, scatter_dir);
+            throughput = throughput <*> vec3(0.5, 0.5, 0.5);
+        } else {
+            scatter = scatter_sphere(hit_idx, current_ray, hit_t);
+            if (scatter.did_scatter == 0) {
+                return vec3(0.0, 0.0, 0.0);
+            }
+            throughput = throughput <*> scatter.attenuation;
+            current_ray = scatter.scattered;
+        }
+    }
+    return vec3(0.0, 0.0, 0.0);
+}
+
+fn color_to_byte(linear_value: q16) -> i32 {
+    let gamma_value: q16;
+    let clamped: q16;
+    if (linear_value <= 0.0) {
+        return 0;
+    }
+    gamma_value = sqrt(linear_value);
+    clamped = qmin(gamma_value, 0.999);
+    return i32(clamped * 256);
+}
+
+fn write_pixel(color: vec3) -> void {
+    bprint(color_to_byte(color.x));
+    bprint(color_to_byte(color.y));
+    bprint(color_to_byte(color.z));
+}
+
+fn camera_render(seed: i32, cam: Camera) -> void {
+    let pixel_acc: vec3;
+    let ray_sample: Ray;
+    let sample_color: vec3;
+    let avg_color: vec3;
+    let inv_w: q16;
+    let inv_h: q16;
+    let inv_spp: q16;
+    let fx_base: q16;
+    let fy_base: q16;
+
+    rng_seed(seed);
+    inv_w = rcp(q16(WIDTH));
+    inv_h = rcp(q16(HEIGHT));
+    inv_spp = rcp(q16(SAMPLES_PER_PIXEL));
+
+    print("P6\n320 180\n255\n");
+    for j in 0..HEIGHT {
+        fy_base = ratio_i32(j, HEIGHT);
+        for i in 0..WIDTH {
+            fx_base = ratio_i32(i, WIDTH);
+            pixel_acc = vec3(0.0, 0.0, 0.0);
+            for sample_index in 0..SAMPLES_PER_PIXEL {
+                ray_sample = camera_get_ray(cam, fx_base, fy_base, inv_w, inv_h);
+                sample_color = ray_color(ray_sample);
+                pixel_acc = pixel_acc + sample_color;
+            }
+            avg_color = pixel_acc * inv_spp;
+            write_pixel(avg_color);
+        }
+    }
+}
+
+fn main() -> void {
+    let cam: Camera;
+    init_accel_spheres();
+    cam = camera_init();
+    camera_render(42, cam);
+}
+

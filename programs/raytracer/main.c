@@ -1,6 +1,10 @@
-#include "../../ref/qmath.h"
+// gcc -O3 main.c -o render_c && ./render_c > golden_c.ppm
+// gcc -DGENERATE_SCENE main.c -o gen_scene && ./gen_scene <seed_num>
+
+#include "/home/lyra/raysc-v/ref/qmath.h"
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 typedef int32_t q16;
 typedef int32_t i32;
@@ -26,13 +30,16 @@ typedef int32_t i32;
 #define IMAGE_WIDTH 320
 #endif
 #ifndef IMAGE_HEIGHT
-#define IMAGE_HEIGHT 240
+#define IMAGE_HEIGHT 180
 #endif
 #ifndef SAMPLES_PER_PIXEL
 #define SAMPLES_PER_PIXEL 100
 #endif
 #ifndef MAX_DEPTH
 #define MAX_DEPTH 20
+#endif
+#ifndef SEED
+#define SEED 42
 #endif
 
 typedef struct {
@@ -93,30 +100,75 @@ static uint32_t g_rng_state = UINT32_C(42);
    Q16_CONST(param)}
 
 #ifdef USE_FULL_SCENE
-/* ./gen_scene > scene_const.inc で生成した488個の全シーンデータを読み込む場合
- */
 #include "scene_const.inc"
 #else
-/* デフォルトの固定シーンデータ (3大球 + 代表的な周囲の12球 = 15球) */
-#define NUM_SPHERES 15
+
+#define NUM_SPHERES 64
 static const Sphere SPHERES[NUM_SPHERES] = {
-    /* 中央の3つの大きな球 (ガラス・拡散・金属) */
-    SPH_INIT(0.0, 1.0, 0.0, 1.0, MAT_DIELECTRIC, 1.00, 1.00, 1.00, 1.50),
-    SPH_INIT(-4.0, 1.0, 0.0, 1.0, MAT_LAMBERTIAN, 0.40, 0.20, 0.10, 0.00),
-    SPH_INIT(4.0, 1.0, 0.0, 1.0, MAT_METAL, 0.70, 0.60, 0.50, 0.00),
-    /* 周囲の固定小球 */
-    SPH_INIT(5.4, 0.2, 1.2, 0.2, MAT_LAMBERTIAN, 0.65, 0.05, 0.05, 0.00),
-    SPH_INIT(6.8, 0.2, 0.8, 0.2, MAT_DIELECTRIC, 1.00, 1.00, 1.00, 1.50),
-    SPH_INIT(7.2, 0.2, 2.5, 0.2, MAT_LAMBERTIAN, 0.12, 0.45, 0.15, 0.00),
-    SPH_INIT(3.1, 0.2, 2.1, 0.2, MAT_METAL, 0.80, 0.85, 0.88, 0.10),
-    SPH_INIT(1.8, 0.2, 1.6, 0.2, MAT_LAMBERTIAN, 0.20, 0.30, 0.80, 0.00),
-    SPH_INIT(2.5, 0.2, -1.4, 0.2, MAT_LAMBERTIAN, 0.75, 0.55, 0.10, 0.00),
-    SPH_INIT(5.8, 0.2, -1.2, 0.2, MAT_METAL, 0.85, 0.65, 0.50, 0.20),
-    SPH_INIT(8.3, 0.2, 1.5, 0.2, MAT_LAMBERTIAN, 0.45, 0.10, 0.60, 0.00),
-    SPH_INIT(4.5, 0.2, 3.2, 0.2, MAT_DIELECTRIC, 1.00, 1.00, 1.00, 1.50),
-    SPH_INIT(-1.5, 0.2, 1.8, 0.2, MAT_LAMBERTIAN, 0.70, 0.25, 0.15, 0.00),
-    SPH_INIT(-2.2, 0.2, -1.5, 0.2, MAT_METAL, 0.60, 0.75, 0.65, 0.05),
-    SPH_INIT(6.2, 0.2, 3.8, 0.2, MAT_LAMBERTIAN, 0.15, 0.60, 0.55, 0.00)};
+    SPH_INIT(0.00, 1.00, 0.00, 1.00, 2, 1.00, 1.00, 1.00, 1.50),
+    SPH_INIT(-4.00, 1.00, 0.00, 1.00, 0, 0.50, 0.90, 1.00, 0.00),
+    SPH_INIT(4.00, 1.00, 0.00, 1.00, 1, 0.80, 0.70, 0.60, 0.00),
+    SPH_INIT(-5.68, 0.20, -3.72, 0.20, 2, 1.00, 1.00, 1.00, 1.50),
+    SPH_INIT(6.86, 0.20, 3.37, 0.20, 1, 0.87, 0.46, 0.47, 0.14),
+    SPH_INIT(-7.90, 0.20, -0.49, 0.20, 0, 0.09, 0.09, 0.90, 0.00),
+    SPH_INIT(6.19, 0.20, -0.04, 0.20, 2, 1.00, 1.00, 1.00, 1.50),
+    SPH_INIT(-8.13, 0.20, -2.10, 0.20, 0, 0.15, 0.90, 0.23, 0.00),
+    SPH_INIT(-3.54, 0.20, 1.71, 0.20, 0, 0.86, 0.83, 0.07, 0.00),
+    SPH_INIT(7.53, 0.20, 1.77, 0.20, 1, 0.37, 0.90, 0.49, 0.05),
+    SPH_INIT(-6.02, 0.20, 0.66, 0.20, 0, 0.87, 0.69, 0.06, 0.00),
+    SPH_INIT(1.48, 0.20, 1.55, 0.20, 2, 1.00, 1.00, 1.00, 1.50),
+    SPH_INIT(-0.44, 0.20, 2.15, 0.20, 2, 1.00, 1.00, 1.00, 1.50),
+    SPH_INIT(7.84, 0.20, -0.29, 0.20, 1, 0.95, 0.46, 0.90, 0.04),
+    SPH_INIT(7.96, 0.20, 1.13, 0.20, 0, 0.11, 0.94, 0.51, 0.00),
+    SPH_INIT(-7.17, 0.20, 2.23, 0.20, 2, 1.00, 1.00, 1.00, 1.50),
+    SPH_INIT(-3.50, 0.20, 3.07, 0.20, 0, 0.88, 0.10, 0.15, 0.00),
+    SPH_INIT(-4.94, 0.20, -1.37, 0.20, 0, 0.13, 0.87, 0.65, 0.00),
+    SPH_INIT(5.71, 0.20, 1.48, 0.20, 1, 0.28, 0.87, 0.88, 0.14),
+    SPH_INIT(-7.55, 0.20, 0.94, 0.20, 0, 0.10, 0.87, 0.16, 0.00),
+    SPH_INIT(-4.70, 0.20, 1.25, 0.20, 1, 0.40, 0.89, 0.81, 0.15),
+    SPH_INIT(3.31, 0.20, -1.03, 0.20, 0, 0.28, 0.06, 0.92, 0.00),
+    SPH_INIT(7.07, 0.20, -3.62, 0.20, 2, 1.00, 1.00, 1.00, 1.50),
+    SPH_INIT(1.08, 0.20, -1.13, 0.20, 1, 0.86, 0.82, 0.36, 0.12),
+    SPH_INIT(8.13, 0.20, -3.04, 0.20, 0, 0.16, 0.90, 0.74, 0.00),
+    SPH_INIT(5.08, 0.20, 0.61, 0.20, 1, 0.42, 0.95, 0.75, 0.16),
+    SPH_INIT(-1.92, 0.20, -0.43, 0.20, 1, 0.34, 0.94, 0.60, 0.16),
+    SPH_INIT(-7.83, 0.20, 2.91, 0.20, 0, 0.43, 0.16, 0.87, 0.00),
+    SPH_INIT(4.38, 0.20, 1.72, 0.20, 1, 0.46, 0.50, 0.95, 0.08),
+    SPH_INIT(-1.02, 0.20, 2.72, 0.20, 0, 0.86, 0.09, 0.95, 0.00),
+    SPH_INIT(8.38, 0.20, 2.52, 0.20, 0, 0.65, 0.88, 0.10, 0.00),
+    SPH_INIT(6.15, 0.20, -1.04, 0.20, 0, 0.13, 0.85, 0.20, 0.00),
+    SPH_INIT(-5.80, 0.20, 1.68, 0.20, 1, 0.86, 0.42, 0.58, 0.09),
+    SPH_INIT(-0.17, 0.20, -1.50, 0.20, 0, 0.05, 0.82, 0.93, 0.00),
+    SPH_INIT(-4.10, 0.20, -3.27, 0.20, 0, 0.77, 0.87, 0.08, 0.00),
+    SPH_INIT(1.01, 0.20, -2.68, 0.20, 0, 0.05, 0.86, 0.44, 0.00),
+    SPH_INIT(0.61, 0.20, 2.69, 0.20, 0, 0.66, 0.07, 0.91, 0.00),
+    SPH_INIT(-1.43, 0.20, 0.39, 0.20, 0, 0.62, 0.92, 0.07, 0.00),
+    SPH_INIT(-3.83, 0.20, -1.97, 0.20, 2, 1.00, 1.00, 1.00, 1.50),
+    SPH_INIT(6.02, 0.20, 3.76, 0.20, 1, 0.92, 0.61, 0.46, 0.14),
+    SPH_INIT(2.36, 0.20, -0.42, 0.20, 1, 0.83, 0.91, 0.42, 0.05),
+    SPH_INIT(4.13, 0.20, -2.13, 0.20, 0, 0.87, 0.06, 0.31, 0.00),
+    SPH_INIT(-2.05, 0.20, 3.52, 0.20, 0, 0.93, 0.13, 0.37, 0.00),
+    SPH_INIT(9.00, 0.20, -3.38, 0.20, 0, 0.06, 0.87, 0.71, 0.00),
+    SPH_INIT(1.93, 0.20, 3.07, 0.20, 1, 0.56, 0.93, 0.46, 0.02),
+    SPH_INIT(-2.26, 0.20, -2.64, 0.20, 0, 0.49, 0.05, 0.89, 0.00),
+    SPH_INIT(-4.48, 0.20, 3.58, 0.20, 1, 0.73, 0.30, 0.91, 0.01),
+    SPH_INIT(-1.12, 0.20, 1.67, 0.20, 0, 0.85, 0.06, 0.61, 0.00),
+    SPH_INIT(3.47, 0.20, 2.92, 0.20, 0, 0.90, 0.64, 0.09, 0.00),
+    SPH_INIT(-2.06, 0.20, 2.73, 0.20, 0, 0.71, 0.90, 0.14, 0.00),
+    SPH_INIT(-5.37, 0.20, -2.22, 0.20, 0, 0.54, 0.07, 0.89, 0.00),
+    SPH_INIT(6.57, 0.20, 1.91, 0.20, 2, 1.00, 1.00, 1.00, 1.50),
+    SPH_INIT(8.94, 0.20, 0.73, 0.20, 0, 0.25, 0.89, 0.09, 0.00),
+    SPH_INIT(5.16, 0.20, -0.59, 0.20, 0, 0.85, 0.09, 0.05, 0.00),
+    SPH_INIT(7.21, 0.20, 2.52, 0.20, 0, 0.93, 0.87, 0.09, 0.00),
+    SPH_INIT(-6.80, 0.20, -1.17, 0.20, 0, 0.64, 0.93, 0.09, 0.00),
+    SPH_INIT(0.95, 0.20, -3.45, 0.20, 0, 0.82, 0.88, 0.08, 0.00),
+    SPH_INIT(-2.54, 0.20, 0.00, 0.20, 1, 0.93, 0.29, 0.60, 0.14),
+    SPH_INIT(-6.16, 0.20, -0.35, 0.20, 0, 0.30, 0.88, 0.04, 0.00),
+    SPH_INIT(-8.42, 0.20, -3.22, 0.20, 0, 0.89, 0.05, 0.23, 0.00),
+    SPH_INIT(7.48, 0.20, -2.21, 0.20, 0, 0.95, 0.09, 0.37, 0.00),
+    SPH_INIT(-7.67, 0.20, -3.01, 0.20, 2, 1.00, 1.00, 1.00, 1.50),
+    SPH_INIT(0.35, 0.20, 3.71, 0.20, 0, 0.07, 0.96, 0.87, 0.00),
+    SPH_INIT(-7.26, 0.20, -2.18, 0.20, 0, 0.06, 0.24, 0.86, 0.00)};
 #endif
 
 static inline void bprint(const i32 byte_val) {
@@ -124,7 +176,6 @@ static inline void bprint(const i32 byte_val) {
 }
 
 static inline void print_p6_header(const i32 width, const i32 height) {
-  /* P6 header for the configured render dimensions. */
   printf("P6\n%d %d\n255\n", (int)width, (int)height);
 }
 
@@ -152,9 +203,6 @@ static inline q16 q_rcp(const q16 a) { return (q16)q16_rcp((uint32_t)a); }
 
 static inline q16 q_div(const q16 a, const q16 b) { return q_mul(a, q_rcp(b)); }
 
-/* RayQ's ratio_i32(n, d): return the Q16.16 encoding of n/d by
- * dividing the raw numerator (n << 16) as an integer. In this renderer the
- * arguments are nonnegative coordinates/dimensions and d is strictly > 0. */
 static inline q16 ratio_i32(const i32 n, const i32 d) {
   const uint32_t raw_numerator = ((uint32_t)n) << 16;
   return (q16)(raw_numerator / (uint32_t)d);
@@ -162,7 +210,6 @@ static inline q16 ratio_i32(const i32 n, const i32 d) {
 
 static inline q16 q_sqrt(const q16 a) { return (q16)q16_sqrt((uint32_t)a); }
 
-/* Integer square root: floor(sqrt(n)), for n > 0. */
 static uint64_t isqrt_u64_floor(uint64_t n) {
   uint64_t x = n;
   uint64_t y = (x + 1U) / 2U;
@@ -173,11 +220,6 @@ static uint64_t isqrt_u64_floor(uint64_t n) {
   return x;
 }
 
-/* RayQ rsqrt definition for a positive Q16.16 raw value a:
- *   floor(2^24 / sqrt(a_raw))
- * This is the raw Q16.16 result. Compute it exactly with integer arithmetic:
- * floor(sqrt(floor(2^48 / a_raw))). The zero/negative case returns 0, matching
- * the renderer's expected guard semantics and avoiding division by zero. */
 static inline q16 q_rsqrt(const q16 a) {
   uint64_t quotient;
   if (a <= 0) {
@@ -201,8 +243,6 @@ static inline q16 q_min(const q16 a, const q16 b) {
   return b;
 }
 
-/* Keep the operation order identical to main.rq: multiply by an explicit
- * Q16.16 reciprocal instead of using integer division. */
 static q16 degrees_to_radians(const q16 degrees) {
   const q16 degrees_pi = q_mul(degrees, Q16_PI);
   return q_mul(degrees_pi, q_rcp(q16_from_i32(180)));
@@ -218,9 +258,6 @@ static q16 q_tan_small(const q16 x) {
 }
 
 static i32 rng_next_i32(void) {
-  /* Work on the 32-bit bit pattern, avoiding signed overflow and
-   * implementation-defined signed right shifts. The 0x7fff mask makes this
-   * equivalent to RayQ's (x >> 17) & 32767 expression. */
   uint32_t x = g_rng_state;
   x ^= x << 13;
   x ^= (x >> 17) & UINT32_C(0x7FFF);
@@ -279,7 +316,6 @@ static inline vec3 vec3_cross(const vec3 u, const vec3 v) {
 
 static inline q16 vec3_length_squared(const vec3 v) { return vec3_dot(v, v); }
 
-/* ホットパス向け高速正規化 (ゼロベクトルガード付き) */
 static inline vec3 vec3_unit(const vec3 v) {
   const q16 lensq = vec3_length_squared(v);
   if (lensq <= Q16_ZERO) {
@@ -288,7 +324,6 @@ static inline vec3 vec3_unit(const vec3 v) {
   return vec3_scale(v, q_rsqrt(lensq));
 }
 
-/* カメラ光線等の長いベクトル向け高精度正規化 (事前スケーリング + ゼロガード) */
 static vec3 vec3_unit_big(const vec3 v) {
   vec3 s;
   i32 k;
@@ -322,7 +357,6 @@ static vec3 random_unit_vector(void) {
   vec3 p;
   q16 lensq;
   for (iter = 0; iter < 64; iter = iter + 1) {
-    /* RayQ consumes the x, y, and z random values in this order. */
     rx = random_q16_range(q_neg(Q16_ONE), Q16_ONE);
     ry = random_q16_range(q_neg(Q16_ONE), Q16_ONE);
     rz = random_q16_range(q_neg(Q16_ONE), Q16_ONE);
@@ -341,7 +375,6 @@ static vec3 random_in_unit_disk(void) {
   q16 ry;
   vec3 p;
   for (iter = 0; iter < 64; iter = iter + 1) {
-    /* RayQ consumes x before y; do not put RNG calls in C arguments. */
     rx = random_q16_range(q_neg(Q16_ONE), Q16_ONE);
     ry = random_q16_range(q_neg(Q16_ONE), Q16_ONE);
     p = make_vec3(rx, ry, Q16_ZERO);
@@ -368,10 +401,6 @@ static inline vec3 vec3_refract(const vec3 uv, const vec3 n,
   return vec3_add(r_out_perp, r_out_parallel);
 }
 
-/* ============================================================================
- * 交差判定 (独立した半径1000の地面球 hit_ground + 通常の球 hit_sphere)
- * ============================================================================
- */
 static inline Ray make_ray(const vec3 orig, const vec3 dir) {
   Ray r;
   r.o = orig;
@@ -383,9 +412,6 @@ static inline vec3 ray_at(const Ray r, const q16 t) {
   return vec3_add(r.o, vec3_scale(r.d, t));
 }
 
-/* 地面球 (中心 (0, -1000, 0), 半径 1000):
- * 独立関数に分離しつつ、t = 8 * tau のスケーリングで半径 1000
- * の曲率と水平線を厳密に再現 */
 static HitRecord hit_ground(const Ray r, const q16 t_min, const q16 t_max) {
   HitRecord rec;
   vec3 os;
@@ -460,7 +486,6 @@ static HitRecord hit_sphere(const Sphere s, const Ray r, const q16 t_min,
   oc = vec3_sub(r.o, s.c);
   b = vec3_dot(oc, r.d);
 
-  /* b >= s.r のとき、始点が球の内外どこにあっても正の交点 t > 0 は存在しない */
   if (b >= s.r) {
     return rec;
   }
@@ -478,7 +503,6 @@ static HitRecord hit_sphere(const Sphere s, const Ray r, const q16 t_min,
   sqrtd = q_sqrt(disc);
   root = q_sub(q_neg(b), sqrtd);
   if (root <= t_min || root >= t_max) {
-    /* 内部を通過する誘電体 (ガラス) のみ裏面の出口解 (-b + sqrtd) を検査する */
     if (s.mat_kind != MAT_DIELECTRIC) {
       return rec;
     }
@@ -572,7 +596,6 @@ static ScatterResult material_scatter(const Ray r_in, const HitRecord rec) {
     return res;
   }
 
-  /* MAT_DIELECTRIC */
   if (rec.front_face != 0) {
     ri = q_rcp(rec.fuzz_or_ref_idx);
   } else {
@@ -652,8 +675,6 @@ static Ray camera_get_ray(const Camera cam, const i32 i, const i32 j) {
   vec3 ray_origin;
   Ray r;
 
-  /* Match RayQ: draw two random samples first, then add separately rounded
-   * integer-coordinate ratios and reciprocal-scaled jitter. */
   rx = random_q16();
   ry = random_q16();
   fx = q_add(ratio_i32(i, IMAGE_WIDTH),
@@ -719,7 +740,6 @@ static i32 to_byte_gamma(const q16 linear_val) {
   if (linear_val <= Q16_ZERO) {
     return 0;
   }
-  /* Match RayQ: sqrt first, clamp gamma to [0, 0.999], then convert. */
   gamma_val = q_sqrt(linear_val);
   if (gamma_val < Q16_ZERO) {
     gamma_val = Q16_ZERO;
@@ -737,74 +757,226 @@ static void write_pixel(const vec3 c) {
 }
 
 #ifdef GENERATE_SCENE
-/* -DGENERATE_SCENE 指定時: 480球以上の固定 const 配列定義を生成して出力する */
-int main(void) {
-  Sphere list[512];
-  i32 count;
-  i32 a;
-  i32 b;
-  q16 choose_mat;
-  vec3 center;
-  vec3 ref_pt;
-  i32 i;
+static double rand_f01(void) { return (double)random_q16() / 65536.0; }
 
-  count = 0;
-  ref_pt = make_vec3(Q16_CONST(4.0), Q16_CONST(0.2), Q16_ZERO);
+static double round_2dec(double v) {
+  return (v >= 0.0) ? ((int)(v * 100.0 + 0.5)) / 100.0
+                    : ((int)(v * 100.0 - 0.5)) / 100.0;
+}
 
-  for (a = -11; a < 11; a = a + 1) {
-    for (b = -11; b < 11; b = b + 1) {
-      choose_mat = random_q16();
-      center = make_vec3(
-          q_add(q16_from_i32(a), q_mul(Q16_CONST(0.9), random_q16())),
-          Q16_CONST(0.2),
-          q_add(q16_from_i32(b), q_mul(Q16_CONST(0.9), random_q16())));
-      if (q_sqrt(vec3_length_squared(vec3_sub(center, ref_pt))) >
-          Q16_CONST(0.9)) {
-        list[count].c = center;
-        list[count].r = Q16_CONST(0.2);
-        list[count].r2 = q_mul(Q16_CONST(0.2), Q16_CONST(0.2));
-        if (choose_mat < Q16_CONST(0.8)) {
-          list[count].mat_kind = MAT_LAMBERTIAN;
-          list[count].albedo = make_vec3(q_mul(random_q16(), random_q16()),
-                                         q_mul(random_q16(), random_q16()),
-                                         q_mul(random_q16(), random_q16()));
-          list[count].fuzz_or_ref_idx = Q16_ZERO;
-        } else if (choose_mat < Q16_CONST(0.95)) {
-          list[count].mat_kind = MAT_METAL;
-          list[count].albedo = make_vec3(random_q16_range(Q16_HALF, Q16_ONE),
-                                         random_q16_range(Q16_HALF, Q16_ONE),
-                                         random_q16_range(Q16_HALF, Q16_ONE));
-          list[count].fuzz_or_ref_idx = random_q16_range(Q16_ZERO, Q16_HALF);
-        } else {
-          list[count].mat_kind = MAT_DIELECTRIC;
-          list[count].albedo = make_vec3(Q16_ONE, Q16_ONE, Q16_ONE);
-          list[count].fuzz_or_ref_idx = Q16_CONST(1.5);
-        }
-        count = count + 1;
+/* HSV (h: 0..1, s: 0..1, v: 0..1) から高彩度 RGB への変換 */
+static void hsv_to_rgb(double h, double s, double v, double *r, double *g,
+                       double *b) {
+  double h6 = h * 6.0;
+  int sector = (int)h6 % 6;
+  double frac = h6 - (int)h6;
+  double p = v * (1.0 - s);
+  double q = v * (1.0 - s * frac);
+  double t = v * (1.0 - s * (1.0 - frac));
+  switch (sector) {
+  case 0:
+    *r = v;
+    *g = t;
+    *b = p;
+    break;
+  case 1:
+    *r = q;
+    *g = v;
+    *b = p;
+    break;
+  case 2:
+    *r = p;
+    *g = v;
+    *b = t;
+    break;
+  case 3:
+    *r = p;
+    *g = q;
+    *b = v;
+    break;
+  case 4:
+    *r = t;
+    *g = p;
+    *b = v;
+    break;
+  default:
+    *r = v;
+    *g = p;
+    *b = q;
+    break;
+  }
+}
+
+int main(int argc, char *argv[]) {
+  uint32_t scene_seed =
+      (argc > 1) ? (uint32_t)strtoul(argv[1], NULL, 10) : (uint32_t)SEED;
+  if (scene_seed == 0)
+    scene_seed = 1;
+  g_rng_state = scene_seed;
+
+  double sx[64], sy[64], sz[64], sr[64], sr2[64], sar[64], sag[64], sab[64],
+      sparam[64];
+  int smat[64];
+
+  /* 0..2: 中央の3大球 */
+  sx[0] = 0.00;
+  sy[0] = 1.00;
+  sz[0] = 0.00;
+  sr[0] = 1.00;
+  sr2[0] = 1.00;
+  smat[0] = 2;
+  sar[0] = 1.00;
+  sag[0] = 1.00;
+  sab[0] = 1.00;
+  sparam[0] = 1.50;
+  sx[1] = -4.00;
+  sy[1] = 1.00;
+  sz[1] = 0.00;
+  sr[1] = 1.00;
+  sr2[1] = 1.00;
+  smat[1] = 0;
+  sar[1] = 0.50;
+  sag[1] = 0.90;
+  sab[1] = 1.00;
+  sparam[1] = 0.00;
+  sx[2] = 4.00;
+  sy[2] = 1.00;
+  sz[2] = 0.00;
+  sr[2] = 1.00;
+  sr2[2] = 1.00;
+  smat[2] = 1;
+  sar[2] = 0.80;
+  sag[2] = 0.70;
+  sab[2] = 0.60;
+  sparam[2] = 0.00;
+
+  int count = 3;
+  while (count < 64) {
+    double cx = round_2dec(-8.50 + 17.50 * rand_f01());
+    double cz = round_2dec(-3.80 + 7.60 * rand_f01());
+
+    /* 3大球との衝突回避 (距離^2 >= 1.25) */
+    double d0 = (cx - 0.0) * (cx - 0.0) + cz * cz;
+    double d1 = (cx + 4.0) * (cx + 4.0) + cz * cz;
+    double d2 = (cx - 4.0) * (cx - 4.0) + cz * cz;
+    if (d0 < 1.25 || d1 < 1.25 || d2 < 1.25)
+      continue;
+
+    /* 小球同士の密集回避 (距離^2 >= 0.56) */
+    int overlap = 0;
+    for (int j = 3; j < count; j++) {
+      double dx = cx - sx[j];
+      double dz = cz - sz[j];
+      if (dx * dx + dz * dz < 0.56) {
+        overlap = 1;
+        break;
       }
     }
-  }
-  /* 3大球を追加 */
-  list[count] =
-      (Sphere)SPH_INIT(0.0, 1.0, 0.0, 1.0, MAT_DIELECTRIC, 1.0, 1.0, 1.0, 1.5);
-  count = count + 1;
-  list[count] =
-      (Sphere)SPH_INIT(-4.0, 1.0, 0.0, 1.0, MAT_LAMBERTIAN, 0.4, 0.2, 0.1, 0.0);
-  count = count + 1;
-  list[count] =
-      (Sphere)SPH_INIT(4.0, 1.0, 0.0, 1.0, MAT_METAL, 0.7, 0.6, 0.5, 0.0);
-  count = count + 1;
+    if (overlap)
+      continue;
 
-  printf("#define NUM_SPHERES %d\n", (int)count);
-  printf("static const Sphere SPHERES[NUM_SPHERES] = {\n");
-  for (i = 0; i < count; i = i + 1) {
-    printf("    { { %d, %d, %d }, %d, %d, %d, { %d, %d, %d }, %d }%s\n",
-           (int)list[i].c.x, (int)list[i].c.y, (int)list[i].c.z, (int)list[i].r,
-           (int)list[i].r2, (int)list[i].mat_kind, (int)list[i].albedo.x,
-           (int)list[i].albedo.y, (int)list[i].albedo.z,
-           (int)list[i].fuzz_or_ref_idx, (i + 1 < count) ? "," : "");
+    sx[count] = cx;
+    sy[count] = 0.20;
+    sz[count] = cz;
+    sr[count] = 0.20;
+    sr2[count] = 0.04;
+
+    double choose_mat = rand_f01();
+    double h = rand_f01();
+    double r_col, g_col, b_col;
+
+    if (choose_mat < 0.65) {
+      /* Lambertian: 彩度 S in [0.82, 0.95], 明度 V in [0.85, 0.96]
+       * の高彩度カラー */
+      double sat = 0.82 + 0.13 * rand_f01();
+      double val = 0.85 + 0.11 * rand_f01();
+      hsv_to_rgb(h, sat, val, &r_col, &g_col, &b_col);
+      smat[count] = 0;
+      sar[count] = round_2dec(r_col);
+      sag[count] = round_2dec(g_col);
+      sab[count] = round_2dec(b_col);
+      sparam[count] = 0.00;
+    } else if (choose_mat < 0.88) {
+      /* Metal: 彩度 S in [0.45, 0.70], 明度 V in [0.85, 0.96]
+       * の鮮やかな色付き金属 */
+      double sat = 0.45 + 0.25 * rand_f01();
+      double val = 0.85 + 0.11 * rand_f01();
+      hsv_to_rgb(h, sat, val, &r_col, &g_col, &b_col);
+      smat[count] = 1;
+      sar[count] = round_2dec(r_col);
+      sag[count] = round_2dec(g_col);
+      sab[count] = round_2dec(b_col);
+      sparam[count] = round_2dec(0.16 * rand_f01());
+    } else {
+      /* Dielectric */
+      smat[count] = 2;
+      sar[count] = 1.00;
+      sag[count] = 1.00;
+      sab[count] = 1.00;
+      sparam[count] = 1.50;
+    }
+    count++;
   }
-  printf("};\n");
+
+  FILE *fc = fopen("scene_const.inc", "w");
+  if (fc) {
+    fprintf(fc, "#define NUM_SPHERES 64\n");
+    fprintf(fc, "static const Sphere SPHERES[NUM_SPHERES] = {\n");
+    for (int k = 0; k < 64; k++) {
+      fprintf(fc,
+              "    SPH_INIT(%.2f, %.2f, %.2f, %.2f, %d, %.2f, %.2f, %.2f, "
+              "%.2f)%s\n",
+              sx[k], sy[k], sz[k], sr[k], smat[k], sar[k], sag[k], sab[k],
+              sparam[k], (k == 63) ? "" : ",");
+    }
+    fprintf(fc, "};\n");
+    fclose(fc);
+  }
+
+  FILE *frq = fopen("scene_rq.inc", "w");
+  if (frq) {
+#define DUMP_Q16(name, arr)                                                    \
+  do {                                                                         \
+    fprintf(frq, "const %s: [q16; 64] = [\n", name);                           \
+    for (int i = 0; i < 64; i++) {                                             \
+      if (i % 8 == 0)                                                          \
+        fprintf(frq, "    ");                                                  \
+      fprintf(frq, "%.2f%s", arr[i], (i == 63) ? "" : ", ");                   \
+      if (i % 8 == 7 || i == 63)                                               \
+        fprintf(frq, "\n");                                                    \
+    }                                                                          \
+    fprintf(frq, "];\n\n");                                                    \
+  } while (0)
+
+#define DUMP_I32(name, arr)                                                    \
+  do {                                                                         \
+    fprintf(frq, "const %s: [i32; 64] = [\n", name);                           \
+    for (int i = 0; i < 64; i++) {                                             \
+      if (i % 8 == 0)                                                          \
+        fprintf(frq, "    ");                                                  \
+      fprintf(frq, "%d%s", arr[i], (i == 63) ? "" : ", ");                     \
+      if (i % 8 == 7 || i == 63)                                               \
+        fprintf(frq, "\n");                                                    \
+    }                                                                          \
+    fprintf(frq, "];\n\n");                                                    \
+  } while (0)
+
+    DUMP_Q16("SPHERE_X", sx);
+    DUMP_Q16("SPHERE_Y", sy);
+    DUMP_Q16("SPHERE_Z", sz);
+    DUMP_Q16("SPHERE_R", sr);
+    DUMP_Q16("SPHERE_R2", sr2);
+    DUMP_I32("SPHERE_MAT", smat);
+    DUMP_Q16("SPHERE_AR", sar);
+    DUMP_Q16("SPHERE_AG", sag);
+    DUMP_Q16("SPHERE_AB", sab);
+    DUMP_Q16("SPHERE_PARAM", sparam);
+    fclose(frq);
+  }
+
+  printf("Generated high-saturation scene (seed=%u) -> 'scene_const.inc' & "
+         "'scene_rq.inc'\n",
+         scene_seed);
   return 0;
 }
 #else
@@ -816,6 +988,8 @@ int main(void) {
   vec3 pixel_acc;
   Ray r;
   vec3 avg_color;
+
+  g_rng_state = (uint32_t)SEED;
 
   cam = camera_init(
       Q16_CONST(20.0), make_vec3(Q16_CONST(13.0), Q16_TWO, Q16_CONST(3.0)),

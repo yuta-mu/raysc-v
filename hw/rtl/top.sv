@@ -1,4 +1,20 @@
-module top (
+module top #(
+    parameter bit    ENABLE_M            = 1'b1,
+    parameter bit    ENABLE_DIV          = 1'b1,
+    parameter bit    ENABLE_ZBB          = 1'b1,
+    parameter bit    ENABLE_CUSTOM0      = 1'b1,
+    parameter bit    ENABLE_QMUL         = 1'b1,
+    parameter bit    ENABLE_QSQRT        = 1'b1,
+    parameter bit    ENABLE_QRSQRT       = 1'b1,
+    parameter bit    ENABLE_QRCP         = 1'b1,
+    parameter bit    ENABLE_QRAND        = 1'b1,
+    parameter bit    ENABLE_SPHERE_ACCEL = 1'b1,
+    parameter bit    PIPE_MUL            = 1'b0,
+    parameter bit    MUL_STALL           = 1'b1,
+    parameter bit    QMUL_STALL          = 1'b1,
+    parameter int    CLK_DIV             = 16,
+    parameter        INIT_FILE           = "boot.hex"
+)(
     input  logic       CLK100MHZ, // Arty A7 100MHz 水晶発振器 (Pin E3)
     input  logic       ck_rst,    // RESET ボタン (Pin C2, Active-Low)
     output logic       uart_tx,   // FTDI USB-UART TX ピン (Pin D10)
@@ -11,6 +27,8 @@ module top (
     output logic vga_hsync, // 水平同期信号
     output logic vga_vsync // 垂直同期信号
 );
+
+    localparam int CLK_FREQ_HZ = 800_000_000 / CLK_DIV;
 
     // 入力バッファ
     logic clk_100m_ibuf;
@@ -36,7 +54,7 @@ module top (
         .CLKFBOUT_MULT(8),        // 100MHz * 8 = 800MHz (VCO 動作範囲: 800-1600MHz)
         .CLKFBOUT_PHASE(0.0),
         .CLKIN1_PERIOD(10.0),     // 入力 100MHz (10.0ns)
-        .CLKOUT0_DIVIDE(16),      // 800MHz / 16 = 50MHz 出力
+        .CLKOUT0_DIVIDE(CLK_DIV), // 800MHz / CLK_DIV (既定 16 -> 50MHz 出力)
         .CLKOUT0_DUTY_CYCLE(0.5),
         .CLKOUT0_PHASE(0.0),
         .DIVCLK_DIVIDE(1),
@@ -81,8 +99,8 @@ module top (
     localparam logic [31:0] MEM_BYTES     = 32'h0004_0000; // 256 KB
     localparam logic [31:0] UART_ADDR     = 32'h1000_0000;
     localparam logic [31:0] CYCLE_ADDR    = 32'h2000_0000;
-    localparam logic [31:0] INSTRET_ADDR  = 32'h2000_0004;
-    localparam logic [31:0] CYCLEH_ADDR   = 32'h2000_0008;
+    localparam logic [31:0] CYCLEH_ADDR   = 32'h2000_0004;
+    localparam logic [31:0] INSTRET_ADDR  = 32'h2000_0008;
     localparam logic [31:0] INSTRETH_ADDR = 32'h2000_000C;
 
     logic [31:0] pc, inst;
@@ -95,13 +113,28 @@ module top (
     logic [63:0] instret;
     logic        retire;
 
-    cpu u_cpu (.*);
+    cpu #(
+        .ENABLE_M            (ENABLE_M),
+        .ENABLE_DIV          (ENABLE_DIV),
+        .ENABLE_ZBB          (ENABLE_ZBB),
+        .ENABLE_CUSTOM0      (ENABLE_CUSTOM0),
+        .ENABLE_QMUL         (ENABLE_QMUL),
+        .ENABLE_QSQRT        (ENABLE_QSQRT),
+        .ENABLE_QRSQRT       (ENABLE_QRSQRT),
+        .ENABLE_QRCP         (ENABLE_QRCP),
+        .ENABLE_QRAND        (ENABLE_QRAND),
+        .ENABLE_SPHERE_ACCEL (ENABLE_SPHERE_ACCEL),
+        .PIPE_MUL            (PIPE_MUL),
+        .MUL_STALL           (MUL_STALL),
+        .QMUL_STALL          (QMUL_STALL)
+    ) u_cpu (.*);
 
     logic [31:0] bram_rdata;
     wire is_bram = (mem_addr < MEM_BYTES);
 
     bram #(
-        .MEM_WORDS(65536)
+        .MEM_WORDS(65536),
+        .INIT_FILE(INIT_FILE)
     ) u_bram (
         .clk     (clk),
         .a_addr  (pc),
@@ -148,7 +181,7 @@ module top (
     );
 
     uart_tx_fifo #(
-        .CLK_FREQ   (50_000_000),
+        .CLK_FREQ   (CLK_FREQ_HZ),
         .BAUD_RATE  (115_200),
         .FIFO_DEPTH (512)
     ) u_uart (
@@ -164,6 +197,18 @@ module top (
     logic        mem_read_d;
     logic [31:0] mmio_rdata_d;
 
+    wire is_counter = (mem_addr[31:28] == 4'h2); // 0x2000_0000 空間
+    logic [31:0] counter_rdata;
+
+    always_comb begin
+        case (mem_addr[3:2])
+            2'b00: counter_rdata = cycles[31:0];
+            2'b01: counter_rdata = cycles[63:32];
+            2'b10: counter_rdata = instret[31:0];
+            2'b11: counter_rdata = instret[63:32];
+        endcase
+    end
+
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             mem_addr_d   <= '0;
@@ -172,13 +217,8 @@ module top (
         end else begin
             mem_addr_d    <= mem_addr;
             mem_read_d    <= mem_read;
-            case (mem_addr)
-                CYCLE_ADDR:    mmio_rdata_d <= cycles[31:0];
-                INSTRET_ADDR:  mmio_rdata_d <= instret[31:0];
-                CYCLEH_ADDR:   mmio_rdata_d <= cycles[63:32];
-                INSTRETH_ADDR: mmio_rdata_d <= instret[63:32];
-                default:       mmio_rdata_d <= 32'h0;
-            endcase
+            if (mem_read && is_counter) mmio_rdata_d <= counter_rdata;
+            else mmio_rdata_d <= 32'h0;
         end
     end
 

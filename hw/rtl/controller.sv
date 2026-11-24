@@ -1,6 +1,10 @@
 `include "rv32i_types.svh"
 
-module controller (
+module controller #(
+    parameter bit ENABLE_M       = 1'b1,
+    parameter bit ENABLE_ZBB     = 1'b1,
+    parameter bit ENABLE_CUSTOM0 = 1'b1
+)(
     input  opcode_t      opcode,
     input  logic [2:0]   funct3,
     input  logic [6:0]   funct7,
@@ -19,7 +23,10 @@ module controller (
 
     alu_op_mode_t alu_op_mode;
 
-    control u_control (
+    control #(
+        .ENABLE_M       (ENABLE_M),
+        .ENABLE_CUSTOM0 (ENABLE_CUSTOM0)
+    ) u_control (
         .opcode     (opcode),
         .funct7     (funct7),
         .branch_en  (branch_en),
@@ -33,10 +40,12 @@ module controller (
         .reg_write  (reg_write)
     );
 
-    alu_control u_alu_control (
+    alu_control #(
+        .ENABLE_ZBB (ENABLE_ZBB)
+    ) u_alu_control (
         .alu_op   (alu_op_mode),
         .funct3   (funct3),
-        .funct7_5 (funct7[5]),
+        .funct7   (funct7),
         .alu_ctrl (alu_op)
     );
 

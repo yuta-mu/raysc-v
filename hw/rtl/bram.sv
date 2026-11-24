@@ -2,7 +2,7 @@
 
 module bram #(
     parameter int MEM_WORDS = 65536,
-    parameter string INIT_FILE = "C:/Users/nadu0/rv32i-core/build/programs/raytracer/main.hex"
+    parameter     INIT_FILE = "boot.hex"
 )(
     input  logic        clk,
     // Port A: IF
@@ -23,16 +23,19 @@ module bram #(
     logic [31:0] mem [0:MEM_WORDS-1];
 
     initial begin
-        if (INIT_FILE != "") begin
+        if (INIT_FILE != "" && INIT_FILE != "NONE") begin
             $readmemh(INIT_FILE, mem);
         end
     end
 
+    (* dont_touch = "true" *) wire a_word_msb = a_addr[ADDR_WIDTH+1];
+    (* dont_touch = "true" *) wire b_word_msb = b_addr[ADDR_WIDTH+1];
+
     logic [ADDR_WIDTH-1:0] a_word_addr;
     logic [ADDR_WIDTH-1:0] b_word_addr;
 
-    assign a_word_addr = a_addr[ADDR_WIDTH+1:2];
-    assign b_word_addr = b_addr[ADDR_WIDTH+1:2];
+    assign a_word_addr = {a_word_msb, a_addr[ADDR_WIDTH:2]};
+    assign b_word_addr = {b_word_msb, b_addr[ADDR_WIDTH:2]};
 
     always_ff @(posedge clk) begin
         a_rdata <= mem[a_word_addr];
