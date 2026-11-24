@@ -7,27 +7,39 @@ let eval_bin op (a : int32) (b : int32) : int32 =
   match op with
   | Add  -> add a b
   | Sub  -> sub a b
-  | Shl  -> shl a b
-  | Sra  -> sra a b
-  | And  -> logand a b
-  | Or   -> logor a b
   | Xor  -> logxor a b
+  | Or   -> logor a b
+  | And  -> logand a b
+  | Sll  -> sll a b
+  | Srl  -> srl a b
+  | Sra  -> sra a b
+  | Slt  -> slt a b
+  | Sltu -> sltu a b
   | Eq   -> eq a b
   | Ne   -> ne a b
   | Lt   -> lt a b
   | Le   -> le a b
   | Gt   -> gt a b
   | Ge   -> ge a b
+  | Ltu  -> ltu a b
+  | Leu  -> leu a b
+  | Gtu  -> gtu a b
+  | Geu  -> geu a b
   | Mul  -> mul a b
+  | Mulh -> mulh a b
+  | Mulhsu -> mulhsu a b
+  | Mulhu -> mulhu a b
   | Div  -> div a b
+  | Divu -> divu a b
   | Rem  -> rem a b
-  | Min  -> min a b
-  | Max  -> max a b
-  | Minu -> minu a b
-  | Maxu -> maxu a b
+  | Remu -> remu a b
   | Andn -> andn a b
   | Orn  -> orn a b
   | Xnor -> xnor a b
+  | Max  -> max a b
+  | Maxu -> maxu a b
+  | Min  -> min a b
+  | Minu -> minu a b
   | QMul -> qmul a b
 
 (* 単項演算の答え *)
@@ -38,9 +50,9 @@ let eval_un op (a : int32) : int32 =
   | Clz    -> clz a
   | Sext_b -> sext_b a
   | Sext_h -> sext_h a
-  | Sqrt   -> qsqrt a
-  | Rsqrt  -> qrsqrt a
-  | Rcp    -> qrcp a
+  | QSqrt  -> qsqrt a
+  | QRsqrt -> qrsqrt a
+  | QRcp   -> qrcp a
 
 (*命令iが読むvregをfで置きかえる(書くvregはそのまま)*)
 let subst_uses f (i : instr) : instr =
@@ -57,8 +69,6 @@ let subst_uses f (i : instr) : instr =
       AccelSetSphere (f i, f x, f y, f z, f r, f r2, f m)
   | AccelHit (d, ox, oy, oz, dx, dy, dz, tmin, tmax) ->
       AccelHit (d, f ox, f oy, f oz, f dx, f dy, f dz, f tmin, f tmax)
-  | Qabs (d, a) -> Qabs (d, f a)                            
-  | Qclamp (d, a, b, c) -> Qclamp (d, f a, f b, f c)  
 
 let fold_block (b : block) : block = 
   let known = Hashtbl.create 16 in (*vreg番号→値をメモ*)

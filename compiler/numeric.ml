@@ -1,47 +1,65 @@
 let wrap_i64 x = Int64.to_int32 x
 let sx32 u = Int64.of_int32 u
+let u32_to_i64 x =
+  Int64.logand (sx32 x) 0xFFFFFFFFL
 
 (* I *)
 let add a b = Int32.add a b
 let sub a b = Int32.sub a b
-let shl a b = Int32.shift_left a (Int32.to_int b land 31)
-let sra a b = Int32.shift_right a (Int32.to_int b land 31)
-let logand a b = Int32.logand a b
-let logor a b = Int32.logor a b
 let logxor a b = Int32.logxor a b
+let logor a b = Int32.logor a b
+let logand a b = Int32.logand a b
+let sll a b = Int32.shift_left a (Int32.to_int b land 31)
+let srl a b = Int32.shift_right_logical a (Int32.to_int b land 31)
+let sra a b = Int32.shift_right a (Int32.to_int b land 31)
+let slt a b = if Int32.compare a b < 0 then 1l else 0l
+let sltu a b = if Int32.unsigned_compare a b < 0 then 1l else 0l
 let eq a b = if a = b then 1l else 0l
 let ne a b = if a <> b then 1l else 0l
 let lt a b = if Int32.compare a b < 0 then 1l else 0l
 let le a b = if Int32.compare a b <= 0 then 1l else 0l
 let gt a b = if Int32.compare a b > 0 then 1l else 0l
 let ge a b = if Int32.compare a b >= 0 then 1l else 0l
+let ltu a b = if Int32.unsigned_compare a b < 0 then 1l else 0l
+let leu a b = if Int32.unsigned_compare a b <= 0 then 1l else 0l
+let gtu a b = if Int32.unsigned_compare a b > 0 then 1l else 0l
+let geu a b = if Int32.unsigned_compare a b >= 0 then 1l else 0l
 
 let neg a = Int32.neg a
 let lognot a = Int32.logxor a 1l
 
 (* Im *)
 let mul a b = Int32.mul a b
+let mulh a b =
+  let p = Int64.mul (sx32 a) (sx32 b) in
+  wrap_i64 (Int64.shift_right_logical p 32)
+let mulhsu a b =
+  let p = Int64.mul (sx32 a) (u32_to_i64 b) in
+  wrap_i64 (Int64.shift_right_logical p 32)
+let mulhu a b =
+  let p = Int64.mul (u32_to_i64 a) (u32_to_i64 b) in
+  wrap_i64 (Int64.shift_right_logical p 32)
 let div a b =
   if b = 0l then -1l
   else if a = Int32.min_int && b = -1l then Int32.min_int
   else Int32.div a b
+let divu a b =
+  if b = 0l then -1l else Int32.unsigned_div a b
 let rem a b =
   if b = 0l then a
   else if a = Int32.min_int && b = -1l then 0l
   else Int32.rem a b
+let remu a b =
+  if b = 0l then a else Int32.unsigned_rem a b
 
 (* Im_zbb *)
-let ucmp a b =
-  Int64.compare (Int64.logand (sx32 a) 0xFFFFFFFFL)
-                (Int64.logand (sx32 b) 0xFFFFFFFFL)
-
-let min a b = if Int32.compare a b < 0 then a else b
-let max a b = if Int32.compare a b > 0 then a else b
-let minu a b = if ucmp a b < 0 then a else b
-let maxu a b = if ucmp a b > 0 then a else b
 let andn a b = Int32.logand a (Int32.lognot b)
 let orn a b  = Int32.logor a (Int32.lognot b)
 let xnor a b = Int32.lognot (Int32.logxor a b)
+let max a b = if Int32.compare a b > 0 then a else b
+let maxu a b = if Int32.unsigned_compare a b > 0 then a else b
+let min a b = if Int32.compare a b < 0 then a else b
+let minu a b = if Int32.unsigned_compare a b < 0 then a else b
 
 let clz x =
   if x = 0l then 32l
