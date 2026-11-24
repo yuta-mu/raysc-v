@@ -25,17 +25,6 @@ let all_builtins = [
   { name = "q16"; param_types = [I32]; ret_type = Q16; kind = B_Cast_q16 };
   { name = "i32"; param_types = [Q16]; ret_type = I32; kind = B_Cast_i32 };
 
-  (* Im -> I で使用する命令 *)
-  { name = "srl"; param_types = [I32; I32]; ret_type = I32; kind = B_Binop Srl };
-  { name = "qsrl"; param_types = [Q16; I32]; ret_type = Q16; kind = B_Binop Srl };
-  { name = "ltu"; param_types = [I32; I32]; ret_type = I32; kind = B_Binop Ltu };
-  { name = "geu"; param_types = [I32; I32]; ret_type = I32; kind = B_Binop Geu };
-
-  (* Math *)
-  { name = "sqrt";  param_types = [Q16]; ret_type = Q16; kind = B_Unop Sqrt };
-  { name = "rsqrt"; param_types = [Q16]; ret_type = Q16; kind = B_Unop Rsqrt };
-  { name = "rcp";   param_types = [Q16]; ret_type = Q16; kind = B_Unop Rcp };
-
   (* Volatile 命令 *)
   { name = "cycles"; param_types = [];    ret_type = I32; kind = B_Supplier Cycles };
   { name = "bprint"; param_types = [I32]; ret_type = Void;     kind = B_Consumer Bprint };
@@ -58,12 +47,169 @@ let all_builtins = [
     kind = B_Supplier AccelT };
 ]
 
-(* 名前から組み込み関数を検索 *)
+(* ハードウェア二項演算命令のマスタデータ *)
+let hw_binops : (string * Ir.binop) list = [
+  ("srl",    Srl);
+  ("slt",    Slt);
+  ("sltu",   Sltu);
+  ("ltu",    Ltu);
+  ("leu",    Leu);
+  ("gtu",    Gtu);
+  ("geu",    Geu);
+  ("mulh",   Mulh);
+  ("mulhsu", Mulhsu);
+  ("mulhu",  Mulhu);
+  ("divu",   Divu);
+  ("remu",   Remu);
+  ("maxu",   Maxu);
+  ("minu",   Minu);
+]
+
+(* ハードウェア単項演算命令のマスタデータ *)
+let hw_unops : (string * Ir.unop) list = [
+  ("sext_b", Sext_b);
+  ("sext_h", Sext_h);
+]
+
+(* 名前から組み込み関数, ハードウェア命令を検索 *)
 let lookup name =
   List.find_opt (fun b -> b.name = name) all_builtins
+let lookup_hw_binop name = List.assoc_opt name hw_binops
+let lookup_hw_unop  name = List.assoc_opt name hw_unops
 
 (* 標準ライブラリ *)
 let stdlib_source = {|
+// Math -> Im
+fn sqrt(a: i32) -> i32 {
+    let rem: i32;
+    let root: i32;
+    let i: i32;
+
+    if (a <= 0) { return 0; }
+
+    rem = 0;
+    root = 0;
+    i = 23;
+    while (i >= 0) {
+        let bits: i32 = 0;
+        if (i >= 8) {
+            bits = __hw_binop("srl", a, (i - 8) << 1) & 3;
+        }
+        rem = (rem << 2) | bits;
+        let trial: i32 = (root << 2) | 1;
+        if (__hw_binop("geu", rem, trial) != 0) {
+            rem = rem - trial;
+            root = (root << 1) | 1;
+        } else {
+            root = root << 1;
+        }
+        i = i - 1;
+    }
+    return root;
+}
+
+fn rsqrt(a: i32) -> i32 {
+    let r: i32;
+    let q_hi: i32;
+    let i: i32;
+    let q_lo: i32;
+    let j: i32;
+    let rem: i32;
+    let root: i32;
+    let k: i32;
+
+    if (a <= 0) { return 0; }
+    if (a == 1) { return 0x01000000; } // sqrt(2^48) = 2^24
+
+    // Step 1: 48bit 商 quotient = floor(2^48 / a) を (q_hi: 上位16bit, q_lo: 下位32bit) に計算
+    r = 1;
+    q_hi = 0;
+    i = 15;
+    while (i >= 0) {
+        r = r << 1;
+        if (__hw_binop("geu", r, a) != 0) {
+            r = r - a;
+            q_hi = q_hi | (1 << i);
+        }
+        i = i - 1;
+    }
+
+    q_lo = 0;
+    j = 31;
+    while (j >= 0) {
+        r = r << 1;
+        if (__hw_binop("geu", r, a) != 0) {
+            r = r - a;
+            q_lo = q_lo | (1 << j);
+        }
+        j = j - 1;
+    }
+
+    // Step 2: 48bit 値 (q_hi, q_lo) のビット単位開平法 (24回)
+    rem = 0;
+    root = 0;
+    k = 23;
+    while (k >= 0) {
+        let bits: i32 = 0;
+        if (k >= 16) {
+            bits = __hw_binop("srl", q_hi, (k - 16) << 1) & 3;
+        } else {
+            bits = __hw_binop("srl", q_lo, k << 1) & 3;
+        }
+        rem = (rem << 2) | bits;
+        let trial: i32 = (root << 2) | 1;
+        if (__hw_binop("geu", rem, trial) != 0) {
+            rem = rem - trial;
+            root = (root << 1) | 1;
+        } else {
+            root = root << 1;
+        }
+        k = k - 1;
+    }
+    return root;
+}
+
+fn rcp(a: i32) -> i32 {
+    let neg: i32;
+    let u: i32;
+    let r: i32;
+    let q: i32;
+    let i: i32;
+
+    if (a == 0) { return 0x7FFFFFFF; }
+    if (a == 0x80000000) { return -2; }
+
+    neg = 0;
+    u = a;
+    if (u < 0) {
+        u = -u;
+        neg = 1;
+    }
+    // |a| <= 2 の場合は 32bit 符号付き整数で表現可能な範囲を超えるため飽和
+    if (u <= 2) {
+        if (neg != 0) {
+            if (u == 2) { return 0x80000000; }
+            return 0x80000000;
+        }
+        return 0x7FFFFFFF;
+    }
+
+    r = 1;
+    q = 0;
+    i = 31;
+    while (i >= 0) {
+        r = r << 1;
+        if (__hw_binop("geu", r, u) != 0) {
+            r = r - u;
+            q = q | (1 << i);
+        }
+        i = i - 1;
+    }
+
+    if (neg != 0) { return -q; }
+    return q;
+}
+
 // Im_zbb -> Im
 
 fn min(a: i32, b: i32) -> i32 {
@@ -80,14 +226,6 @@ fn qmin(a: q16, b: q16) -> q16 {
 
 fn qmax(a: q16, b: q16) -> q16 {
     if (a > b) { return a; } else { return b; }
-}
-
-fn minu(a: i32, b: i32) -> i32 {
-    if (ltu(a, b) != 0) { return a; } else { return b; }
-}
-
-fn maxu(a: i32, b: i32) -> i32 {
-    if (ltu(b, a) != 0) { return a; } else { return b; }
 }
 
 fn andn(a: i32, b: i32) -> i32 {
@@ -111,7 +249,7 @@ fn clz(x: i32) -> i32 {
     mask = 0x80000000;
     while ((x & mask) == 0) {
         count = count + 1;
-        mask = srl(mask, 1);
+        mask = __hw_binop("srl", mask, 1);
     }
     return count;
 }
@@ -125,17 +263,9 @@ fn qclz(x: q16) -> i32 {
     mask = q16(0x80000000);
     while ((x & mask) == 0.0) {
         count = count + 1;
-        mask = qsrl(mask, 1);
+        mask = __hw_binop("srl", mask, 1);
     }
     return count;
-}
-
-fn sext_b(a: i32) -> i32 {
-    return (a << 24) >> 24;
-}
-
-fn sext_h(a: i32) -> i32 {
-    return (a << 16) >> 16;
 }
 
 fn qabs(x: q16) -> q16 {
@@ -161,7 +291,7 @@ fn __mul(a: i32, b: i32) -> i32 {
             res = res + multiplicand;
         }
         multiplicand = multiplicand << 1;
-        multiplier = srl(multiplier, 1);
+        multiplier = __hw_binop("srl", multiplier, 1);
     }
     return res;
 }
@@ -181,24 +311,24 @@ fn __mulhu(a: i32, b: i32) -> i32 {
     let carry2: i32;
 
     a_lo = a & 0xFFFF;
-    a_hi = srl(a, 16);
+    a_hi = __hw_binop("srl", a, 16);
     b_lo = b & 0xFFFF;
-    b_hi = srl(b, 16);
+    b_hi = __hw_binop("srl", b, 16);
 
     p0 = __mul(a_lo, b_lo);
     p1 = __mul(a_lo, b_hi);
     p2 = __mul(a_hi, b_lo);
     p3 = __mul(a_hi, b_hi);
 
-    mid1 = p1 + srl(p0, 16);
+    mid1 = p1 + __hw_binop("srl", p0, 16);
     carry1 = 0;
-    if (ltu(mid1, p1) != 0) { carry1 = 0x10000; }
+    if (__hw_binop("ltu", mid1, p1) != 0) { carry1 = 0x10000; }
 
     mid2 = mid1 + p2;
     carry2 = 0;
-    if (ltu(mid2, mid1) != 0) { carry2 = 0x10000; }
+    if (__hw_binop("ltu", mid2, mid1) != 0) { carry2 = 0x10000; }
 
-    return p3 + srl(mid2, 16) + carry1 + carry2;
+    return p3 + __hw_binop("srl", mid2, 16) + carry1 + carry2;
 }
 
 fn __mulh(a: i32, b: i32) -> i32 {
@@ -216,7 +346,7 @@ fn __qmul(a: i32, b: i32) -> i32 {
 
     lo = __mul(a, b);
     hi = __mulh(a, b);
-    return srl(lo, 16) | (hi << 16);
+    return __hw_binop("srl", lo, 16) | (hi << 16);
 }
 
 fn __udiv_rem(n: i32, d: i32, is_rem: i32) -> i32 {
@@ -232,8 +362,8 @@ fn __udiv_rem(n: i32, d: i32, is_rem: i32) -> i32 {
     i = 31;
     while (i >= 0) {
         r = r << 1;
-        r = r | (srl(n, i) & 1);
-        if (geu(r, d) != 0) {
+        r = r | (__hw_binop("srl", n, i) & 1);
+        if (__hw_binop("geu", r, d) != 0) {
             r = r - d;
             q = q | (1 << i);
         }
