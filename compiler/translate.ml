@@ -98,12 +98,6 @@ let compile (ctx : Semant.context) : Ir.program =
       for i = 0 to n - 1 do emit_i (Ir.Un (op, d + i, a + i)) done;
       d
     in
-    (* 組み込み関数用 (sqrt, rsqrt, rcp) *)
-    let intr f a =
-      let d = fresh 1 in
-      emit_i (Ir.Intr (f, d, a));
-      d
-    in
     (* vec3 * q16 : 各成分に同じスカラー k を QMul する *)
     let vec3_scale v k =
       let d = fresh 3 in
@@ -123,11 +117,11 @@ let compile (ctx : Semant.context) : Ir.program =
     in
     (* 配列の要素アドレスを計算する *)
     (* base + idx * elem_bytes *)
-    (* 要素サイズが 2 の冪なら Shl, そうでなければ Mul を用いる *)
+    (* 要素サイズが 2 の冪なら Sll, そうでなければ Mul を用いる *)
     let index_addr base idx elem_bytes =
       let off =
         match log2_exact elem_bytes with
-        | Some k -> bin Ir.Shl idx (const_i32 (Int32.of_int k))
+        | Some k -> bin Ir.Sll idx (const_i32 (Int32.of_int k))
         | None -> bin Ir.Mul idx (const_i32 (Int32.of_int elem_bytes))
       in
       bin Ir.Add base off
@@ -269,151 +263,67 @@ let compile (ctx : Semant.context) : Ir.program =
       | Call ("print", [{ desc = Literal (LString s); _ }]) -> print_literal s
       | Call ("print", _) ->
           Semant.fail ~loc:(Some e.loc) "print takes a string literal directly"
-      (* 組み込み関数 bprint *)
-      | Call ("bprint", [x]) ->
-          let sx = expr x in
-          emit_i (Ir.Consumer (Bprint, sx));
-          fresh 0
-      (* 組み込み関数 *)
-      | Call ("cycles", []) ->
-          let d = fresh 1 in
-          emit_i (Ir.Supplier (Cycles, d));
-          d
-      (* キャスト *)
-      | Call ("q16", [x]) -> let sx = expr x in bin Ir.Sll sx (const_i32 16l)
-      | Call ("i32", [x]) -> let sx = expr x in bin Ir.Sra sx (const_i32 16l)
-      (* 特殊命令組み込み関数 (sqrt, rsqrt, rcp) *)
-      | Call ("sqrt", [x]) -> intr Ir.QSqrt (expr x)
-      | Call ("rsqrt", [x]) -> intr Ir.QRsqrt (expr x)
-      | Call ("rcp", [x]) -> intr Ir.QRcp (expr x)
-      (* zbb 組み込み関数 *)
-      | Call (("min" | "qmin"), [x; y]) ->
-          let d = fresh 1 in
-          let sx = expr x in
-          let sy = expr y in
-          emit_i (Ir.Bin (Min, d, sx, sy));
-          d
-      | Call (("max" | "qmax"), [x; y]) ->
-          let d = fresh 1 in
-          let sx = expr x in
-          let sy = expr y in
-          emit_i (Ir.Bin (Max, d, sx, sy));
-          d
-      | Call ("minu", [x; y]) ->
-          let d = fresh 1 in
-          let sx = expr x in
-          let sy = expr y in
-          emit_i (Ir.Bin (Minu, d, sx, sy));
-          d
-      | Call ("maxu", [x; y]) ->
-          let d = fresh 1 in
-          let sx = expr x in
-          let sy = expr y in
-          emit_i (Ir.Bin (Maxu, d, sx, sy));
-          d
-      | Call ("andn", [x; y]) ->
-          let d = fresh 1 in
-          let sx = expr x in
-          let sy = expr y in
-          emit_i (Ir.Bin (Andn, d, sx, sy));
-          d
-      | Call ("orn", [x; y]) ->
-          let d = fresh 1 in
-          let sx = expr x in
-          let sy = expr y in
-          emit_i (Ir.Bin (Orn, d, sx, sy));
-          d
-      | Call ("xnor", [x; y]) ->
-          let d = fresh 1 in
-          let sx = expr x in
-          let sy = expr y in
-          emit_i (Ir.Bin (Xnor, d, sx, sy));
-          d
-      | Call (("clz" | "qclz"), [x]) ->
-          let d = fresh 1 in
-          emit_i (Ir.Un (Clz, d, expr x));
-          d
-      | Call ("sext_b", [x]) ->
-          let d = fresh 1 in
-          emit_i (Ir.Un (Sext_b, d, expr x));
-          d
-      | Call ("sext_h", [x]) ->
-          let d = fresh 1 in
-          emit_i (Ir.Un (Sext_h, d, expr x));
-          d
-      | Call ("qabs", [x]) ->
-          let d = fresh 1 in
-          emit_i (Ir.Qabs (d, expr x));
-          d
-      | Call ("qclamp", [x; y; z]) ->
-          let d = fresh 1 in
-          let sx = expr x in
-          let sy = expr y in
-          let sz = expr z in
-          emit_i (Ir.Qclamp (d, sx, sy, sz));
-          d
-      (* アクセラレータ組み込み関数 *)
-      | Call ("accel_set_sphere", [ei; ex; ey; ez; er; er2; em]) ->
-                let d = fresh 1 in
-          let vi  = expr ei in
-          let vx  = expr ex in
-          let vy  = expr ey in
-          let vz  = expr ez in
-          let vr  = expr er in
-          let vr2 = expr er2 in
-          let vm  = expr em in
-          emit_i (Ir.AccelSetSphere (vi, vx, vy, vz, vr, vr2, vm));
-          d
-      | Call ("accel_hit", [eox; eoy; eoz; edx; edy; edz; etmin; etmax]) ->
-                let d = fresh 1 in
-          let vox   = expr eox in
-          let voy   = expr eoy in
-          let voz   = expr eoz in
-          let vdx   = expr edx in
-          let vdy   = expr edy in
-          let vdz   = expr edz in
-          let vtmin = expr etmin in
-          let vtmax = expr etmax in
-          emit_i (Ir.AccelHit (d, vox, voy, voz, vdx, vdy, vdz, vtmin, vtmax));
-          d
-      | Call ("accel_t", []) ->
-          let d = fresh 1 in
-          emit_i (Ir.Supplier (AccelT, d));
-          d
-      (* 乱数命令組み込み関数 *)
-      | Call ("qseed", [es]) ->
-          let vs = expr es in
-          emit_i (Ir.Consumer (Qseed, vs));
-          fresh 0
-      | Call ("qrand", []) ->
-          let d = fresh 1 in
-          emit_i (Ir.Supplier (Qrand, d));
-          d
-      | Call ("qrands", []) ->
-          let d = fresh 1 in
-          emit_i (Ir.Supplier (Qrands, d));
-          d
+
+      (* ハードウェア命令 *)
+      | Call ("__hw_binop", [{ desc = Literal (LString op_name); _ }; a; b]) ->
+          (match Builtins.lookup_hw_binop op_name with
+           | Some op ->
+               let sa = expr a in
+               let sb = expr b in
+               bin op sa sb
+           | None -> Semant.fail ~loc:(Some e.loc) ("unknown hw_binop: " ^ op_name))
+      | Call ("__hw_unop", [{ desc = Literal (LString op_name); _ }; a]) ->
+          (match Builtins.lookup_hw_unop op_name with
+           | Some op ->
+               let sa = expr a in
+               un_words op 1 sa
+           | None -> Semant.fail ~loc:(Some e.loc) ("unknown hw_unop: " ^ op_name))
+
       (* 一般の呼び出し *)
       | Call (n, args) ->
           let srcs = map_ltr expr args in
-          (match Hashtbl.find_opt ctx.Semant.structs n with
-           | Some fields ->
-               (* 構造体コンストラクタ *)
-               gather (List.map2 (fun f s -> (s, words_of f.field_type)) fields srcs)
+          (match Builtins.lookup n with
+           | Some b ->
+               (* builtins *)
+               (match b.kind, srcs with
+                | B_Binop op, [a; b] -> bin op a b
+                | B_Unop op, [a] -> un_words op 1 a
+                | B_Cast_q16, [a] -> bin Ir.Sll a (const_i32 16l)
+                | B_Cast_i32, [a] -> bin Ir.Sra a (const_i32 16l)
+                | B_Consumer op, [a] ->
+                    emit_i (Ir.Consumer (op, a));
+                    fresh 0
+                | B_Supplier op, [] ->
+                    let d = fresh 1 in
+                    emit_i (Ir.Supplier (op, d));
+                    d
+                | B_AccelSetSphere, [vi; vx; vy; vz; vr; vr2; vm] ->
+                    emit_i (Ir.AccelSetSphere (vi, vx, vy, vz, vr, vr2, vm));
+                    fresh 0
+                | B_AccelHit, [vox; voy; voz; vdx; vdy; vdz; vtmin; vtmax] ->
+                    let d = fresh 1 in
+                    emit_i (Ir.AccelHit (d, vox, voy, voz, vdx, vdy, vdz, vtmin, vtmax));
+                    d
+                | _ -> invalid_arg ("translate: builtin arity mismatch for " ^ n))
            | None ->
-               (* ユーザー定義関数呼び出し *)
-               let callee = Hashtbl.find ctx.Semant.functions n in
-               (* 各引数の vreg を 1 ワードずつに平坦化した引数リストを作成 *)
-               let flat =
-                 List.concat
-                   (List.map2
-                      (fun p s -> List.init (words_of p.param_type) (fun i -> s + i))
-                      callee.Semant.params srcs)
-               in
-               let w = words_of callee.Semant.ret_type in   (* 戻り値のワード数 (void なら 0) *)
-               let d = fresh w in
-               emit_i (Ir.Call (List.init w (fun i -> d + i), n, flat));
-               d)
+               (match Hashtbl.find_opt ctx.Semant.structs n with
+                | Some fields ->
+                    (* 構造体コンストラクタ *)
+                    gather (List.map2 (fun f s -> (s, words_of f.field_type)) fields srcs)
+                | None ->
+                    (* ユーザー定義関数呼び出し *)
+                    let callee = Hashtbl.find ctx.Semant.functions n in
+                    (* 各引数の vreg を 1 ワードずつに平坦化した引数リストを作成 *)
+                    let flat =
+                      List.concat
+                        (List.map2
+                           (fun p s -> List.init (words_of p.param_type) (fun i -> s + i))
+                           callee.Semant.params srcs)
+                    in
+                    let w = words_of callee.Semant.ret_type in   (* 戻り値のワード数 (void なら 0) *)
+                    let d = fresh w in
+                    emit_i (Ir.Call (List.init w (fun i -> d + i), n, flat));
+                    d))
 
       (* フィールドアクセス, 配列アクセス *)
       | Field _ | Index _ -> load_place (place_of e) (words_of (type_of e))
