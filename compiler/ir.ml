@@ -59,9 +59,6 @@ type instr =
   | Supplier of supp * vreg
   | AccelSetSphere of vreg * vreg * vreg * vreg * vreg * vreg * vreg
   | AccelHit of vreg * vreg * vreg * vreg * vreg * vreg * vreg * vreg * vreg
-  (*組み込み関数*)
-  | Qabs of vreg * vreg
-  | Qclamp of vreg * vreg * vreg * vreg
 
 (*基本ブロックの終端*)
 type terminator =
@@ -97,7 +94,7 @@ let string_of_binop = function
   | Sll -> "sll" | Srl -> "srl" | Sra -> "sra" | Slt -> "slt" | Sltu -> "sltu"
   | Eq -> "eq" | Ne -> "ne" | Lt -> "lt" | Le -> "le" | Gt -> "gt" | Ge -> "ge"
   | Ltu -> "ltu" | Leu -> "leu" | Gtu -> "gtu" | Geu -> "geu"
-  | Mul -> "mul" | Mulh -> "mulh" | Mulhst -> "mulhst" | Mulhu -> "mulhu"
+  | Mul -> "mul" | Mulh -> "mulh" | Mulhsu -> "mulhsu" | Mulhu -> "mulhu"
   | Div -> "div" | Divu -> "divu" | Rem -> "rem" | Remu -> "remu"
   | Andn -> "andn" | Orn -> "orn" | Xnor -> "xnor"
   | Max -> "max" | Maxu -> "maxu" | Min -> "min" | Minu -> "minu"
@@ -141,8 +138,6 @@ let string_of_instr = function
   | AccelHit (d, ox, oy, oz, dx, dy, dz, tmin, tmax) ->
       Printf.sprintf "%s = accel_hit(%s, %s, %s, %s, %s, %s, %s, %s)"
         (v d) (v ox) (v oy) (v oz) (v dx) (v dy) (v dz) (v tmin) (v tmax)
-  | Qabs (d, a)         -> Printf.sprintf "%s = qabs(%s)" (v d) (v a)
-  | Qclamp (d, a, b, c) -> Printf.sprintf "%s = qclamp(%s, %s, %s)" (v d) (v a) (v b) (v c)
 
 let string_of_term = function
   | Jump t              -> Printf.sprintf "jump %s" (l t)
@@ -207,8 +202,7 @@ let blocks_of_items (items : item list) : block list =
   let defs = function
   | Const (d, _) | Move (d, _) | Bin (_, d, _, _) | Un (_, d, _)
   | AddrLocal (d, _) | AddrGlobal (d, _) | Load (d, _, _, _)
-  | Supplier (_, d) | AccelHit (d, _, _, _, _, _, _, _, _)
-  | Qabs (d, _) | Qclamp (d, _, _, _) -> [d]
+  | Supplier (_, d) | AccelHit (d, _, _, _, _, _, _, _, _) -> [d]
   | Call (rs, _, _) -> rs
   | Store _ | Consumer _ | AccelSetSphere _ -> []
 
@@ -216,10 +210,9 @@ let blocks_of_items (items : item list) : block list =
 let uses = function
   | Const _ | AddrLocal _ | AddrGlobal _ | Supplier _ -> []
   | Move (_, a) | Un (_, _, a)| Load (_, _, a, _)
-  | Consumer (_, a) | Qabs (_, a) -> [a]
+  | Consumer (_, a) -> [a]
   | Bin (_, _, a, b) -> [a; b]
   | Store (_, a, _, s) -> [a; s]
-  | Qclamp (_, a, b, c) -> [a; b; c]
   | AccelSetSphere (i, x, y, z, r, r2, m) -> [i; x; y; z; r; r2; m]
   | AccelHit (_, ox, oy, oz, dx, dy, dz, tmin, tmax) -> [ox; oy; oz; dx; dy; dz; tmin; tmax]
   | Call (_, _, args) -> args
