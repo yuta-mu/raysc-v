@@ -21,7 +21,7 @@ let rec words_of_const = function
 (* Mul, And, Or, Dot は専用の処理が必要なため invalid_arg とする *)
 let ir_binop : Ast.binop -> Ir.binop = function
   | Add -> Ir.Add | Sub -> Ir.Sub | Div -> Ir.Div | Mod -> Ir.Rem
-  | Shl -> Ir.Shl | Shr -> Ir.Sra
+  | Shl -> Ir.Sll | Shr -> Ir.Sra
   | BitAnd -> Ir.And | BitOr -> Ir.Or | BitXor -> Ir.Xor
   | Eq -> Ir.Eq | Ne -> Ir.Ne | Lt -> Ir.Lt | Le -> Ir.Le
   | Gt -> Ir.Gt | Ge -> Ir.Ge
@@ -280,12 +280,12 @@ let compile (ctx : Semant.context) : Ir.program =
           emit_i (Ir.Supplier (Cycles, d));
           d
       (* キャスト *)
-      | Call ("q16", [x]) -> let sx = expr x in bin Ir.Shl sx (const_i32 16l)
+      | Call ("q16", [x]) -> let sx = expr x in bin Ir.Sll sx (const_i32 16l)
       | Call ("i32", [x]) -> let sx = expr x in bin Ir.Sra sx (const_i32 16l)
       (* 特殊命令組み込み関数 (sqrt, rsqrt, rcp) *)
-      | Call ("sqrt", [x]) -> intr Ir.Sqrt (expr x)
-      | Call ("rsqrt", [x]) -> intr Ir.Rsqrt (expr x)
-      | Call ("rcp", [x]) -> intr Ir.Rcp (expr x)
+      | Call ("sqrt", [x]) -> intr Ir.QSqrt (expr x)
+      | Call ("rsqrt", [x]) -> intr Ir.QRsqrt (expr x)
+      | Call ("rcp", [x]) -> intr Ir.QRcp (expr x)
       (* zbb 組み込み関数 *)
       | Call (("min" | "qmin"), [x; y]) ->
           let d = fresh 1 in

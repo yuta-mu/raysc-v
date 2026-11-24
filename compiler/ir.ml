@@ -5,15 +5,16 @@ type label = int         (*基本ブロック番号*)
 type binop =
   (* I *)
   | Add | Sub
-  | Shl | Srl | Sra
-  | And | Or | Xor
+  | Xor | Or | And
+  | Sll | Srl | Sra | Slt | Sltu
   | Eq | Ne | Lt | Le | Gt | Ge   (* 符号付き比較。結果は 0 か 1(bool) *)
   | Ltu | Leu | Gtu | Geu
   (* Im *)
-  | Mul | Mulh | Div | Rem   
+  | Mul | Mulh | Mulhsu | Mulhu
+  | Div | Divu | Rem | Remu
   (* Im_zbb *)
-  | Min | Max | Minu | Maxu
   | Andn | Orn | Xnor
+  | Max | Maxu | Min | Minu
   (* Math *)
   | QMul  
 
@@ -25,7 +26,7 @@ type unop =
   (* Im_zbb *)
   | Clz | Sext_b | Sext_h
   (* Math *)
-  | Sqrt | Rsqrt | Rcp
+  | QSqrt | QRsqrt | QRcp
 
 (* 1入力 -> 0出力 の volatile な命令 *)
 type cons = Bprint | Qseed
@@ -92,19 +93,20 @@ type program = {
 
 (* ダンプ(--dump-ir) *)
 let string_of_binop = function
-  | Add -> "add" | Sub -> "sub" | Shl -> "shl" | Srl -> "srl" | Sra -> "sra"
-  | And -> "and" | Or -> "or" | Xor -> "xor"
+  | Add -> "add" | Sub -> "sub" | Xor -> "xor" | Or -> "or" | And -> "and"
+  | Sll -> "sll" | Srl -> "srl" | Sra -> "sra" | Slt -> "slt" | Sltu -> "sltu"
   | Eq -> "eq" | Ne -> "ne" | Lt -> "lt" | Le -> "le" | Gt -> "gt" | Ge -> "ge"
   | Ltu -> "ltu" | Leu -> "leu" | Gtu -> "gtu" | Geu -> "geu"
-  | Mul -> "mul" | Mulh -> "mulh" | Div -> "div" | Rem -> "rem" 
-  | Min -> "min" | Max -> "max" | Minu -> "minu" | Maxu -> "maxu"
+  | Mul -> "mul" | Mulh -> "mulh" | Mulhst -> "mulhst" | Mulhu -> "mulhu"
+  | Div -> "div" | Divu -> "divu" | Rem -> "rem" | Remu -> "remu"
   | Andn -> "andn" | Orn -> "orn" | Xnor -> "xnor"
+  | Max -> "max" | Maxu -> "maxu" | Min -> "min" | Minu -> "minu"
   | QMul -> "qmul"
 
 let string_of_unop = function
   | Neg -> "neg" | Not -> "not"
   | Clz -> "clz" | Sext_b -> "sext.b" | Sext_h -> "sext.h"
-  | Sqrt -> "sqrt" | Rsqrt -> "rsqrt" | Rcp -> "rcp"
+  | QSqrt -> "qsqrt" | QRsqrt -> "qrsqrt" | QRcp -> "qrcp"
 
 let string_of_cons = function Bprint -> "bprint" | Qseed -> "qseed"
 
