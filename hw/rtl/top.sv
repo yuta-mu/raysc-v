@@ -13,7 +13,9 @@ module top #(
     parameter bit    MUL_STALL           = 1'b1,
     parameter bit    QMUL_STALL          = 1'b1,
     parameter int    CLK_DIV             = 16,
-    parameter        INIT_FILE           = "boot.hex"
+    parameter        INIT_FILE           = "boot.hex",
+    parameter bit    ENABLE_VGA          = 1'b1,
+    parameter        VRAM_INIT_FILE      = ""
 )(
     input  logic       CLK100MHZ, // Arty A7 100MHz 水晶発振器 (Pin E3)
     input  logic       ck_rst,    // RESET ボタン (Pin C2, Active-Low)
@@ -147,38 +149,41 @@ module top #(
         .b_rdata (bram_rdata)
     );
 
-    // 4\. MMIO バス判定 &amp; VGA VRAM への接続
-    // ------------------------------------------------------------------------
-    wire is_vram = (mem_addr[31:28] == 4'h4); // 0x4000\_0000 帯
+    // MMIO バス判定 & VGA VRAM 接続 (0x4000_0000 帯, 320x180 RGB888)
     wire is_uart = (mem_addr == UART_ADDR);
 
-    wire        vram_we    = mem_write && is_vram;
-    wire [15:0] vram_waddr = mem_addr[17:2];  // 0 .. 57599
-    wire [23:0] vram_wdata = mem_wdata[23:0]; // RGB888
-    
-    logic clk_locked;
+    generate
+        if (ENABLE_VGA) begin : gen_vga
+            wire        is_vram    = (mem_addr[31:28] == 4'h4);
+            wire [15:0] vram_waddr = mem_addr[17:2]; // 0 .. 57599
+            wire        vram_we    = mem_write && is_vram && (vram_waddr < 16'd57600);
+            wire [23:0] vram_wdata = mem_wdata[23:0]; // [23:16]=R, [15:8]=G, [7:0]=B
+            logic       vga_clk_locked;
 
-    vga_display_v2 #(
-        .VRAM_INIT_FILE("C:/Users/nadu0/rv32i-core/hw/rtl/vram_raytracer.hex")
-        ) u_vga_display (
-        .clk_100m_ibuf (clk_100m_ibuf),
-        .clk_cpu (clk),
-        .rst_n (rst_n),
-
-        .vram_we (vram_we),
-        .vram_waddr (vram_waddr),
-        .vram_wdata (vram_wdata),
-        //.vram_we       (1'b0),
-        //.vram_waddr    (16'd0),
-        //.vram_wdata    (24'd0),
-        
-        .clk_locked (clk_locked),
-        .vga_r (vga_r),
-        .vga_g (vga_g),
-        .vga_b (vga_b),
-        .vga_hsync (vga_hsync),
-        .vga_vsync (vga_vsync)
-    );
+            vga_display_v2 #(
+                .VRAM_INIT_FILE (VRAM_INIT_FILE)
+            ) u_vga_display (
+                .clk_100m_ibuf (clk_100m_ibuf),
+                .clk_cpu       (clk),
+                .rst_n         (rst_n),
+                .vram_we       (vram_we),
+                .vram_waddr    (vram_waddr),
+                .vram_wdata    (vram_wdata),
+                .clk_locked    (vga_clk_locked),
+                .vga_r         (vga_r),
+                .vga_g         (vga_g),
+                .vga_b         (vga_b),
+                .vga_hsync     (vga_hsync),
+                .vga_vsync     (vga_vsync)
+            );
+        end else begin : gen_no_vga
+            assign vga_r     = 4'h0;
+            assign vga_g     = 4'h0;
+            assign vga_b     = 4'h0;
+            assign vga_hsync = 1'b0;
+            assign vga_vsync = 1'b0;
+        end
+    endgenerate
 
     uart_tx_fifo #(
         .CLK_FREQ   (CLK_FREQ_HZ),

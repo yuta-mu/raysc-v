@@ -33,10 +33,12 @@ hw\fpga\run_sweep.bat
 ```
 
 ※ `.hex`（`-O0`〜`-O3`）を変えても LUT / DSP / $F_{\max}$ は変わらないため、**RTL や XDC を変更しない限り再実行は不要** です。
-※ 今後 `feat/video_sub`（VGA 出力）をマージした際は、`ENABLE_VGA=1` 相当で最終 SoC 規模・$F_{\max}$ を確認するため以下を 1 回実行してください（サイクル数自体は独立 VRAM なら同一 `.hex` で不変）。
+※ `feat/video_sub`（1080p 6倍スケーラ + ディザ VGA 出力）統合済み。`ENABLE_VGA=1` 構成（`RV32IM_Zbb_C0_Accel_comb1_VGA` / `RV32IM_Zbb_C0_Accel_comb0_VGA` / `RV32IM_Zbb_C0_Accel_pipe1_VGA`）で最終 SoC 規模・$F_{\max}$ を確認するため以下を実行します（独立 VRAM なので同一 `.hex` で CPU サイクル数は原則不変）。
 
 ```bat
-hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel_pipe1 explore
+hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel_comb1_VGA explore
+hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel_comb0_VGA explore
+hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel_pipe1_VGA explore
 ```
 
 ### Step B: `.hex` 生成（コンパイラ最適化 × アクセラレータ組合せ）
@@ -113,4 +115,4 @@ python3 tools/eval_table.py --cycles cycles.csv --baseline O0_base --out-csv bui
 - [x] 全20構成の面積・Post-Route $F_{\max}$ 計測 (`hw\fpga\run_sweep.bat`)
 - [ ] `-O0` / `-O1` / `-O2` / `-O3` の `.hex` を `build_bit.bat` で差し替えて実測 `cycles` / `instret` を記録
 - [ ] `tools/eval_table.py` で発表用比較表・CSV を出力
-- [ ] `feat/video_sub`（VGA 出力）合流後、`ENABLE_VGA=1` 相当で最終 SoC リソース・$F_{\max}$ を更新（必要なら `run_sweep.bat search RV32IM_Zbb_C0_Accel_pipe1 explore`）
+- [x] `feat/video_sub`（VGA 出力）合流・`ENABLE_VGA` パラメータ化完了（`RV32IM_Zbb_C0_Accel_comb1_VGA` / `_comb0_VGA` / `_pipe1_VGA` で最終 SoC リソース・$F_{\max}$・実機画面表示を確認）

@@ -1,7 +1,7 @@
 // 320x180 VRAM (各色 8bit) + 6倍スケーラー + 6x6 ブロック内ディザ (1920x1080 フルHD出力)
 // ディザ: 各色 8bit の値を 0..540 に変換 → 閾値 (0..35) を足して 36 で割った値 (0..15) を出力
 module vga_display_v2 #(
-    parameter string VRAM_INIT_FILE = ""
+    parameter VRAM_INIT_FILE = ""
 )(
     input  logic        clk_100m_ibuf,
     input  logic        clk_cpu,

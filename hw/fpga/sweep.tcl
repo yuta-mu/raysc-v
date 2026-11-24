@@ -52,7 +52,7 @@ set pins_xdc [file join $out_root "pins_only.xdc"]
 set fin  [open $orig_xdc r]
 set fout [open $pins_xdc w]
 while {[gets $fin line] >= 0} {
-    if {[regexp {^\s*(create_clock|set_property\s+BITSTREAM)} $line]} {
+    if {[regexp {^\s*(create_clock|set_clock_groups|set_property\s+BITSTREAM)} $line]} {
         continue
     }
     puts $fout $line
@@ -133,6 +133,12 @@ proc run_pnr_pass {dcp_path period use_phys_opt strategy cfg_dir write_rpt_prefi
     }
     create_clock -name sys_clk -period $period $clk_pins
 
+    set vga_clk_pins [get_pins -quiet gen_vga.u_vga_display/u_bufg_150m/O]
+    if {[llength $vga_clk_pins] > 0} {
+        create_clock -name vga_clk -period 6.734 $vga_clk_pins
+        set_clock_groups -asynchronous -group [get_clocks sys_clk] -group [get_clocks vga_clk]
+    }
+
     if {$strategy eq "explore"} {
         place_design -directive Explore
         if {$use_phys_opt} {
@@ -194,6 +200,7 @@ foreach cfg $target_configs {
 
     set gen_args [get_config_generic_args $cfg]
     lappend gen_args -generic {INIT_FILE="NONE"}
+    lappend gen_args -generic {VRAM_INIT_FILE="NONE"}
 
     synth_design -top top -part $FPGA_PART -include_dirs [list $rtl_dir] {*}$gen_args
     if {$strategy eq "explore"} {

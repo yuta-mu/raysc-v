@@ -1,13 +1,13 @@
 # ==============================================================================
 # RaySC-V Bitstream Builder with Easy .hex Swapping & Incremental PnR
 # Usage:
-#   vivado -mode batch -source hw/fpga/build_bit.tcl -tclargs <config> <hex_path> [clk_div] [incremental]
+#   vivado -mode batch -source hw/fpga/build_bit.tcl -tclargs <config> <hex_path> [clk_div=16] [incremental=0] [vram_hex=""]
 #   Example:
 #     vivado -mode batch -source hw/fpga/build_bit.tcl -tclargs RV32IM_Zbb_C0_Accel_pipe1 build/programs/raytracer/main_ar.hex 16
 # ==============================================================================
 
 if {$argc < 2} {
-    puts "ERROR: Usage: vivado -mode batch -source hw/fpga/build_bit.tcl -tclargs <config> <hex_path> \[clk_div=16\] \[incremental=0\]"
+    puts "ERROR: Usage: vivado -mode batch -source hw/fpga/build_bit.tcl -tclargs <config> <hex_path> \[clk_div=16\] \[incremental=0\] \[vram_hex=\"\"\]"
     exit 1
 }
 
@@ -19,11 +19,15 @@ set cfg_name [lindex $argv 0]
 set hex_in   [lindex $argv 1]
 set clk_div  16
 set allow_inc 0
+set vram_in  ""
 if {$argc >= 3 && [lindex $argv 2] ne ""} {
     set clk_div [lindex $argv 2]
 }
 if {$argc >= 4 && [lindex $argv 3] eq "1"} {
     set allow_inc 1
+}
+if {$argc >= 5 && [lindex $argv 4] ne "" && [lindex $argv 4] ne "NONE"} {
+    set vram_in [lindex $argv 4]
 }
 
 if {![info exists CONFIG_PARAMS($cfg_name)]} {
@@ -42,6 +46,19 @@ if {![file exists $hex_abs]} {
     exit 1
 }
 
+set vram_abs "NONE"
+if {$vram_in ne ""} {
+    if {[file pathtype $vram_in] eq "relative"} {
+        set vram_abs [file normalize [file join $repo_root $vram_in]]
+    } else {
+        set vram_abs [file normalize $vram_in]
+    }
+    if {![file exists $vram_abs]} {
+        puts "ERROR: VRAM HEX file not found: $vram_abs"
+        exit 1
+    }
+}
+
 set hex_stem [file rootname [file tail $hex_abs]]
 set freq_mhz [format "%.2f" [expr {800.0 / $clk_div}]]
 
@@ -55,9 +72,12 @@ set xdc_file  [file join $repo_root "hw" "constraints" "arty_a7.xdc"]
 
 puts "======================================================================"
 puts "Building Bitstream"
-puts "  Config  : $cfg_name"
-puts "  HEX     : $hex_abs"
-puts "  CLK_DIV : $clk_div ($freq_mhz MHz)"
+puts "  Config   : $cfg_name"
+puts "  HEX      : $hex_abs"
+if {$vram_abs ne "NONE"} {
+    puts "  VRAM HEX : $vram_abs"
+}
+puts "  CLK_DIV  : $clk_div ($freq_mhz MHz)"
 puts "======================================================================"
 
 create_project -in_memory -part $FPGA_PART
@@ -70,8 +90,10 @@ read_xdc $xdc_file
 set gen_args [get_config_generic_args $cfg_name]
 lappend gen_args -generic "CLK_DIV=$clk_div"
 lappend gen_args -generic [format {INIT_FILE="%s"} $hex_abs]
+lappend gen_args -generic [format {VRAM_INIT_FILE="%s"} $vram_abs]
 
 synth_design -top top -part $FPGA_PART -include_dirs [list $rtl_dir] {*}$gen_args
+apply_vga_async_clock_groups
 opt_design -directive Explore
 fix_ramb36_cascade_addr15
 

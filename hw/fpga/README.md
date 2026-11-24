@@ -56,7 +56,7 @@ hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel_pipe1 explore
 | `RV32IM_Zbb_C0_Accel_comb0` | MUL+DIV | ON | 全部 | ON | `_comb0` |
 | `RV32IM_Zbb_C0_Accel_pipe1` | MUL+DIV | ON | 全部 | ON | `_pipe1` |
 
-※ `build_bit.bat` では `RV32IM_Zbb_C0_Accel_pipe1_q0`（`_pipe1_q0`、全機能 ON）も指定可能です．
+※ `build_bit.bat` では `RV32IM_Zbb_C0_Accel_pipe1_q0`（`_pipe1_q0`、全機能 ON）、および VGA 出力有効化構成（`ENABLE_VGA=1`）の `RV32IM_Zbb_C0_Accel_comb1_VGA` / `RV32IM_Zbb_C0_Accel_comb0_VGA` / `RV32IM_Zbb_C0_Accel_pipe1_VGA` も指定可能です（これら `*_VGA` 構成は `hw\fpga\run_sweep.bat search <構成名> explore` でも個別計測できます）。
 ※ `sweep` 全 20 構成をまとめて回す場合は時間がかかるため，特定構成のみを `hw\fpga\run_sweep.bat search <構成名>` で個別追加計測することもできます(`summary.csv` の該当行を上書き・追記します)．
 
 ### 結果の確認
@@ -74,12 +74,20 @@ hw\fpga\run_sweep.bat search RV32IM_Zbb_C0_Accel_pipe1 explore
 ## 2. 任意の `.hex` を埋め込んでビットストリーム生成 (高速差し替え対応)
 
 ```bat
-:: 50 MHz (CLK_DIV=16) でビットストリームを生成
+:: 50 MHz (CLK_DIV=16) でビットストリームを生成 (VGA OFF)
 hw\fpga\build_bit.bat RV32IM_Zbb_C0_Accel_pipe1 build\programs\raytracer\main_ar.hex
+
+:: 50 MHz (CLK_DIV=16) + VGA 有効化 (MMIO 0x4000_0000 書き込み表示)
+hw\fpga\build_bit.bat RV32IM_Zbb_C0_Accel_comb1_VGA build\programs\raytracer\main_ar.hex
+
+:: VRAM 初期画像テスト (起動直後からモニター表示確認したい場合)
+hw\fpga\build_bit.bat RV32IM_Zbb_C0_Accel_comb1_VGA build\tests\hex\smoke.hex 16 tests\hex\vram_raytracer.hex
 
 :: 周波数を変えて試す場合 (例: CLK_DIV=10 -> 800/10 = 80 MHz, UART ボーレート自動追従)
 hw\fpga\build_bit.bat RV32IM_pipe1 build\tests\hex\smoke.hex 10
 ```
+
+* Pmod VGA ピン制約（[arty_a7.xdc](../constraints/arty_a7.xdc)）は実機確認済みの **Pmod JA + JB**（JA=R/B、JB=G/HSYNC/VSYNC）を既定としています。Pmod JB + JC 接続を使う場合は `arty_a7.xdc` 内の予備コメント側へ差し替えてください。
 
 * 出力先: `build\vivado_bit\<構成名>\<hexファイル名>.bit` および `build\vivado_bit\latest.bit`
 * 既定では毎回 **`Performance_Explore` (`-directive Explore` での `opt`/`place`/`phys_opt`/`route`)** を使用して高品質なビットストリームを生成します(Vivado Standard/BASIC ライセンスでの Incremental 制限 `[Vivado 12-29181]` を回避するため既定 OFF)．

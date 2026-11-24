@@ -35,29 +35,32 @@ set SWEEP_CONFIGS [list \
 ]
 
 # 各構成の top.sv パラメータ定義
-#   M  DIV ZBB C0 QMUL QSQRT QRSQRT QRCP QRAND ACCEL PIPE_MUL MUL_STALL QMUL_STALL
+#   M  DIV ZBB C0 QMUL QSQRT QRSQRT QRCP QRAND ACCEL PIPE_MUL MUL_STALL QMUL_STALL VGA
 array set CONFIG_PARAMS {
-    RV32I                       {0 0 0 0 0 0 0 0 0 0 0 1 1}
-    RV32I_MulOnly_pipe1         {1 0 0 0 0 0 0 0 0 0 1 1 1}
-    RV32IM_comb1                {1 1 0 0 0 0 0 0 0 0 0 1 1}
-    RV32IM_comb0                {1 1 0 0 0 0 0 0 0 0 0 0 0}
-    RV32IM_pipe1                {1 1 0 0 0 0 0 0 0 0 1 1 1}
-    RV32IM_Zbb_comb1            {1 1 1 0 0 0 0 0 0 0 0 1 1}
-    RV32IM_Zbb_comb0            {1 1 1 0 0 0 0 0 0 0 0 0 0}
-    RV32IM_Zbb_pipe1            {1 1 1 0 0 0 0 0 0 0 1 1 1}
-    RV32IM_Zbb_Rand_comb1       {1 1 1 1 0 0 0 0 1 0 0 1 1}
-    RV32IM_Zbb_Rand_pipe1       {1 1 1 1 0 0 0 0 1 0 1 1 1}
-    RV32IM_Zbb_QmulSqrt_pipe1   {1 1 1 1 1 1 0 0 0 0 1 1 1}
-    RV32IM_Zbb_MathOnly_pipe1   {1 1 1 1 1 1 1 1 0 0 1 1 1}
-    RV32IM_Zbb_C0_comb1         {1 1 1 1 1 1 1 1 1 0 0 1 1}
-    RV32IM_Zbb_C0_comb0         {1 1 1 1 1 1 1 1 1 0 0 0 0}
-    RV32IM_Zbb_C0_pipe1         {1 1 1 1 1 1 1 1 1 0 1 1 1}
-    RV32IM_Zbb_C0_pipe1_q0      {1 1 1 1 1 1 1 1 1 0 1 1 0}
-    RV32IM_Zbb_Rand_Accel_pipe1 {1 1 1 1 0 0 0 0 1 1 1 1 1}
-    RV32IM_Zbb_C0_Accel_comb1   {1 1 1 1 1 1 1 1 1 1 0 1 1}
-    RV32IM_Zbb_C0_Accel_comb0   {1 1 1 1 1 1 1 1 1 1 0 0 0}
-    RV32IM_Zbb_C0_Accel_pipe1   {1 1 1 1 1 1 1 1 1 1 1 1 1}
-    RV32IM_Zbb_C0_Accel_pipe1_q0 {1 1 1 1 1 1 1 1 1 1 1 1 0}
+    RV32I                        {0 0 0 0 0 0 0 0 0 0 0 1 1 0}
+    RV32I_MulOnly_pipe1          {1 0 0 0 0 0 0 0 0 0 1 1 1 0}
+    RV32IM_comb1                 {1 1 0 0 0 0 0 0 0 0 0 1 1 0}
+    RV32IM_comb0                 {1 1 0 0 0 0 0 0 0 0 0 0 0 0}
+    RV32IM_pipe1                 {1 1 0 0 0 0 0 0 0 0 1 1 1 0}
+    RV32IM_Zbb_comb1             {1 1 1 0 0 0 0 0 0 0 0 1 1 0}
+    RV32IM_Zbb_comb0             {1 1 1 0 0 0 0 0 0 0 0 0 0 0}
+    RV32IM_Zbb_pipe1             {1 1 1 0 0 0 0 0 0 0 1 1 1 0}
+    RV32IM_Zbb_Rand_comb1        {1 1 1 1 0 0 0 0 1 0 0 1 1 0}
+    RV32IM_Zbb_Rand_pipe1        {1 1 1 1 0 0 0 0 1 0 1 1 1 0}
+    RV32IM_Zbb_QmulSqrt_pipe1    {1 1 1 1 1 1 0 0 0 0 1 1 1 0}
+    RV32IM_Zbb_MathOnly_pipe1    {1 1 1 1 1 1 1 1 0 0 1 1 1 0}
+    RV32IM_Zbb_C0_comb1          {1 1 1 1 1 1 1 1 1 0 0 1 1 0}
+    RV32IM_Zbb_C0_comb0          {1 1 1 1 1 1 1 1 1 0 0 0 0 0}
+    RV32IM_Zbb_C0_pipe1          {1 1 1 1 1 1 1 1 1 0 1 1 1 0}
+    RV32IM_Zbb_C0_pipe1_q0       {1 1 1 1 1 1 1 1 1 0 1 1 0 0}
+    RV32IM_Zbb_Rand_Accel_pipe1  {1 1 1 1 0 0 0 0 1 1 1 1 1 0}
+    RV32IM_Zbb_C0_Accel_comb1    {1 1 1 1 1 1 1 1 1 1 0 1 1 0}
+    RV32IM_Zbb_C0_Accel_comb0    {1 1 1 1 1 1 1 1 1 1 0 0 0 0}
+    RV32IM_Zbb_C0_Accel_pipe1    {1 1 1 1 1 1 1 1 1 1 1 1 1 0}
+    RV32IM_Zbb_C0_Accel_pipe1_q0 {1 1 1 1 1 1 1 1 1 1 1 1 0 0}
+    RV32IM_Zbb_C0_Accel_comb1_VGA {1 1 1 1 1 1 1 1 1 1 0 1 1 1}
+    RV32IM_Zbb_C0_Accel_comb0_VGA {1 1 1 1 1 1 1 1 1 1 0 0 0 1}
+    RV32IM_Zbb_C0_Accel_pipe1_VGA {1 1 1 1 1 1 1 1 1 1 1 1 1 1}
 }
 
 proc get_config_generic_args {cfg_name} {
@@ -67,7 +70,7 @@ proc get_config_generic_args {cfg_name} {
         error "Unknown config '$cfg_name'. Valid configs: $valid"
     }
     lassign $CONFIG_PARAMS($cfg_name) \
-        en_m en_div en_zbb en_c0 en_qmul en_qsqrt en_qrsqrt en_qrcp en_qrand en_accel pipe_mul mul_stall qmul_stall
+        en_m en_div en_zbb en_c0 en_qmul en_qsqrt en_qrsqrt en_qrcp en_qrand en_accel pipe_mul mul_stall qmul_stall en_vga
     return [list \
         -generic "ENABLE_M=$en_m" \
         -generic "ENABLE_DIV=$en_div" \
@@ -82,6 +85,7 @@ proc get_config_generic_args {cfg_name} {
         -generic "PIPE_MUL=$pipe_mul" \
         -generic "MUL_STALL=$mul_stall" \
         -generic "QMUL_STALL=$qmul_stall" \
+        -generic "ENABLE_VGA=$en_vga" \
     ]
 }
 
@@ -179,5 +183,14 @@ proc fix_ramb36_cascade_addr15 {} {
     }
     if {$fixed > 0} {
         puts [format {INFO: [REQP-1962 guard] Unified %d cascaded RAMB36E1 ADDR15 pin(s).} $fixed]
+    }
+}
+
+proc apply_vga_async_clock_groups {} {
+    set cpu_clks [get_clocks -quiet -of_objects [get_pins -quiet u_bufg/O]]
+    set vga_clks [get_clocks -quiet -of_objects [get_pins -quiet gen_vga.u_vga_display/u_bufg_150m/O]]
+    if {[llength $cpu_clks] > 0 && [llength $vga_clks] > 0} {
+        set_clock_groups -asynchronous -group $cpu_clks -group $vga_clks
+        puts "INFO: Applied asynchronous clock group between CPU ($cpu_clks) and VGA ($vga_clks)."
     }
 }

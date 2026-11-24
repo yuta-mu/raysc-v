@@ -2,8 +2,8 @@
 setlocal EnableDelayedExpansion
 
 if "%~2"=="" (
-    echo Usage: %~nx0 ^<config^> ^<hex_path^> [clk_div=16]
-    echo   Configs: RV32I RV32I_MulOnly_pipe1 RV32IM_comb1 RV32IM_comb0 RV32IM_pipe1 RV32IM_Zbb_comb1 RV32IM_Zbb_comb0 RV32IM_Zbb_pipe1 RV32IM_Zbb_Rand_comb1 RV32IM_Zbb_Rand_pipe1 RV32IM_Zbb_QmulSqrt_pipe1 RV32IM_Zbb_MathOnly_pipe1 RV32IM_Zbb_C0_comb1 RV32IM_Zbb_C0_comb0 RV32IM_Zbb_C0_pipe1 RV32IM_Zbb_C0_pipe1_q0 RV32IM_Zbb_Rand_Accel_pipe1 RV32IM_Zbb_C0_Accel_comb1 RV32IM_Zbb_C0_Accel_comb0 RV32IM_Zbb_C0_Accel_pipe1 RV32IM_Zbb_C0_Accel_pipe1_q0
+    echo Usage: %~nx0 ^<config^> ^<hex_path^> [clk_div=16] [vram_hex]
+    echo   Configs: RV32I RV32I_MulOnly_pipe1 RV32IM_comb1 RV32IM_comb0 RV32IM_pipe1 RV32IM_Zbb_comb1 RV32IM_Zbb_comb0 RV32IM_Zbb_pipe1 RV32IM_Zbb_Rand_comb1 RV32IM_Zbb_Rand_pipe1 RV32IM_Zbb_QmulSqrt_pipe1 RV32IM_Zbb_MathOnly_pipe1 RV32IM_Zbb_C0_comb1 RV32IM_Zbb_C0_comb0 RV32IM_Zbb_C0_pipe1 RV32IM_Zbb_C0_pipe1_q0 RV32IM_Zbb_Rand_Accel_pipe1 RV32IM_Zbb_C0_Accel_comb1 RV32IM_Zbb_C0_Accel_comb0 RV32IM_Zbb_C0_Accel_pipe1 RV32IM_Zbb_C0_Accel_pipe1_q0 RV32IM_Zbb_C0_Accel_comb1_VGA RV32IM_Zbb_C0_Accel_comb0_VGA RV32IM_Zbb_C0_Accel_pipe1_VGA
     echo   Example: %~nx0 RV32IM_Zbb_C0_Accel_pipe1 build\programs\raytracer\main_ar.hex 16
     exit /b 1
 )
@@ -18,12 +18,16 @@ set "CFG=%~1"
 for %%F in ("%~2") do set "HEX_PATH=%%~fF"
 set "CLK_DIV=%~3"
 if "%CLK_DIV%"=="" set "CLK_DIV=16"
+set "VRAM_HEX=NONE"
+if not "%~4"=="" (
+    for %%F in ("%~4") do set "VRAM_HEX=%%~fF"
+)
 
 pushd "%REPO_ROOT%"
 if not exist "build\vivado_bit" mkdir "build\vivado_bit"
 
-echo [RaySC-V] Building bitstream (config=%CFG%, hex=%HEX_PATH%, clk_div=%CLK_DIV%)
-call "%VIVADO_CMD%" -mode batch -log "build\vivado_bit\vivado.log" -journal "build\vivado_bit\vivado.jou" -source "hw\fpga\build_bit.tcl" -tclargs "%CFG%" "%HEX_PATH%" "%CLK_DIV%"
+echo [RaySC-V] Building bitstream (config=%CFG%, hex=%HEX_PATH%, clk_div=%CLK_DIV%, vram=%VRAM_HEX%)
+call "%VIVADO_CMD%" -mode batch -log "build\vivado_bit\vivado.log" -journal "build\vivado_bit\vivado.jou" -source "hw\fpga\build_bit.tcl" -tclargs "%CFG%" "%HEX_PATH%" "%CLK_DIV%" "0" "%VRAM_HEX%"
 set "RC=%ERRORLEVEL%"
 popd
 exit /b %RC%

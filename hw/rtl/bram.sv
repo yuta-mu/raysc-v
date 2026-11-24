@@ -19,7 +19,7 @@ module bram #(
 
     localparam int ADDR_WIDTH = $clog2(MEM_WORDS);
 
-    (* ram_style = "block", cascade_height = 1 *)
+    (* ram_style = "block" *)
     logic [31:0] mem [0:MEM_WORDS-1];
 
     initial begin
