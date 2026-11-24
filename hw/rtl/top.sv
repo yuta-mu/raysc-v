@@ -2,7 +2,14 @@ module top (
     input  logic       CLK100MHZ, // Arty A7 100MHz 水晶発振器 (Pin E3)
     input  logic       ck_rst,    // RESET ボタン (Pin C2, Active-Low)
     output logic       uart_tx,   // FTDI USB-UART TX ピン (Pin D10)
-    output logic [3:0] led        // ステータス確認用 LED (Pin H5, J5, T9, T10)
+    output logic [3:0] led,        // ステータス確認用 LED (Pin H5, J5, T9, T10)
+    
+    // Pmod VGA 出力ポート
+    output logic [3:0] vga_r, // 赤 4bit
+    output logic [3:0] vga_g, // 緑 4bit
+    output logic [3:0] vga_b, // 青 4bit
+    output logic vga_hsync, // 水平同期信号
+    output logic vga_vsync // 垂直同期信号
 );
 
     // 入力バッファ
@@ -107,7 +114,38 @@ module top (
         .b_rdata (bram_rdata)
     );
 
+    // 4\. MMIO バス判定 &amp; VGA VRAM への接続
+    // ------------------------------------------------------------------------
+    wire is_vram = (mem_addr[31:28] == 4'h4); // 0x4000\_0000 帯
     wire is_uart = (mem_addr == UART_ADDR);
+
+    wire        vram_we    = mem_write && is_vram;
+    wire [15:0] vram_waddr = mem_addr[17:2];  // 0 .. 57599
+    wire [23:0] vram_wdata = mem_wdata[23:0]; // RGB888
+    
+    logic clk_locked;
+
+    vga_display_v2 #(
+        .VRAM_INIT_FILE("C:/Users/nadu0/rv32i-core/hw/rtl/vram_raytracer.hex")
+        ) u_vga_display (
+        .clk_100m_ibuf (clk_100m_ibuf),
+        .clk_cpu (clk),
+        .rst_n (rst_n),
+
+        .vram_we (vram_we),
+        .vram_waddr (vram_waddr),
+        .vram_wdata (vram_wdata),
+        //.vram_we       (1'b0),
+        //.vram_waddr    (16'd0),
+        //.vram_wdata    (24'd0),
+        
+        .clk_locked (clk_locked),
+        .vga_r (vga_r),
+        .vga_g (vga_g),
+        .vga_b (vga_b),
+        .vga_hsync (vga_hsync),
+        .vga_vsync (vga_vsync)
+    );
 
     uart_tx_fifo #(
         .CLK_FREQ   (50_000_000),

@@ -2,7 +2,8 @@
 module vram #(
     parameter int WIDTH       = 320,
     parameter int HEIGHT      = 180,
-    parameter int COLOR_DEPTH = 12 // 12-bit (R4, G4, B4)
+    parameter int COLOR_DEPTH = 24, // 12-bit (R4, G4, B4)
+    parameter string INIT_FILE = ""
 )(
     // Port A: CPU 書き込みポート
     input  logic                   clk_cpu,
@@ -21,11 +22,10 @@ module vram #(
     (* ram_style = "block" *)
     logic [COLOR_DEPTH-1:0] mem [0:NUM_PIXELS-1];
 
-    // 黒で初期化
+        // 初期化: 先にゼロクリアしてから画像を読み込む
     initial begin
-        for (int i = 0; i < NUM_PIXELS; i++) begin
-            mem[i] = '0;
-        end
+        for (int i = 0; i < NUM_PIXELS; i++) mem[i] = '0;
+        if (INIT_FILE != "") $readmemh(INIT_FILE, mem);
     end
 
     // Port A: 書き込み (CPUクロック同期)

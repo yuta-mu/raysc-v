@@ -2,7 +2,7 @@
 
 module bram #(
     parameter int MEM_WORDS = 65536,
-    parameter string INIT_FILE = "boot.hex"
+    parameter string INIT_FILE = "C:/Users/nadu0/rv32i-core/build/programs/raytracer/main.hex"
 )(
     input  logic        clk,
     // Port A: IF
@@ -19,7 +19,7 @@ module bram #(
 
     localparam int ADDR_WIDTH = $clog2(MEM_WORDS);
 
-    (* ram_style = "block" *)
+    (* ram_style = "block", cascade_height = 1 *)
     logic [31:0] mem [0:MEM_WORDS-1];
 
     initial begin
