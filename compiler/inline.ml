@@ -21,8 +21,6 @@ let map_instr vm am (i : instr) : instr =
       AccelSetSphere (v idx, v x, v y, v z, v r_val, v r2, v m)
   | AccelHit (d, ox, oy, oz, dx, dy, dz, tmin, tmax) ->
       AccelHit (v d, v ox, v oy, v oz, v dx, v dy, v dz, v tmin, v tmax)
-  | Qabs (d, x) -> Qabs (v d, v x)                       
-  | Qclamp (d, x, y, z) -> Qclamp (v d, v x, v y, v z)
 
 (* 終わりの命令:vreg に dv、ラベルに dl を足す *)
 let map_term vm dl (t : terminator) : terminator =
