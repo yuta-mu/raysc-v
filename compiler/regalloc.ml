@@ -106,19 +106,17 @@ let build_intervals (f : func) =
     List.iter (fun v -> touch v be (w be)) (term_uses b.term)) f.blocks;
   (tbl, ranges)
 
-(*tやaをこわす命令か。accel_off:--accel=off か、zbb:--march=rv32im_zbb か*)
-let clobbers ~accel_off ~zbb = function
+(* t や a をこわす命令か (lower 済みなので Call のみ) *)
+let clobbers = function
   | Call _ -> true
-  | Intr _ -> accel_off                                 (* off なら __q16_sqrt などを呼ぶ *)
-  | Zbb_b _ | Zbb_u _ | Qabs _ | Qclamp _ -> not zbb     (* Zbb がなければ __min などを呼ぶ *)
   | _ -> false
 
-(*tやaをこわす命令の通し番号*)
-let call_points ~accel_off ~zbb (f : func) ranges =
+(* t や a をこわす命令の通し番号 *)
+let call_points (f : func) ranges =
   List.concat_map (fun b ->
     let (bs, _) = Hashtbl.find ranges b.label in
     List.concat (List.mapi (fun k i ->
-      if clobbers ~accel_off ~zbb i then [bs + k] else []) b.body)) f.blocks
+      if clobbers i then [bs + k] else []) b.body)) f.blocks
 
 (* 区間 it が、呼び出しをまたぐか(呼び出しの前から後ろまで生きているか) *)
 let crosses calls it = List.exists (fun p -> it.start < p && p < it.stop) calls
@@ -135,12 +133,11 @@ let caller_regs = ["t4"; "t5"; "a2"; "a3"; "a4"; "a5"; "a6"; "a7"]
 
 (*reserved:旗に使うので割り当てないsレジスタ
    返り値:(vreg -> 置き場所, スロットの数, 使ったsレジスタ)*)
-let allocate ?(reserved = []) ~accel_off ~zbb (f : func) =
+let allocate ?(reserved = []) (f : func) =
   let (tbl, ranges) = build_intervals f in
-  let calls = call_points ~accel_off ~zbb f ranges in
+  let calls = call_points f ranges in
   let sites = def_sites f in
-  let has_call = List.exists (fun b ->
-    List.exists (function Call _ -> true | _ -> false) b.body) f.blocks in
+  let has_call = calls <> [] in
   let big_ret = List.exists (fun b ->
     match b.term with Ret vs -> List.length vs > 2 | _ -> false) f.blocks in
   let callee = List.filter (fun r -> not (List.mem r reserved)) callee_regs in
