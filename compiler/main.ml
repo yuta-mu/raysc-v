@@ -83,7 +83,11 @@ let () =
   let do_inline = !inline_flag || !opt_level >= 1 in
   let do_fold = !fold_flag || !opt_level >= 1 in
   let do_regalloc = !regalloc_flag || !opt_level >= 2 in
-  let ir = if do_inline then Inline.run ir else ir in   (* 先に関数を展開して *)
+  let ir = if do_inline then 
+             (*どこからも来ないブロック(Ret [])を展開の前に消す*)
+             Inline.run { ir with Ir.funcs = List.map Dce.remove_unreachable ir.Ir.funcs }
+           else ir
+         in
   let ir = if do_fold then Fold.run ir else ir in       (* 見えた定数を畳みこみ *)
   let ir = if do_inline || do_fold then Dce.run ir else ir in   (* 使われなくなったものを消す *)
 
