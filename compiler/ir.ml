@@ -6,7 +6,7 @@ type binop =
   (* I *)
   | Add | Sub
   | Xor | Or | And
-  | Sll | Srl | Sra | Slt | Sltu
+  | Sll | Srl | Sra |
   | Eq | Ne | Lt | Le | Gt | Ge   (* 符号付き比較。結果は 0 か 1(bool) *)
   | Ltu | Leu | Gtu | Geu
   (* Im *)

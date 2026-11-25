@@ -13,8 +13,6 @@ let eval_bin op (a : int32) (b : int32) : int32 =
   | Sll  -> sll a b
   | Srl  -> srl a b
   | Sra  -> sra a b
-  | Slt  -> slt a b
-  | Sltu -> sltu a b
   | Eq   -> eq a b
   | Ne   -> ne a b
   | Lt   -> lt a b

@@ -12,8 +12,6 @@ let logand a b = Int32.logand a b
 let sll a b = Int32.shift_left a (Int32.to_int b land 31)
 let srl a b = Int32.shift_right_logical a (Int32.to_int b land 31)
 let sra a b = Int32.shift_right a (Int32.to_int b land 31)
-let slt a b = if Int32.compare a b < 0 then 1l else 0l
-let sltu a b = if Int32.unsigned_compare a b < 0 then 1l else 0l
 let eq a b = if a = b then 1l else 0l
 let ne a b = if a <> b then 1l else 0l
 let lt a b = if Int32.compare a b < 0 then 1l else 0l
