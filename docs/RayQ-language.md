@@ -1,6 +1,6 @@
-# RayQ 言語仕様 v1.6
+# RayQ 言語仕様 v1.7
 
-RaySC-V プロジェクト / 2026-11-18
+RaySC-V プロジェクト / 2026-11-25
 
 コンパイラ: `rayqc` / ターゲット: RV32IM + custom-0 (Artix-7, ベアメタル)
 
@@ -243,17 +243,13 @@ Primary     ::= IDENT | INT_LIT | Q16_LIT | CHAR_LIT | BOOL_LIT | STR_LIT
 | `max(x, y)` | `(i32, i32) -> i32` | `max rd, rs1, rs2` |
 | `qmin(x, y)` | `(q16, q16) -> q16` | `min rd, rs1, rs2` |
 | `qmax(x, y)` | `(q16, q16) -> q16` | `max rd, rs1, rs2` |
-| `minu(x, y)` | `(i32, i32) -> i32` | `minu rd, rs1, rs2` |
-| `maxu(x, y)` | `(i32, i32) -> i32` | `maxu rd, rs1, rs2` |
 | `andn(x, y)` | `(i32, i32) -> i32` | `andn rd, rs1, rs2` |
 | `orn(x, y)` | `(i32, i32) -> i32` | `orn rd, rs1, rs2` |
 | `xnor(x, y)` | `(i32, i32) -> i32` | `xnor rd, rs1, rs2` |
 | `clz(x)` | `(i32) -> i32` | `clz rd, rs` |
 | `qclz(x)` | `(q16) -> i32` | `clz rd, rs` |
-| `sext_b(x)` | `(i32) -> i32` | `sext.b rd, rs` |
-| `sext_h(x)` | `(i32) -> i32` | `sext.h rd, rs` |
-| `qabs(x)` | `(q16) -> q16` | `neg t0, rs1; max rd, rs1, t0` |
-| `qclamp(x, lo, hi)` | `(q16, q16, q16) -> q16` | `max t0, rs1, rs2; min rd, t0, rs3` |
+| `qabs(x)` | `(q16) -> q16` | `qmax(x, -x)` |
+| `qclamp(x, lo, hi)` | `(q16, q16, q16) -> q16` | `qmin(qmax(x, min_val), max_val)` |
 | `accel_set_sphere(i, x, y, z, r, r2, m)` | `(i32, q16, q16, q16, q16, q16, i32) -> void` | 球データの登録 (MMIO `0x3000_0000` + `256`) |
 | `accel_hit(ox, oy, oz, dx, dy, dz, tmin, tmax)` | `(q16, q16, q16, q16, q16, q16, q16, q16) -> i32` | レイ交差判定と結果取得 (MMIO `0x3000_0000` + `0`〜`32`) |
 | `accel_t()` | `() -> q16` | 交差距離の取得 (MMIO `0x3000_0000` + `36`) |
