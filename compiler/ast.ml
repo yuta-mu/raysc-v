@@ -6,6 +6,7 @@ type typ =
   | Void
   | Struct of string
   | Array of typ * int
+  | Any  (* __hw_binop / __hw_unop の戻り値専用 *)
 
 type literal =
   | LI32 of int32

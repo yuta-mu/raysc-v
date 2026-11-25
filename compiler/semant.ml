@@ -17,6 +17,7 @@ type fn_info = {
   slot_types : (string, typ) Hashtbl.t;  (* 変数名 -> 型 *)
   total_frame_words : int;
   param_words : int;
+  is_stdlib : bool;
 }
 
 type context = {
@@ -26,14 +27,29 @@ type context = {
   global_names : (string, string) Hashtbl.t;
 }
 
-let builtins = ["print"; "bprint"; "cycles"; "q16"; "i32"; "vec3"; "sqrt"; "rsqrt"; "rcp";
-                (* zbb組み込み関数 *)
-                "min"; "max"; "qmin"; "qmax"; "minu"; "maxu"; "andn"; "orn"; "xnor";
-                "clz"; "qclz"; "sext_b"; "sext_h"; "qabs"; "qclamp";
-                "accel_set_sphere"; "accel_hit"; "accel_t"; "rng_seed"; "rand_q16"; "rand_q16_s"]
+let builtins =
+  ["print"; "vec3"; "__hw_binop"; "__hw_unop"]
+  @ List.map (fun b -> b.Builtins.name) Builtins.all_builtins
+
+let is_scalar = function
+  | I32 | Q16 | Bool | Any -> true
+  | _ -> false
+
+let type_compatible t1 t2 =
+  match t1, t2 with
+  | Any, t | t, Any -> is_scalar t
+  | _ -> t1 = t2
+
+(* Binary で Any が絡んだときの代表型を決める *)
+let unify_scalar t1 t2 =
+  match t1, t2 with
+  | Any, Any -> Some I32
+  | Any, t | t, Any when is_scalar t -> Some t
+  | t1, t2 when t1 = t2 -> Some t1
+  | _ -> None
 
 let rec type_words structs = function
-  | I32 | Q16 | Bool -> 1
+  | I32 | Q16 | Bool | Any -> 1
   | Vec3 -> 3
   | Struct n ->
       let fields = Hashtbl.find structs n in
@@ -83,7 +99,8 @@ let rec const_eval structs expected e =
        | _ -> error "array literal requires array type")
   | _ -> error "constant initializer must be composed of literals only"
 
-let analyze program =
+let analyze ~stdlib user =
+  let program = stdlib @ user in
   let global_names = Hashtbl.create 32 in
   let add_global n what =
     if Hashtbl.mem global_names n then fail ("duplicate global name '" ^ n ^ "'");
@@ -117,7 +134,7 @@ let analyze program =
     | _ -> ()
   ) program;
 
-  List.iter (function
+  let register_func ~is_stdlib = function
     | Function (name, ps, ret, body) ->
         add_global name "function";
         (match ret with Array _ -> fail "functions cannot return arrays" | _ -> ());
@@ -153,10 +170,13 @@ let analyze program =
           fn_name = name; params = ps; ret_type = ret; body;
           slots; slot_types; total_frame_words = !curr_word;
           param_words;
+          is_stdlib;
         } in
         Hashtbl.add functions name info
     | _ -> ()
-  ) program;
+  in
+  List.iter (register_func ~is_stdlib:true) stdlib;
+  List.iter (register_func ~is_stdlib:false) user;
 
   if not (Hashtbl.mem functions "main") then fail "missing function 'main'";
   let main_fn = Hashtbl.find functions "main" in
@@ -199,16 +219,21 @@ let analyze program =
       | Binary ((Shl | Shr), a, b) ->
           let ta = infer a and tb = infer b in
           (match ta, tb with
-          | (I32 | Q16 | Vec3) as t, I32 -> t
-          | _, I32 -> error "left operand of shift must be i32, q16, or vec3"
-          | _, _   -> error "right operand of shift must be i32")
+           | (I32 | Q16 | Vec3 | Any) as t, (I32 | Any) ->
+               if t = Any then I32 else t
+           | _, (I32 | Any) -> error "left operand of shift must be i32, q16, or vec3"
+           | _, _ -> error "right operand of shift must be i32")
       | Binary (op, a, b) ->
           let ta = infer a and tb = infer b in
-          if ta <> tb then error (Printf.sprintf "type mismatch: %s and %s" (typ_to_string ta) (typ_to_string tb));
-          (match op, ta with
-           | (Add | Sub), (I32 | Q16 | Vec3) -> ta
+          let t =
+            match unify_scalar ta tb with
+            | Some t -> t
+            | None -> error (Printf.sprintf "type mismatch: %s and %s" (typ_to_string ta) (typ_to_string tb))
+          in
+          (match op, t with
+           | (Add | Sub), (I32 | Q16 | Vec3) -> t
            | (Div | Mod), I32 -> I32
-           | (BitAnd | BitOr | BitXor), (I32 | Q16) -> ta
+           | (BitAnd | BitOr | BitXor), (I32 | Q16) -> t
            | (Eq | Ne), (I32 | Q16 | Bool) -> Bool
            | (Lt | Le | Gt | Ge), (I32 | Q16) -> Bool
            | (And | Or), Bool -> Bool
@@ -216,59 +241,58 @@ let analyze program =
            | _ -> error "operator not supported for type")
       | Call ("print", [x]) ->
           (match x.desc with Literal (LString _) -> Void | _ -> error "print takes a string literal directly")
-      | Call ("bprint", [x]) -> if infer x = I32 then Void else error "bprint expects i32"
-      | Call ("cycles", []) -> I32
-      | Call ("q16", [x]) -> if infer x = I32 then Q16 else error "q16 expects i32"
-      | Call ("i32", [x]) -> if infer x = Q16 then I32 else error "i32 expects q16"
       | Call ("vec3", [x; y; z]) ->
           if infer x = Q16 && infer y = Q16 && infer z = Q16 then Vec3 else error "vec3 expects three q16 components"
-      | Call (("sqrt" | "rsqrt" | "rcp"), [x]) ->
-          if infer x = Q16 then Q16 else error "math builtin expects q16"
-      | Call (("min" | "max" | "minu" | "maxu"), [x; y]) ->
-          let tx = infer x and ty = infer y in
-          if tx = I32 && ty = I32 then I32 else error "min(u)/max(u) expects two i32 arguments"
-      | Call (("qmin" | "qmax"), [x; y]) ->
-          let tx = infer x and ty = infer y in
-          if tx = Q16 && ty = Q16 then Q16 else error "qmin/qmax expects two q16 arguments"
-      | Call (("andn" | "orn" | "xnor"), [x; y]) ->
-          let tx = infer x and ty = infer y in
-          if tx = I32 && ty = I32 then I32 else error "andn/orn/xnor expects two i32 arguments"
-      | Call ("clz", [x]) -> if infer x = I32 then I32 else error "clz expects i32"
-      | Call ("qclz", [x]) -> if infer x = Q16 then I32 else error "qclz expects q16"
-      | Call (("sext_b" | "sext_h"), [x]) -> if infer x = I32 then I32 else error "sext_b/sext_h expects i32"
-      | Call ("qabs", [x]) -> if infer x = Q16 then Q16 else error "qabs expects q16"
-      | Call ("qclamp", [x; y; z]) ->
-          let tx = infer x and ty = infer y and tz = infer z in
-          if tx = Q16 && ty = Q16 && tz = Q16 then Q16 else error "qclamp expects three q16 arguments"
-      | Call ("accel_set_sphere", [i; x; y; z; r; r2; mat]) ->
-          if infer i = I32 && infer x = Q16 && infer y = Q16 && infer z = Q16 &&
-             infer r = Q16 && infer r2 = Q16 && infer mat = I32
-          then Void
-          else error "accel_set_sphere expects (i32, q16, q16, q16, q16, q16, i32)"
-      | Call ("accel_hit", [ox; oy; oz; dx; dy; dz; tmin; tmax]) ->
-          if infer ox = Q16 && infer oy = Q16 && infer oz = Q16 &&
-             infer dx = Q16 && infer dy = Q16 && infer dz = Q16 &&
-             infer tmin = Q16 && infer tmax = Q16
-          then I32
-          else error "accel_hit expects eight q16 arguments"
-      | Call ("accel_t", []) -> Q16
-      | Call ("rng_seed", [x]) -> if infer x = I32 then Void else error "rng_seed expects i32"
-      | Call (("rand_q16" | "rand_q16_s"), []) -> Q16
+      | Call ("__hw_binop", args) ->
+          if not info.is_stdlib then
+            error "'__hw_binop' is only allowed in stdlib";
+          (match args with
+           | [{ desc = Literal (LString op_name); _ }; a; b] ->
+               if Builtins.lookup_hw_binop op_name = None then
+                 error ("unknown hw_binop '" ^ op_name ^ "'");
+               ignore (infer a);
+               ignore (infer b);
+               Any
+           | _ -> error "__hw_binop expects (string_literal, a, b)")
+      | Call ("__hw_unop", args) ->
+          if not info.is_stdlib then
+            error "'__hw_unop' is only allowed in stdlib";
+          (match args with
+           | [{ desc = Literal (LString op_name); _ }; a] ->
+               if Builtins.lookup_hw_unop op_name = None then
+                 error ("unknown hw_unop '" ^ op_name ^ "'");
+               ignore (infer a);
+               Any
+           | _ -> error "__hw_unop expects (string_literal, a)")
       | Call (n, args) ->
-          (match Hashtbl.find_opt structs n with
-           | Some fields ->
+          (match Builtins.lookup n with
+           | Some b ->
                let ats = List.map infer args in
-               if List.length ats <> List.length fields then error "constructor parameter count mismatch";
-               List.iter2 (fun got f -> if got <> f.field_type then error "field type mismatch") ats fields;
-               Struct n
+               if List.length ats <> List.length b.Builtins.param_types then
+                 error ("builtin '" ^ n ^ "' argument count mismatch");
+               List.iter2
+                 (fun got expected ->
+                    if not (type_compatible got expected) then
+                      error ("builtin '" ^ n ^ "' argument type mismatch"))
+                 ats b.Builtins.param_types;
+               b.Builtins.ret_type
            | None ->
-               (match Hashtbl.find_opt functions n with
-                | Some f ->
+               if (not info.is_stdlib) && String.length n >= 2 && String.sub n 0 2 = "__" then
+                 error ("internal function '" ^ n ^ "' cannot be called from user code");
+               (match Hashtbl.find_opt structs n with
+                | Some fields ->
                     let ats = List.map infer args in
-                    if List.length ats <> List.length f.params then error "function argument count mismatch";
-                    List.iter2 (fun got p -> if got <> p.param_type then error "argument type mismatch") ats f.params;
-                    f.ret_type
-                | None -> error ("unknown function or constructor '" ^ n ^ "'")))
+                    if List.length ats <> List.length fields then error "constructor parameter count mismatch";
+                    List.iter2 (fun got f -> if not (type_compatible got f.field_type) then error "field type mismatch") ats fields;
+                    Struct n
+                | None ->
+                    (match Hashtbl.find_opt functions n with
+                     | Some f ->
+                         let ats = List.map infer args in
+                         if List.length ats <> List.length f.params then error "function argument count mismatch";
+                         List.iter2 (fun got p -> if not (type_compatible got p.param_type) then error "argument type mismatch") ats f.params;
+                         f.ret_type
+                     | None -> error ("unknown function or constructor '" ^ n ^ "'"))))
       | Field (x, fld) ->
           (match infer x with
            | Vec3 when fld = "x" || fld = "y" || fld = "z" -> Q16
@@ -284,15 +308,15 @@ let analyze program =
     in
     let rec check_stmt = function
       | Block xs -> List.iter check_stmt xs
-      | Let (n, ty, init) ->
+      | Let (n, _ty, init) ->
           Option.iter (fun e ->
             let te = infer e in
             let expected = Hashtbl.find info.slot_types n in
-            if te <> expected then fail ~loc:(Some e.loc) "let initializer type mismatch"
+            if not (type_compatible te expected) then fail ~loc:(Some e.loc) "let initializer type mismatch"
           ) init
       | Assign (lhs, rhs) ->
           let lt = infer lhs and rt = infer rhs in
-          if lt <> rt then fail ~loc:(Some rhs.loc) "assignment type mismatch";
+          if not (type_compatible lt rt) then fail ~loc:(Some rhs.loc) "assignment type mismatch";
           (match lhs.desc with
            | Variable n ->
                let is_param = List.exists (fun p -> p.param_name = n) info.params in
@@ -312,7 +336,7 @@ let analyze program =
       | Return None ->
           if info.ret_type <> Void then fail "non-void function must return a value"
       | Return (Some e) ->
-          if infer e <> info.ret_type then fail ~loc:(Some e.loc) "return value type mismatch"
+          if not (type_compatible (infer e) info.ret_type) then fail ~loc:(Some e.loc) "return value type mismatch"
     in
     check_stmt info.body
   ) functions;
@@ -340,17 +364,16 @@ let infer_expr ctx info e =
     | Binary (Dot, _, _) -> Q16       (* 内積の結果型は Q16 *)
     | Binary ((Eq | Ne | Lt | Le | Gt | Ge | And | Or), _, _) -> Bool
     | Binary (_, a, _) -> infer a
-    | Call ("cycles", _) | Call ("i32", _) | Call ("accel_hit", _)
-    | Call (("min" | "max" | "minu" | "maxu"), _) | Call (("andn" | "orn" | "xnor"), _)
-    | Call (("clz" | "qclz"), _) | Call (("sext_b" | "sext_h"), _) -> I32
-    | Call ("q16", _) | Call (("sqrt" | "rsqrt" | "rcp"), _) | Call ("accel_t", _)
-    | Call (("qmin" | "qmax" | "qabs" | "qclamp"), _) | Call (("rand_q16" | "rand_q16_s"), _) -> Q16
     | Call ("vec3", _) -> Vec3
-    | Call (("print" | "bprint" | "accel_set_sphere" | "rng_seed"), _) -> Void
+    | Call ("print", _) -> Void
+    | Call ("__hw_binop", _) | Call ("__hw_unop", _) -> Any
     | Call (n, _) ->
-        (match Hashtbl.find_opt ctx.structs n with
-         | Some _ -> Struct n
-         | None -> (Hashtbl.find ctx.functions n).ret_type)
+        (match Builtins.lookup n with
+         | Some b -> b.Builtins.ret_type
+         | None ->
+             (match Hashtbl.find_opt ctx.structs n with
+              | Some _ -> Struct n
+              | None -> (Hashtbl.find ctx.functions n).ret_type))
     | Field (x, fld) ->
         (match infer x with
          | Vec3 -> Q16
