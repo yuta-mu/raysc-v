@@ -28,7 +28,7 @@ type context = {
 }
 
 let builtins =
-  ["print"; "vec3"; "__hw_binop"; "__hw_unop", "__any"]
+  ["print"; "vec3"; "__hw_binop"; "__hw_unop"; "__any"]
   @ List.map (fun b -> b.Builtins.name) Builtins.all_builtins
 
 let is_scalar = function
