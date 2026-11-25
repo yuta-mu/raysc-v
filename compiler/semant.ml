@@ -28,7 +28,7 @@ type context = {
 }
 
 let builtins =
-  ["print"; "vec3"; "__hw_binop"; "__hw_unop"]
+  ["print"; "vec3"; "__hw_binop"; "__hw_unop", "__any"]
   @ List.map (fun b -> b.Builtins.name) Builtins.all_builtins
 
 let is_scalar = function
@@ -199,7 +199,8 @@ let analyze ~stdlib user =
       | Unary (Neg, x) ->
           let t = infer x in if t = I32 || t = Q16 || t = Vec3 then t else error "unary minus requires i32, q16 or vec3"
       | Unary (Not, x) ->
-          let t = infer x in if t = Bool then Bool else error "not requires bool"
+          let t = infer x in
+          if type_compatible t Bool then Bool else error "not requires bool"
       | Binary (Mul, a, b) ->
           let ta = infer a and tb = infer b in
           (match ta, tb with
@@ -264,6 +265,16 @@ let analyze ~stdlib user =
                ignore (infer a);
                Any
            | _ -> error "__hw_unop expects (string_literal, a)")
+      | Call ("__any", args) ->
+          if not info.is_stdlib then
+            error "'__any' is only allowed in stdlib";
+          (match args with
+           | [a] ->
+               let ta = infer a in
+               if not (is_scalar ta) then
+                 error "__any expects a scalar value";
+               Any
+           | _ -> error "__any expects 1 argument")
       | Call (n, args) ->
           (match Builtins.lookup n with
            | Some b ->
@@ -324,10 +335,12 @@ let analyze ~stdlib user =
            | _ -> ())
       | Expr e -> ignore (infer e)
       | If (c, a, b) ->
-          if infer c <> Bool then fail ~loc:(Some c.loc) "if condition must be bool";
+          if not (type_compatible (infer c) Bool) then
+            fail ~loc:(Some c.loc) "if condition must be bool";
           check_stmt a; Option.iter check_stmt b
       | While (c, b) ->
-          if infer c <> Bool then fail ~loc:(Some c.loc) "while condition must be bool";
+          if not (type_compatible (infer c) Bool) then
+            fail ~loc:(Some c.loc) "while condition must be bool";
           check_stmt b
       | For (_, a, b, body) ->
           if infer a <> I32 || infer b <> I32 then fail "for bounds must be i32";
@@ -366,7 +379,7 @@ let infer_expr ctx info e =
     | Binary (_, a, _) -> infer a
     | Call ("vec3", _) -> Vec3
     | Call ("print", _) -> Void
-    | Call ("__hw_binop", _) | Call ("__hw_unop", _) -> Any
+    | Call ("__hw_binop", _) | Call ("__hw_unop", _) | Call ("__any", _) -> Any
     | Call (n, _) ->
         (match Builtins.lookup n with
          | Some b -> b.Builtins.ret_type

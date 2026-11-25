@@ -278,6 +278,7 @@ let compile (ctx : Semant.context) : Ir.program =
                let sa = expr a in
                un_words op 1 sa
            | None -> Semant.fail ~loc:(Some e.loc) ("unknown hw_unop: " ^ op_name))
+      | Call ("__any", [a]) -> expr a
 
       (* 一般の呼び出し *)
       | Call (n, args) ->
