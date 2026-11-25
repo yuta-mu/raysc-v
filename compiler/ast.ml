@@ -64,7 +64,7 @@ type decl =
 type program = decl list
 
 let rec typ_to_string = function
-  | I32 -> "i32" | Q16 -> "q16" | Bool -> "bool" | Vec3 -> "vec3"
+  | I32 -> "i32" | Q16 -> "q16" | Bool -> "bool" | Vec3 -> "vec3" | Any -> "any"
   | Void -> "void" | Struct s -> s
   | Array (t, n) -> Printf.sprintf "[%s; %d]" (typ_to_string t) n
 
