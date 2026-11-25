@@ -6,7 +6,7 @@ type binop =
   (* I *)
   | Add | Sub
   | Xor | Or | And
-  | Sll | Srl | Sra |
+  | Sll | Srl | Sra
   | Eq | Ne | Lt | Le | Gt | Ge   (* 符号付き比較。結果は 0 か 1(bool) *)
   | Ltu | Leu | Gtu | Geu
   (* Im *)
@@ -91,7 +91,7 @@ type program = {
 (* ダンプ(--dump-ir) *)
 let string_of_binop = function
   | Add -> "add" | Sub -> "sub" | Xor -> "xor" | Or -> "or" | And -> "and"
-  | Sll -> "sll" | Srl -> "srl" | Sra -> "sra" | Slt -> "slt" | Sltu -> "sltu"
+  | Sll -> "sll" | Srl -> "srl" | Sra -> "sra"
   | Eq -> "eq" | Ne -> "ne" | Lt -> "lt" | Le -> "le" | Gt -> "gt" | Ge -> "ge"
   | Ltu -> "ltu" | Leu -> "leu" | Gtu -> "gtu" | Geu -> "geu"
   | Mul -> "mul" | Mulh -> "mulh" | Mulhsu -> "mulhsu" | Mulhu -> "mulhu"
