@@ -251,7 +251,10 @@ fn rcp(a: q16) -> q16 {
         i = i - 1;
     }
 
-    if (neg != 0) { return __any(-q); }
+    if (neg != 0) { 
+        if (r != 0) { q = q + 1; }
+        return __any(-q);
+    }
     return __any(q);
 }
 
@@ -289,7 +292,7 @@ fn clz(x: i32) -> i32 {
     let count: i32;
     let mask: i32;
 
-    if (x == 0) { return -1; }
+    if (x == 0) { return 32; }
     count = 0;
     mask = 0x80000000;
     while ((x & mask) == 0) {
