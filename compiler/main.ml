@@ -1,3 +1,13 @@
+let parse_lexbuf fname lexbuf =
+  lexbuf.Lexing.lex_curr_p <- { lexbuf.Lexing.lex_curr_p with Lexing.pos_fname = fname };
+  try Parser.program Lexer.token lexbuf with
+  | Lexer.Error msg -> prerr_endline msg; exit 1
+  | Parsing.Parse_error ->
+      let p = Lexing.lexeme_start_p lexbuf in
+      Printf.eprintf "%s:%d:%d: syntax error\n" fname p.Lexing.pos_lnum
+        (p.Lexing.pos_cnum - p.Lexing.pos_bol + 1);
+      exit 1
+
 let () =
   let input_file = ref "" in
   let output_file = ref "" in
@@ -15,7 +25,7 @@ let () =
     ("-O1", Arg.Unit (fun () -> opt_level := 1), "Optimization level 1");
     ("-O2", Arg.Unit (fun () -> opt_level := 2), "Optimization level 2");
     ("-O3", Arg.Unit (fun () -> opt_level := 3), "Optimization level 3");
-    ("--accel", Arg.Set_string accel_mode, "Accelerator mode (off|math|isect)");
+    ("--accel", Arg.Set_string accel_mode, "Accelerator mode (off|math|rand|isect)");
     ("--march", Arg.Set_string march, "Target architecture (rv32i|rv32im|rv32im_zbb)");
     ("--dump-ir", Arg.Set dump_ir, "Print the IR to stdout");
     ("--inline", Arg.Set inline_flag, "Inline all function calls");
@@ -31,42 +41,45 @@ let () =
   end;
 
   (*モード(最適化より前に決める)*)
-  let md = match !accel_mode with
-    | "off" -> Emitter.Off
-    | "math" -> Emitter.Math
-    | "isect" -> Emitter.Isect
+  let accel = match !accel_mode with
+    | "off" -> Lower.Off
+    | "math" -> Lower.Math
+    | "rand" -> Lower.Rand
+    | "isect" -> Lower.Isect
     | _ -> prerr_endline ("Unknown accelerator mode: " ^ !accel_mode); exit 1
   in
   let mrc = match !march with
-    | "rv32i" -> Emitter.I
-    | "rv32im" -> Emitter.Im
-    | "rv32im_zbb" -> Emitter.Im_zbb
+    | "rv32i" -> Lower.I
+    | "rv32im" -> Lower.Im
+    | "rv32im_zbb" -> Lower.Im_zbb
     | _ -> prerr_endline ("Unknown target architecture: " ^ !march); exit 1
   in
+  let target = { Lower.accel; march = mrc } in
 
-  let ch = open_in !input_file in
-  let lexbuf = Lexing.from_channel ch in
-  lexbuf.Lexing.lex_curr_p <- { lexbuf.Lexing.lex_curr_p with Lexing.pos_fname = !input_file };
-  let ast =
-    try Parser.program Lexer.token lexbuf with
-    | Lexer.Error msg -> prerr_endline msg; exit 1
-    | Parsing.Parse_error ->
-        let p = Lexing.lexeme_start_p lexbuf in
-        Printf.eprintf "%s:%d:%d: syntax error\n" !input_file p.Lexing.pos_lnum
-          (p.Lexing.pos_cnum - p.Lexing.pos_bol + 1);
-        exit 1
+  (* 標準ライブラリとユーザーコードを別々にパース *)
+  let stdlib_ast =
+    parse_lexbuf "<stdlib>" (Lexing.from_string Builtins.stdlib_source)
   in
+  let ch = open_in !input_file in
+  let user_ast = parse_lexbuf !input_file (Lexing.from_channel ch) in
   close_in ch;
 
+  (* 意味解析 *)
   let ctx =
-    try Semant.analyze ast with
+    try Semant.analyze ~stdlib:stdlib_ast user_ast with
     | Semant.Error msg -> prerr_endline ("semantic error: " ^ msg); exit 1
   in
 
+  (* IR 生成 -> Lower -> 最適化 *)
   let ir =
     try Translate.compile ctx with
     | Semant.Error msg -> prerr_endline ("semantic error: " ^ msg); exit 1
   in
+  let ir =
+    try Lower.run target ir with
+    | Failure msg -> prerr_endline msg; exit 1
+  in
+
   let do_inline = !inline_flag || !opt_level >= 1 in
   let do_fold = !fold_flag || !opt_level >= 1 in
   let do_regalloc = !regalloc_flag || !opt_level >= 2 in
@@ -76,8 +89,9 @@ let () =
 
   if !dump_ir then Ir.dump_program stdout ir;   (* --dump-ir のときは IR を表示 *)
 
+  (* コード生成 *)
   let asm =
-    try Emitter.emit_program ~regalloc:do_regalloc md mrc ir with
+    try Emitter.emit_program ~regalloc:do_regalloc ir with
     | Failure msg -> prerr_endline msg; exit 1    (* frame too large など *)
   in
   let out = open_out !output_file in
