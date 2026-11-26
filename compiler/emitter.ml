@@ -326,16 +326,40 @@ let emit_instr fr (i : instr) =
 let saved_regs fr =
   List.init fr.nbases (fun k -> Printf.sprintf "s%d" (k + 1)) @ fr.saved
 
+let negate = function
+  | "beqz" -> Some "bnez" | "bnez" -> Some "beqz"
+  | "beq" -> Some "bne" | "bne" -> Some "beq"
+  | "blt" -> Some "bge" | "bge" -> Some "blt"
+  | "bltu" -> Some "bgeu" | "bgeu" -> Some "bltu"
+  | "bgt" -> Some "ble" | "ble" -> Some "bgt"
+  | "bgtu" -> Some "bleu" | "bleu" -> Some "bgtu"
+  | "bltz" -> Some "bgez" | "bgez" -> Some "bltz"
+  | "blez" -> Some "bgtz" | "bgtz" -> Some "blez"
+  | _ -> None
+
 (*終端*)
 (*ブロックのラベルは .L_関数名_番号*)
-let emit_term (f : func) fr (t : terminator) =
+(* 条件分岐を出す。tru は「真のとき飛ぶ」命令(飛び先の手前まで)、fls は「偽のとき飛ぶ」命令
+   例:tru = "bnez a5"、fls = "beqz a5" / tru = "blt a5, a6"、fls = "bge a5, a6" *)
+let emit_cond ~next (f : func) tru fls lt lf =
+  let lbl l = Printf.sprintf ".L_%s_%d" f.name l in
+  if next = Some lt then
+    Printf.bprintf buf "%s, %s\n" fls (lbl lf)            (*真はすぐ下へ落ちる*)
+  else if next = Some lf then
+    Printf.bprintf buf "%s, %s\n" tru (lbl lt)            (*偽はすぐ下へ落ちる*)
+  else begin
+    Printf.bprintf buf "%s, %s\n" tru (lbl lt);           (*真なら lt*)
+    Printf.bprintf buf "j %s\n" (lbl lf)                  (*偽なら lf*)
+  end
+
+let emit_term ~next (f : func) fr (t : terminator) =
+  let lbl l = Printf.sprintf ".L_%s_%d" f.name l in
   match t with
   | Jump l ->
-      Printf.bprintf buf "j .L_%s_%d\n" f.name l
+      if next <> Some l then Printf.bprintf buf "j %s\n" (lbl l)   (*すぐ下なら出さない*)
   | Branch (c, lt, lf) ->
       let rc = src fr "t0" c in
-      Printf.bprintf buf "bnez %s, .L_%s_%d\n" rc f.name lt;   (*真(0以外)ならlt*)
-      Printf.bprintf buf "j .L_%s_%d\n" f.name lf              (*偽ならlf*)
+      emit_cond ~next f ("bnez " ^ rc) ("beqz " ^ rc) lt lf
   | Ret vs ->
       (* 戻り値: 先頭8ワードはa0〜a7、残りは呼び出し側のスタックへ
          (戻り値が 3 つ以上の関数では a2〜a7 を割り当てないので、順に入れてよい) *)
@@ -348,6 +372,42 @@ let emit_term (f : func) fr (t : terminator) =
         Printf.bprintf buf "lw %s, %d(sp)\n" r (fr.out_bytes + 4 * k)) (saved_regs fr);
       move_sp fr.size;
       Printf.bprintf buf "jalr x0, ra, 0\n"
+
+(* -O3:比較と分岐をまとめる
+   ブロックの最後が c = a < b などの比較で、終端が Branch (c, ...)、
+   c がその分岐でしか使われないなら、比較の命令は出さずに blt a, b などで直接分岐する *)
+let use_counts (f : func) =
+  let h = Hashtbl.create 256 in
+  let add v = Hashtbl.replace h v (1 + Option.value ~default:0 (Hashtbl.find_opt h v)) in
+  List.iter (fun b ->
+    List.iter (fun i -> List.iter add (uses i)) b.body;
+    List.iter add (term_uses b.term)) f.blocks;
+  h
+
+(* 比較 op の a, b について、(真のとき飛ぶ命令, 1 つ目, 2 つ目) *)
+let branch_of op a b =
+  match op with
+  | Eq -> Some ("beq", a, b)
+  | Ne -> Some ("bne", a, b)
+  | Lt -> Some ("blt", a, b)          (* a < b *)
+  | Le -> Some ("bge", b, a)          (* a <= b は b >= a *)
+  | Gt -> Some ("blt", b, a)          (* a > b は b < a *)
+  | Ge -> Some ("bge", a, b)          (* a >= b *)
+  | Ltu -> Some ("bltu", a, b)
+  | Leu -> Some ("bgeu", b, a)
+  | Gtu -> Some ("bltu", b, a)
+  | Geu -> Some ("bgeu", a, b)
+  | _ -> None
+
+(* まとめられるなら Some (比較をのぞいた本体, 真の命令名, a, b) *)
+let fusable counts (b : block) =
+  match b.term, List.rev b.body with
+  | Branch (c, _, _), Bin (op, d, x, y) :: rest_rev
+    when d = c && Hashtbl.find_opt counts c = Some 1 ->
+      (match branch_of op x y with
+       | Some (bop, r1, r2) -> Some (List.rev rest_rev, bop, r1, r2)
+       | None -> None)
+  | _ -> None
 
 (*関数*)
 let emit_func ~regalloc ~opt3 (f : func) =
@@ -375,10 +435,27 @@ let emit_func ~regalloc ~opt3 (f : func) =
       fin fr "t0" p
     end) f.params;
   (*ブロック*)
-  List.iter (fun b ->
-    Printf.bprintf buf ".L_%s_%d:\n" f.name b.label;
-    List.iter (emit_instr fr) b.body;
-    emit_term f fr b.term) f.blocks
+  let counts = use_counts f in
+  let rec go = function
+    | [] -> ()
+    | b :: rest ->
+        Printf.bprintf buf ".L_%s_%d:\n" f.name b.label;
+        (* -O3:すぐ下のブロックのラベル(フォールスルー化に使う) *)
+        let next = match rest with nb :: _ when opt3 -> Some nb.label | _ -> None in
+        (match (if opt3 then fusable counts b else None), b.term with
+         | Some (body, bop, x, y), Branch (_, lt, lf) ->
+             (* 比較と分岐をまとめる:比較の命令は出さない *)
+             List.iter (emit_instr fr) body;
+             let rx = src fr "t0" x in
+             let ry = src fr "t1" y in
+             let neg = Option.get (negate bop) in
+             emit_cond ~next f (Printf.sprintf "%s %s, %s" bop rx ry)
+               (Printf.sprintf "%s %s, %s" neg rx ry) lt lf
+         | _ ->
+             List.iter (emit_instr fr) b.body;
+             emit_term ~next f fr b.term);
+        go rest in
+  go f.blocks
 
 (* perf/rayqc-builtins で変更予定
 let runtime_math = {|
@@ -603,6 +680,69 @@ __clz:
 |}
 *)
 
+(*遠すぎる条件分岐を直す
+   条件分岐(beqz など)は ±4KB までしか飛べない。フォールスルー化で j が消えると、
+   遠いブロックへ条件分岐で飛ぶことがあるので、そういう分岐だけ
+     beqz a5, .L_far   ->   bnez a5, .L_rx_N
+                            j .L_far
+                          .L_rx_N:
+   に書きかえる(j は ±1MB まで届く)。*)
+
+(* 1 行を (命令名, 飛び先より前のオペランド, 飛び先) に分ける。条件分岐でなければ None *)
+let split_branch line =
+  let s = String.trim line in
+  match String.index_opt s ' ' with
+  | None -> None
+  | Some k ->
+      let op = String.sub s 0 k in
+      if negate op = None then None
+      else
+        let rest = String.sub s (k + 1) (String.length s - k - 1) in
+        match String.rindex_opt rest ',' with
+        | None -> None
+        | Some c ->
+            let regs = String.sub rest 0 c in
+            let target = String.trim (String.sub rest (c + 1) (String.length rest - c - 1)) in
+            Some (op, regs, target)
+
+let size_of line =
+  let s = String.trim line in
+  if s = "" || s.[0] = '.' || s.[0] = '#' || s.[String.length s - 1] = ':' then 0
+  else
+    let op = match String.index_opt s ' ' with Some k -> String.sub s 0 k | None -> s in
+    if op = "li" || op = "la" || op = "call" || op = "tail" then 8 else 4
+
+let relax_count = ref 0
+
+let relax (text : string) : string =
+  let limit = 4000 in                                  (* ±4096 より少し内側 *)
+  let rec pass lines =
+    (* ラベルの位置(見積もり) *)
+    let pos = Hashtbl.create 256 in
+    let _ = List.fold_left (fun p l ->
+      let s = String.trim l in
+      if s <> "" && s.[String.length s - 1] = ':' then        (* ラベル *)
+        Hashtbl.replace pos (String.sub s 0 (String.length s - 1)) p;
+      p + size_of l) 0 lines in
+    let changed = ref false in
+    let _, out = List.fold_left (fun (p, acc) l ->
+      let here = p in
+      match split_branch l with
+      | Some (op, regs, target) when
+          (match Hashtbl.find_opt pos target with
+           | Some t -> abs (t - here) > limit
+           | None -> false) ->
+          changed := true;
+          incr relax_count;
+          let skip = Printf.sprintf ".L_rx_%d" !relax_count in
+          let neg = Option.get (negate op) in
+          (p + 8, (skip ^ ":") :: ("j " ^ target) :: (Printf.sprintf "%s %s, %s" neg regs skip) :: acc)
+      | _ -> (p + size_of l, l :: acc)) (0, []) lines in
+    let out = List.rev out in
+    if !changed then pass out else out in
+  let lines = String.split_on_char '\n' text in
+  String.concat "\n" (pass lines)
+
 let emit_program ?(regalloc = false) ?(opt3 = false) (p : program) : string =
   Buffer.clear buf;
   Printf.bprintf buf ".section .text\n";
@@ -612,8 +752,8 @@ let emit_program ?(regalloc = false) ?(opt3 = false) (p : program) : string =
   if opt3 then begin
     let s = Buffer.contents buf in
     Buffer.clear buf;
-    Buffer.add_string buf (Schedule.run s)
-  end;         
+    Buffer.add_string buf (relax (Schedule.run s))
+  end;        
   (* perf/rayqc-builtins で変更予定
   (if md = Off then Buffer.add_string buf runtime_math);
   (match mrc with
