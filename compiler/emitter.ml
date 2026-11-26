@@ -171,13 +171,19 @@ let emit_instr fr (i : instr) =
        | _ ->
            let ra = src "t0" a in
            to_vreg ra d)
-  | Bin ((Shl | Sra) as op, d, a, b)
+  | Bin ((Sll | Srl | Sra) as op, d, a, b)
     when fr.imm && (match fr.loc b with Regalloc.Remat k -> 0l <= k && k <= 31l | _ -> false) ->
-      (* シフト量が定数:slli / srai の即値にする(-O3) *)
+      (* シフト量が定数:slli / srli / srai の即値にする(-O3) *)
+      let inst = match op with
+        | Sll -> "slli"
+        | Srl -> "srli"
+        | Sra -> "srai"
+        | _ -> failwith "Fatal error"
+      in
       let k = match fr.loc b with Regalloc.Remat k -> k | _ -> assert false in
       let ra = src "t0" a in
       let rd = dst "t0" d in
-      Printf.bprintf buf "%s %s, %s, %ld\n" (if op = Shl then "slli" else "srai") rd ra k;
+      Printf.bprintf buf "%s %s, %s, %ld\n" inst rd ra k;
       fin "t0" d
   | Bin (op, d, a, b) ->
       let ra = src "t0" a in

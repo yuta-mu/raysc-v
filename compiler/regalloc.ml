@@ -143,7 +143,7 @@ let shift_amount_consts (f : func) sites =
   List.iter (fun b ->
     List.iter (fun i ->
       match i with
-      | Bin ((Shl | Sra), _, a, _) -> bad a (*シフト量(2つ目)としての使い方だけ許す*)
+      | Bin ((Sll | Srl | Sra), _, a, _) -> bad a (*シフト量(2つ目)としての使い方だけ許す*)
       | _ -> List.iter bad (uses i)) b.body;
     List.iter bad (term_uses b.term)) f.blocks;
   ok

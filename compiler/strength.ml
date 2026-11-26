@@ -43,11 +43,11 @@ let run_func (f : func) : func =
     match i with
     | Bin (Mul, d, x, y) ->
         (match pick x y with
-         | Some (a, k) -> shift Shl d a k
+         | Some (a, k) -> shift Sll d a k
          | None -> [i])
     | Bin (QMul, d, x, y) ->
         (match pick x y with
-         | Some (a, m) when m >= 16 -> shift Shl d a (m - 16)
+         | Some (a, m) when m >= 16 -> shift Sll d a (m - 16)
          | Some (a, m) -> shift Sra d a (16 - m)
          | None -> [i])
     | _ -> [i] in

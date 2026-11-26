@@ -4,23 +4,15 @@ open Ir
 type key =
   | KBin of binop * vreg * vreg
   | KUn of unop * vreg
-  | KIntr of intrinsic * vreg
-  | KZbb_b of zbb_binop * vreg * vreg
-  | KZbb_u of zbb_unop * vreg
-  | KQabs of vreg
-  | KQclamp of vreg * vreg * vreg
   | KAddrLocal of int
   | KAddrGlobal of string
   | KLoad of region * vreg * int
 
 (*入力を入れかえても答えが同じ計算*)
 let commutative_bin = function
-  | Add | Mul | QMul | And | Or | Xor | Eq | Ne -> true
-  | _ -> false
-
-let commutative_zbb = function
+  | Add | Mul | QMul | And | Or | Xor | Eq | Ne
   | Min | Max | Minu | Maxu | Xnor -> true
-  | Andn | Orn -> false
+  | _ -> false
 
 (*入れかえてよいなら、小さい番号を先にそろえる*)
 let order comm a b = if comm && b < a then (b, a) else (a, b)
@@ -30,11 +22,6 @@ let key_of (i : instr) =
   match i with
   | Bin (op, d, a, b) -> let (a, b) = order (commutative_bin op) a b in Some (KBin (op, a, b), d)
   | Un (op, d, a) -> Some (KUn (op, a), d)
-  | Intr (f, d, a) -> Some (KIntr (f, a), d)
-  | Zbb_b (op, d, a, b) -> let (a, b) = order (commutative_zbb op) a b in Some (KZbb_b (op, a, b), d)
-  | Zbb_u (op, d, a) -> Some (KZbb_u (op, a), d)
-  | Qabs (d, a) -> Some (KQabs a, d)
-  | Qclamp (d, a, b, c) -> Some (KQclamp (a, b, c), d)
   | AddrLocal (d, id) -> Some (KAddrLocal id, d)
   | AddrGlobal (d, s) -> Some (KAddrGlobal s, d)
   | Load (d, r, a, o) -> Some (KLoad (r, a, o), d)
@@ -42,9 +29,8 @@ let key_of (i : instr) =
 
 (*計算の中身が読むvreg*)
 let operands = function
-  | KBin (_, a, b) | KZbb_b (_, a, b) -> [a; b]
-  | KUn (_, a) | KIntr (_, a) | KZbb_u (_, a) | KQabs a | KLoad (_, a, _) -> [a]
-  | KQclamp (a, b, c) -> [a; b; c]
+  | KBin (_, a, b) -> [a; b]
+  | KUn (_, a) | KLoad (_, a, _) -> [a]
   | KAddrLocal _ | KAddrGlobal _ -> []
 
 let is_local_load = function KLoad (Local _, _, _) -> true | _ -> false
