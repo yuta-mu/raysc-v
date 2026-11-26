@@ -455,7 +455,7 @@ let emit_term ~next (f : func) fr (t : terminator) =
       load "ra" fr.ra_off;
       (* s レジスタを、呼び出し元の値にもどす *)
       List.iteri (fun k r ->
-        Printf.bprintf buf "lw %s, %d(sp)\n" r (fr.out_bytes + 4 * k)) (saved_regs fr);
+        load_from r "sp" (fr.out_bytes + 4 * k)) (saved_regs fr);
       move_sp fr.size;
       Printf.bprintf buf "jalr x0, ra, 0\n"
 
@@ -502,7 +502,7 @@ let emit_func ~regalloc ~opt3 (md : mode) (mrc : march) (f : func) =
   move_sp (- fr.size);
   (* s レジスタをしまう。それから s<k> = sp + 4096k を作る *)
   List.iteri (fun k r ->
-    Printf.bprintf buf "sw %s, %d(sp)\n" r (fr.out_bytes + 4 * k)) (saved_regs fr);
+    store_to r "sp" (fr.out_bytes + 4 * k)) (saved_regs fr);
   for k = 1 to fr.nbases do
     Printf.bprintf buf "li t6, %d\nadd s%d, sp, t6\n" (4096 * k) k
   done;
@@ -827,6 +827,7 @@ let relax (text : string) : string =
 let emit_program ?(regalloc = false) ?(opt3 = false) (md : mode) (mrc : march) (p : program) : string =
   Buffer.clear buf;
   mmio_marks := opt3;
+  relax_count := 0;
   Printf.bprintf buf ".section .text\n";
 
   List.iter (emit_func ~regalloc ~opt3 md mrc) p.funcs;
