@@ -158,6 +158,10 @@ let to_vreg fr r v =
   | Regalloc.Slot n -> store r (slot fr n)
   | Regalloc.Remat _ -> ()
 
+(* -O3:MMIO(cycles / accel)の前後に「# mmio」の行を出して、並べかえ(schedule.ml)の壁にする *)
+let mmio_marks = ref false
+let mmio_mark () = if !mmio_marks then Printf.bprintf buf "# mmio\n"
+
 (*命令*)
 let emit_instr (md : mode) (mrc : march) fr (i : instr) =
   let src = src fr and dst = dst fr and fin = fin fr
@@ -316,10 +320,12 @@ let emit_instr (md : mode) (mrc : march) fr (i : instr) =
       Printf.bprintf buf "li t1, 0x10000000\n"; (*UART*)
       Printf.bprintf buf "sb %s, 0(t1)\n" ra    (*下位 8 ビットを送る*)
   | Cycles d ->
+      mmio_mark ();
       Printf.bprintf buf "li t1, 0x20000000\n"; (* cycle_lo *)
       let rd = dst "t0" d in
       Printf.bprintf buf "lw %s, 0(t1)\n" rd;
-      fin "t0" d
+      fin "t0" d;
+      mmio_mark ()
   | Qabs (d, a) ->
       if mrc = Im_zbb then
         (let ra = src "t0" a in
@@ -351,6 +357,7 @@ let emit_instr (md : mode) (mrc : march) fr (i : instr) =
          to_vreg "a0" d)
   | AccelSetSphere (i, x, y, z, r, r2, m) ->
       if md <> Isect then failwith "accel_set_sphere requires --accel=isect";
+      mmio_mark ();
       let ri = src "t0" i in
       Printf.bprintf buf "slli t0, %s, 5\n" ri;
       Printf.bprintf buf "li t1, 0x30000000\n";
@@ -360,9 +367,11 @@ let emit_instr (md : mode) (mrc : march) fr (i : instr) =
       Printf.bprintf buf "sw %s, 264(t1)\n" (src "t0" z);
       Printf.bprintf buf "sw %s, 268(t1)\n" (src "t0" r);
       Printf.bprintf buf "sw %s, 272(t1)\n" (src "t0" r2);
-      Printf.bprintf buf "sw %s, 276(t1)\n" (src "t0" m)
+      Printf.bprintf buf "sw %s, 276(t1)\n" (src "t0" m);
+      mmio_mark ()
   | AccelHit (d, ox, oy, oz, dx, dy, dz, tmin, tmax) ->
       if md <> Isect then failwith "accel_hit requires --accel=isect";
+      mmio_mark ();
       Printf.bprintf buf "li t1, 0x30000000\n";
       Printf.bprintf buf "sw %s, 0(t1)\n"  (src "t0" ox);
       Printf.bprintf buf "sw %s, 4(t1)\n"  (src "t0" oy);
@@ -374,13 +383,16 @@ let emit_instr (md : mode) (mrc : march) fr (i : instr) =
       Printf.bprintf buf "sw %s, 28(t1)\n" (src "t0" tmax);
       let rd = dst "t0" d in
       Printf.bprintf buf "lw %s, 32(t1)\n" rd;
-      fin "t0" d
+      fin "t0" d;
+      mmio_mark ()
   | AccelT d ->
       if md <> Isect then failwith "accel_t requires --accel=isect";
+      mmio_mark ();
       Printf.bprintf buf "li t1, 0x30000000\n";
       let rd = dst "t0" d in
       Printf.bprintf buf "lw %s, 36(t1)\n" rd;
-      fin "t0" d
+      fin "t0" d;
+      mmio_mark ()
   | RngSeed a ->
       if md = Off then failwith "rng_seed requires --accel=math or --accel=isect";
       let ra = src "t0" a in
@@ -814,6 +826,7 @@ let relax (text : string) : string =
 
 let emit_program ?(regalloc = false) ?(opt3 = false) (md : mode) (mrc : march) (p : program) : string =
   Buffer.clear buf;
+  mmio_marks := opt3;
   Printf.bprintf buf ".section .text\n";
 
   List.iter (emit_func ~regalloc ~opt3 md mrc) p.funcs;
