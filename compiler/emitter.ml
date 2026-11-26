@@ -402,14 +402,21 @@ let saved_regs fr =
 
 (*終端*)
 (*ブロックのラベルは .L_関数名_番号*)
-let emit_term (f : func) fr (t : terminator) =
+let emit_term ~next (f : func) fr (t : terminator) =
+  let lbl l = Printf.sprintf ".L_%s_%d" f.name l in
   match t with
   | Jump l ->
-      Printf.bprintf buf "j .L_%s_%d\n" f.name l
+      if next <> Some l then Printf.bprintf buf "j %s\n" (lbl l)   (*すぐ下なら出さない*)
   | Branch (c, lt, lf) ->
       let rc = src fr "t0" c in
-      Printf.bprintf buf "bnez %s, .L_%s_%d\n" rc f.name lt;   (*真(0以外)ならlt*)
-      Printf.bprintf buf "j .L_%s_%d\n" f.name lf              (*偽ならlf*)
+      if next = Some lt then
+        Printf.bprintf buf "beqz %s, %s\n" rc (lbl lf)            (*真はすぐ下へ落ちる*)
+      else if next = Some lf then
+        Printf.bprintf buf "bnez %s, %s\n" rc (lbl lt)            (*偽はすぐ下へ落ちる*)
+      else begin
+        Printf.bprintf buf "bnez %s, %s\n" rc (lbl lt);           (*真(0以外)ならlt*)
+        Printf.bprintf buf "j %s\n" (lbl lf)                      (*偽ならlf*)
+      end
   | Ret vs ->
       (* 戻り値: 先頭8ワードはa0〜a7、残りは呼び出し側のスタックへ
          (戻り値が 3 つ以上の関数では a2〜a7 を割り当てないので、順に入れてよい) *)
@@ -449,10 +456,16 @@ let emit_func ~regalloc ~opt3 (md : mode) (mrc : march) (f : func) =
       fin fr "t0" p
     end) f.params;
   (*ブロック*)
-  List.iter (fun b ->
-    Printf.bprintf buf ".L_%s_%d:\n" f.name b.label;
-    List.iter (emit_instr md mrc fr) b.body;
-    emit_term f fr b.term) f.blocks
+  let rec go = function
+    | [] -> ()
+    | b :: rest ->
+        Printf.bprintf buf ".L_%s_%d:\n" f.name b.label;
+        List.iter (emit_instr md mrc fr) b.body;
+        (* -O3:すぐ下のブロックのラベル(フォールスルー化に使う) *)
+        let next = match rest with nb :: _ when opt3 -> Some nb.label | _ -> None in
+        emit_term ~next f fr b.term;
+        go rest in
+  go f.blocks
 
 (*c-7*)
 let runtime_math = {|
@@ -676,6 +689,79 @@ __clz:
     jalr x0, ra, 0
 |}
 
+(*遠すぎる条件分岐を直す
+   条件分岐(beqz など)は ±4KB までしか飛べない。フォールスルー化で j が消えると、
+   遠いブロックへ条件分岐で飛ぶことがあるので、そういう分岐だけ
+     beqz a5, .L_far   ->   bnez a5, .L_rx_N
+                            j .L_far
+                          .L_rx_N:
+   に書きかえる(j は ±1MB まで届く)。*)
+let negate = function
+  | "beqz" -> Some "bnez" | "bnez" -> Some "beqz"
+  | "beq" -> Some "bne" | "bne" -> Some "beq"
+  | "blt" -> Some "bge" | "bge" -> Some "blt"
+  | "bltu" -> Some "bgeu" | "bgeu" -> Some "bltu"
+  | "bgt" -> Some "ble" | "ble" -> Some "bgt"
+  | "bgtu" -> Some "bleu" | "bleu" -> Some "bgtu"
+  | "bltz" -> Some "bgez" | "bgez" -> Some "bltz"
+  | "blez" -> Some "bgtz" | "bgtz" -> Some "blez"
+  | _ -> None
+
+(* 1 行を (命令名, 飛び先より前のオペランド, 飛び先) に分ける。条件分岐でなければ None *)
+let split_branch line =
+  let s = String.trim line in
+  match String.index_opt s ' ' with
+  | None -> None
+  | Some k ->
+      let op = String.sub s 0 k in
+      if negate op = None then None
+      else
+        let rest = String.sub s (k + 1) (String.length s - k - 1) in
+        match String.rindex_opt rest ',' with
+        | None -> None
+        | Some c ->
+            let regs = String.sub rest 0 c in
+            let target = String.trim (String.sub rest (c + 1) (String.length rest - c - 1)) in
+            Some (op, regs, target)
+
+let size_of line =
+  let s = String.trim line in
+  if s = "" || s.[0] = '.' || s.[0] = '#' || s.[String.length s - 1] = ':' then 0
+  else
+    let op = match String.index_opt s ' ' with Some k -> String.sub s 0 k | None -> s in
+    if op = "li" || op = "la" || op = "call" || op = "tail" then 8 else 4
+
+let relax_count = ref 0
+
+let relax (text : string) : string =
+  let limit = 4000 in                                  (* ±4096 より少し内側 *)
+  let rec pass lines =
+    (* ラベルの位置(見積もり) *)
+    let pos = Hashtbl.create 256 in
+    let _ = List.fold_left (fun p l ->
+      let s = String.trim l in
+      if s <> "" && s.[String.length s - 1] = ':' then        (* ラベル *)
+        Hashtbl.replace pos (String.sub s 0 (String.length s - 1)) p;
+      p + size_of l) 0 lines in
+    let changed = ref false in
+    let _, out = List.fold_left (fun (p, acc) l ->
+      let here = p in
+      match split_branch l with
+      | Some (op, regs, target) when
+          (match Hashtbl.find_opt pos target with
+           | Some t -> abs (t - here) > limit
+           | None -> false) ->
+          changed := true;
+          incr relax_count;
+          let skip = Printf.sprintf ".L_rx_%d" !relax_count in
+          let neg = Option.get (negate op) in
+          (p + 8, (skip ^ ":") :: ("j " ^ target) :: (Printf.sprintf "%s %s, %s" neg regs skip) :: acc)
+      | _ -> (p + size_of l, l :: acc)) (0, []) lines in
+    let out = List.rev out in
+    if !changed then pass out else out in
+  let lines = String.split_on_char '\n' text in
+  String.concat "\n" (pass lines)
+
 let emit_program ?(regalloc = false) ?(opt3 = false) (md : mode) (mrc : march) (p : program) : string =
   Buffer.clear buf;
   Printf.bprintf buf ".section .text\n";
@@ -685,7 +771,7 @@ let emit_program ?(regalloc = false) ?(opt3 = false) (md : mode) (mrc : march) (
   if opt3 then begin
     let s = Buffer.contents buf in
     Buffer.clear buf;
-    Buffer.add_string buf (Schedule.run s)
+   Buffer.add_string buf (relax (Schedule.run s))
   end;                                                                                       
   (if md = Off then Buffer.add_string buf runtime_math);
   (match mrc with
