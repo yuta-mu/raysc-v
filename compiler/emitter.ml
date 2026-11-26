@@ -834,8 +834,12 @@ let emit_program ?(regalloc = false) ?(opt3 = false) (md : mode) (mrc : march) (
   if opt3 then begin
     let s = Buffer.contents buf in
     Buffer.clear buf;
-   Buffer.add_string buf (relax (Schedule.run s))
-  end;                                                                                       
+    Buffer.add_string buf (Schedule.run s)
+  end;
+  (*遠すぎる条件分岐を直す*)
+  (let s = Buffer.contents buf in
+   Buffer.clear buf;
+   Buffer.add_string buf (relax s));                                                                                      
   (if md = Off then Buffer.add_string buf runtime_math);
   (match mrc with
     | I -> (Buffer.add_string buf runtime_m;
