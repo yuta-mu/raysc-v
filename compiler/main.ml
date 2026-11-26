@@ -83,12 +83,15 @@ let () =
   let do_inline = !inline_flag || !opt_level >= 1 in
   let do_fold = !fold_flag || !opt_level >= 1 in
   let do_regalloc = !regalloc_flag || !opt_level >= 2 in
+  let do_o3 = !opt_level >= 3 in 
   let ir = if do_inline then 
              (*どこからも来ないブロック(Ret [])を展開の前に消す*)
              Inline.run { ir with Ir.funcs = List.map Dce.remove_unreachable ir.Ir.funcs }
            else ir
          in
   let ir = if do_fold then Fold.run ir else ir in       (* 見えた定数を畳みこみ *)
+  let ir = if do_o3 then Strength.run ir else ir in     (* mul → shift *)
+  let ir = if do_o3 then Fold.run (Cse.run ir) else ir in       (* 同じ計算をコピーにして、Fold で置きかえる *)
   let ir = if do_inline || do_fold then Dce.run ir else ir in   (* 使われなくなったものを消す *)
 
   if !dump_ir then Ir.dump_program stdout ir;   (* --dump-ir のときは IR を表示 *)
@@ -96,6 +99,7 @@ let () =
   (* コード生成 *)
   let asm =
     try Emitter.emit_program ~regalloc:do_regalloc ir with
+    try Emitter.emit_program ~regalloc:do_regalloc ~opt3:do_o3 ir with
     | Failure msg -> prerr_endline msg; exit 1    (* frame too large など *)
   in
   let out = open_out !output_file in

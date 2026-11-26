@@ -1,7 +1,7 @@
 BUILD_DIR ?= ../build/compiler
 TARGET    := $(BUILD_DIR)/rayqc
 
-ML_SRCS := ast.ml numeric.ml ir.ml builtins.ml semant.ml translate.ml lower.ml inline.ml fold.ml dce.ml regalloc.ml emitter.ml main.ml
+ML_SRCS := ast.ml numeric.ml ir.ml builtins.ml semant.ml translate.ml lower.ml inline.ml fold.ml dce.ml strength.ml cse.ml regalloc.ml schedule.ml emitter.ml main.ml
 
 all: $(TARGET)
 
@@ -17,7 +17,7 @@ $(TARGET): $(BUILD_DIR)/parser.ml $(BUILD_DIR)/lexer.ml $(ML_SRCS)
 	@mkdir -p $(BUILD_DIR)
 	cp $(ML_SRCS) $(BUILD_DIR)/
 	cd $(BUILD_DIR) && ocamlopt -I . -o rayqc \
-		ast.ml numeric.ml ir.ml parser.mli parser.ml lexer.ml builtins.ml semant.ml translate.ml lower.ml inline.ml fold.ml dce.ml regalloc.ml emitter.ml main.ml
+		ast.ml numeric.ml ir.ml parser.mli parser.ml lexer.ml builtins.ml semant.ml translate.ml lower.ml inline.ml fold.ml dce.ml strength.ml cse.ml regalloc.ml schedule.ml emitter.ml main.ml
 
 clean:
 	rm -rf $(BUILD_DIR)

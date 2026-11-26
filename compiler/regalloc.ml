@@ -130,10 +130,27 @@ type loc =
 let callee_regs = ["s0"; "s1"; "s2"; "s3"; "s4"; "s5"; "s6"; "s7"; "s8"; "s9"; "s10"; "s11"]
 let caller_regs = ["t4"; "t5"; "a2"; "a3"; "a4"; "a5"; "a6"; "a7"]
 
+(*シフト量にしか使われない定数のvreg(0〜31)。
+   emitterがslli/sraiの即値にするので、レジスタもスロットも要らない*)
+let shift_amount_consts (f : func) sites =
+  let ok = Hashtbl.create 64 in
+  Hashtbl.iter (fun v l ->
+    match l with
+    | [Const (_, n)] when Int32.compare n 0l >= 0 && Int32.compare n 31l <= 0
+                          && not (List.mem v f.params) -> Hashtbl.replace ok v n
+    | _ -> ()) sites;
+  let bad v = Hashtbl.remove ok v in
+  List.iter (fun b ->
+    List.iter (fun i ->
+      match i with
+      | Bin ((Shl | Sra), _, a, _) -> bad a (*シフト量(2つ目)としての使い方だけ許す*)
+      | _ -> List.iter bad (uses i)) b.body;
+    List.iter bad (term_uses b.term)) f.blocks;
+  ok
 
 (*reserved:旗に使うので割り当てないsレジスタ
    返り値:(vreg -> 置き場所, スロットの数, 使ったsレジスタ)*)
-let allocate ?(reserved = []) (f : func) =
+let allocate ?(reserved = []) ?(imm_shift = false) (f : func) =
   let (tbl, ranges) = build_intervals f in
   let calls = call_points f ranges in
   let sites = def_sites f in
@@ -147,8 +164,9 @@ let allocate ?(reserved = []) (f : func) =
   let is_callee r = List.mem r callee in
   let cross it = crosses calls it in
   let usable it r = not (cross it) || is_callee r in
+  let imm = if imm_shift then shift_amount_consts f sites else Hashtbl.create 1 in
   let ivs = List.sort (fun a b -> compare (a.start, a.stop) (b.start, b.stop))
-              (Hashtbl.fold (fun _ it acc -> it :: acc) tbl []) in
+              (Hashtbl.fold (fun v it acc -> if Hashtbl.mem imm v then acc else it :: acc) tbl []) in
   let assign = Hashtbl.create 256 in              (* vreg -> レジスタ名 *)
   let spilled = ref [] in
   let active = ref [] in                          (* (区間, レジスタ) *)
@@ -189,6 +207,7 @@ let allocate ?(reserved = []) (f : func) =
   (* 結果の表:レジスタ / スロット / 作り直し *)
   let locs = Hashtbl.create 256 in
   Hashtbl.iter (fun v r -> Hashtbl.replace locs v (Reg r)) assign;
+  Hashtbl.iter (fun v n -> Hashtbl.replace locs v (Remat n)) imm;  (*シフト量の定数*)
   let nslots = ref 0 in
   List.iter (fun it ->
     match Hashtbl.find_opt sites it.iv with
