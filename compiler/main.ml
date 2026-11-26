@@ -98,7 +98,6 @@ let () =
 
   (* コード生成 *)
   let asm =
-    try Emitter.emit_program ~regalloc:do_regalloc ir with
     try Emitter.emit_program ~regalloc:do_regalloc ~opt3:do_o3 ir with
     | Failure msg -> prerr_endline msg; exit 1    (* frame too large など *)
   in
