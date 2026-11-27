@@ -550,145 +550,224 @@ let emit_func ~regalloc ~opt3 (md : mode) (mrc : march) (f : func) =
   go f.blocks
 
 (*c-7*)
-let runtime_math = {|
+let runtime_math_to_i = {|
+|}
+
+let runtime_math_to_m = {|
 .globl __q16_sqrt
 __q16_sqrt:
 blez a0, .L_sqrt_zero
-srai t4, a0, 16
-slli t5, a0, 16
-li t0, 0
-li t1, 0x01000000
-li a2, 0
+srai a1, a0, 16
+slli t6, a0, 16
+li t1, 0
+beqz a1, .L_sqrt_small_init
+srli t2, a1, 8
+li t0, 0x00080000
+beqz t2, .L_sqrt_loop
+li t0, 0x00800000
 .L_sqrt_loop:
-add t2, t0, t1
-srli t2, t2, 1
-mul t6, t2, t2
-mulh a1, t2, t2
-blt a1, t4, .L_sqrt_le
-bgt a1, t4, .L_sqrt_gt
-bgeu t5, t6, .L_sqrt_le
-.L_sqrt_gt:
-addi t1, t2, -1
-j .L_sqrt_check
-.L_sqrt_le:
-mv a2, t2
-addi t0, t2, 1
-.L_sqrt_check:
-bge t1, t0, .L_sqrt_loop
-mv a0, a2
+or t3, t1, t0
+mul t4, t3, t3
+mulh t5, t3, t3
+blt t5, a1, .L_sqrt_accept
+bgt t5, a1, .L_sqrt_next
+bltu t6, t4, .L_sqrt_next
+.L_sqrt_accept:
+mv t1, t3
+.L_sqrt_next:
+srli t0, t0, 1
+bnez t0, .L_sqrt_loop
+mv a0, t1
+jalr x0, ra, 0
+.L_sqrt_small_init:
+li t0, 0x00008000
+.L_sqrt_small_loop:
+or t3, t1, t0
+mul t4, t3, t3
+bltu t6, t4, .L_sqrt_small_next
+mv t1, t3
+.L_sqrt_small_next:
+srli t0, t0, 1
+bnez t0, .L_sqrt_small_loop
+mv a0, t1
 jalr x0, ra, 0
 .L_sqrt_zero:
+li a0, 0
+jalr x0, ra, 0
+
+.globl __q16_rsqrt
+__q16_rsqrt:
+blez a0, .L_rsqrt_zero
+srli t0, a0, 16
+lui t1, 0x10
+bnez t0, .L_rsqrt_init
+srli t0, a0, 8
+lui t1, 0x100
+bnez t0, .L_rsqrt_init
+lui t1, 0x1000
+.L_rsqrt_init:
+mv a1, a0
+li a0, 0
+lui t2, 0x10
+.L_rsqrt_loop:
+or t3, a0, t1
+mul t4, t3, t3
+mulhu t5, t3, t3
+mulhu t6, t4, a1
+mulhu a2, t5, a1
+mul t5, t5, a1
+add t5, t5, t6
+sltu t6, t5, t6
+add t6, a2, t6
+bnez t6, .L_rsqrt_branch
+bgeu t5, t2, .L_rsqrt_branch
+.L_rsqrt_store:
+mv a0, t3
+.L_rsqrt_next:
+srli t1, t1, 1
+bnez t1, .L_rsqrt_loop
+jalr x0, ra, 0
+.L_rsqrt_branch:
+bne t5, t2, .L_rsqrt_next
+bnez t6, .L_rsqrt_next
+mul t4, t4, a1
+beqz t4, .L_rsqrt_store
+j .L_rsqrt_next
+.L_rsqrt_zero:
 li a0, 0
 jalr x0, ra, 0
 
 .globl __q16_rcp
 __q16_rcp:
 beqz a0, .L_rcp_max
-li t0, 0
-bgez a0, .L_rcp_abs
-li t0, 1
-sub a0, x0, a0
-.L_rcp_abs:
-li t3, 3
-bltu a0, t3, .L_rcp_sat
-li a1, 1
-li a2, 0
-li a3, 0
-li t1, 32
-.L_rcp_loop:
-slli a3, a3, 1
-srli t2, a2, 31
-slli a1, a1, 1
-or a1, a1, t2
-slli a2, a2, 1
-bltu a1, a0, .L_rcp_next
-sub a1, a1, a0
-ori a3, a3, 1
-.L_rcp_next:
-addi t1, t1, -1
-bnez t1, .L_rcp_loop
-beqz t0, .L_rcp_pos_ret
-or t3, a1, a2
-beqz t3, .L_rcp_neg_exact
-addi a3, a3, 1
-.L_rcp_neg_exact:
-sub a0, x0, a3
+bltz a0, .L_rcp_neg
+li t0, 2
+bgeu t0, a0, .L_rcp_max
+neg t1, a0
+divu a0, t1, a0
+addi a0, a0, 1
 jalr x0, ra, 0
-.L_rcp_pos_ret:
-mv a0, a3
+.L_rcp_neg:
+neg t1, a0
+li t0, 2
+lui a0, 0x80000
+bgeu t0, t1, .L_rcp_ret
+li a0, -1
+divu a0, a0, t1
+not a0, a0
 jalr x0, ra, 0
-.L_rcp_sat:
-bnez t0, .L_rcp_min
 .L_rcp_max:
 lui a0, 0x80000
 addi a0, a0, -1
+.L_rcp_ret:
 jalr x0, ra, 0
-.L_rcp_min:
-lui a0, 0x80000
+|}
+
+let runtime_math_to_zbb = {|
+.globl __q16_sqrt
+__q16_sqrt:
+blez a0, .L_sqrt_zero
+clz t0, a0
+srli t0, t0, 1
+li t2, 23
+sub t2, t2, t0
+li t0, 1
+sll t0, t0, t2
+srai a1, a0, 16
+slli t6, a0, 16
+li t1, 0
+beqz a1, .L_sqrt_small
+.L_sqrt_loop:
+or t3, t1, t0
+mul t4, t3, t3
+mulh t5, t3, t3
+blt t5, a1, .L_sqrt_accept
+bgt t5, a1, .L_sqrt_next
+bltu t6, t4, .L_sqrt_next
+.L_sqrt_accept:
+mv t1, t3
+.L_sqrt_next:
+srli t0, t0, 1
+bnez t0, .L_sqrt_loop
+mv a0, t1
+jalr x0, ra, 0
+.L_sqrt_small:
+or t3, t1, t0
+mul t4, t3, t3
+bltu t6, t4, .L_sqrt_small_next
+mv t1, t3
+.L_sqrt_small_next:
+srli t0, t0, 1
+bnez t0, .L_sqrt_small
+mv a0, t1
+jalr x0, ra, 0
+.L_sqrt_zero:
+li a0, 0
 jalr x0, ra, 0
 
 .globl __q16_rsqrt
 __q16_rsqrt:
-    blez a0, .L_rsqrt_zero
-    addi sp, sp, -64
-    sw a0, 0(sp)             # x_raw
-    sw x0, 4(sp)             # result r = 0
-    li t0, 0x01000000        # bit = 2^24
-    sw t0, 8(sp)
+blez a0, .L_rsqrt_zero
+clz t0, a0
+addi t0, t0, 17
+srli t0, t0, 1
+li t1, 1
+sll t1, t1, t0
+mv a1, a0
+li a0, 0
+lui t2, 0x10
 .L_rsqrt_loop:
-    lw t0, 8(sp)
-    beqz t0, .L_rsqrt_done
-    lw t1, 4(sp)
-    or t2, t1, t0            # candidate c = r | bit
-    sw t2, 12(sp)
-
-    # sq = c*c, as unsigned 64-bit (hi:lo)
-    mul t3, t2, t2
-    mulhu t4, t2, t2
-    sw t3, 16(sp)            # sq_lo
-    sw t4, 20(sp)            # sq_hi
-
-    lw t5, 0(sp)             # x_raw
-    # a = sq_hi * x_raw (64-bit)
-    mul t6, t4, t5
-    mulhu t0, t4, t5
-    sw t6, 24(sp)            # a_lo
-    sw t0, 28(sp)            # a_hi
-    # b = sq_lo * x_raw (64-bit)
-    mul t1, t3, t5
-    mulhu t2, t3, t5
-    sw t1, 32(sp)            # b_lo
-    sw t2, 36(sp)            # b_hi = b >> 32
-
-    # high = a + b_hi; accept iff high < 2^16,
-    # or high == 2^16 and b_lo == 0 (i.e. sq*x <= 2^48).
-    lw t3, 24(sp)             # a_lo
-    lw t4, 36(sp)             # b_hi
-    add t5, t3, t4            # high_lo
-    sltu t6, t5, t3           # carry
-    lw t0, 28(sp)             # a_hi
-    add t0, t0, t6            # high_hi
-    bnez t0, .L_rsqrt_next
-    li t1, 65536
-    bltu t5, t1, .L_rsqrt_accept
-    bne t5, t1, .L_rsqrt_next
-    lw t2, 32(sp)             # b_lo
-    bnez t2, .L_rsqrt_next
-.L_rsqrt_accept:
-    lw t0, 12(sp)
-    sw t0, 4(sp)
+or t3, a0, t1
+mul t4, t3, t3
+mulhu t5, t3, t3
+mulhu t6, t4, a1
+mulhu a2, t5, a1
+mul t5, t5, a1
+add t5, t5, t6
+sltu t6, t5, t6
+add t6, a2, t6
+bnez t6, .L_rsqrt_branch
+bgeu t5, t2, .L_rsqrt_branch
+.L_rsqrt_store:
+mv a0, t3
 .L_rsqrt_next:
-    lw t0, 8(sp)
-    srli t0, t0, 1
-    sw t0, 8(sp)
-    j .L_rsqrt_loop
-.L_rsqrt_done:
-    lw a0, 4(sp)
-    addi sp, sp, 64
-    jalr x0, ra, 0
+srli t1, t1, 1
+bnez t1, .L_rsqrt_loop
+jalr x0, ra, 0
+.L_rsqrt_branch:
+bne t5, t2, .L_rsqrt_next
+bnez t6, .L_rsqrt_next
+mul t4, t4, a1
+beqz t4, .L_rsqrt_store
+j .L_rsqrt_next
 .L_rsqrt_zero:
-    li a0, 0
-    jalr x0, ra, 0
+li a0, 0
+jalr x0, ra, 0
+
+.globl __q16_rcp
+__q16_rcp:
+beqz a0, .L_rcp_max
+bltz a0, .L_rcp_neg
+li t0, 2
+bgeu t0, a0, .L_rcp_max
+neg t1, a0
+divu a0, t1, a0
+addi a0, a0, 1
+jalr x0, ra, 0
+.L_rcp_neg:
+neg t1, a0
+li t0, 2
+lui a0, 0x80000
+bgeu t0, t1, .L_rcp_ret
+li a0, -1
+divu a0, a0, t1
+not a0, a0
+jalr x0, ra, 0
+.L_rcp_max:
+lui a0, 0x80000
+addi a0, a0, -1
+.L_rcp_ret:
+jalr x0, ra, 0
 |}
 
 let runtime_m = {|
@@ -697,78 +776,94 @@ let runtime_m = {|
 let runtime_zbb = {|
 .globl __min
 __min:
-    blt a0, a1, .L_min_ret
-    mv  a0, a1
+blt a0, a1, .L_min_ret
+mv a0, a1
 .L_min_ret:
-    jalr x0, ra, 0
+jalr x0, ra, 0
 
 .globl __max
 __max:
-    bge a0, a1, .L_max_ret
-    mv  a0, a1
+bge a0, a1, .L_max_ret
+mv a0, a1
 .L_max_ret:
-    jalr x0, ra, 0
+jalr x0, ra, 0
 
 .globl __minu
 __minu:
-    bltu a0, a1, .L_minu_ret
-    mv   a0, a1
+bltu a0, a1, .L_minu_ret
+mv a0, a1
 .L_minu_ret:
-    jalr x0, ra, 0
+jalr x0, ra, 0
 
 .globl __maxu
 __maxu:
-    bgeu a0, a1, .L_maxu_ret
-    mv   a0, a1
+bgeu a0, a1, .L_maxu_ret
+mv a0, a1
 .L_maxu_ret:
-    jalr x0, ra, 0
+jalr x0, ra, 0
 
 .globl __andn
 __andn:
-    not  a1, a1
-    and  a0, a0, a1
-    jalr x0, ra, 0
+not a1, a1
+and a0, a0, a1
+jalr x0, ra, 0
 
 .globl __orn
 __orn:
-    not  a1, a1
-    or   a0, a0, a1
-    jalr x0, ra, 0
+not a1, a1
+or a0, a0, a1
+jalr x0, ra, 0
 
 .globl __xnor
 __xnor:
-    xor  a0, a0, a1
-    not  a0, a0
-    jalr x0, ra, 0
+xor a0, a0, a1
+not a0, a0
+jalr x0, ra, 0
 
 .globl __sext_b
 __sext_b:
-    slli a0, a0, 24
-    srai a0, a0, 24
-    jalr x0, ra, 0
+slli a0, a0, 24
+srai a0, a0, 24
+jalr x0, ra, 0
 
 .globl __sext_h
 __sext_h:
-    slli a0, a0, 16
-    srai a0, a0, 16
-    jalr x0, ra, 0
+slli a0, a0, 16
+srai a0, a0, 16
+jalr x0, ra, 0
 
 .globl __clz
 __clz:
-    li      a1, 31
-    li      t0, 1
-    slli    t0, t0, 31
-.L_highest_set_bit_loop:
-    and     t1, a0, t0
-    bnez    t1, .L_highest_set_bit_found
-    srli    t0, t0, 1
-    addi    a1, a1, -1
-    bgez    a1, .L_highest_set_bit_loop
-    li      a1, -1
-.L_highest_set_bit_found:
-    li      a0, 31
-    sub     a0, a0, a1
-    jalr x0, ra, 0
+beqz a0, .L_clz_zero
+li t0, 0
+srli t1, a0, 16
+bnez t1, .L_clz_8
+addi t0, t0, 16
+slli a0, a0, 16
+.L_clz_8:
+srli t1, a0, 24
+bnez t1, .L_clz_4
+addi t0, t0, 8
+slli a0, a0, 8
+.L_clz_4:
+srli t1, a0, 28
+bnez t1, .L_clz_2
+addi t0, t0, 4
+slli a0, a0, 4
+.L_clz_2:
+srli t1, a0, 30
+bnez t1, .L_clz_1
+addi t0, t0, 2
+slli a0, a0, 2
+.L_clz_1:
+bltz a0, .L_clz_done
+addi t0, t0, 1
+.L_clz_done:
+mv a0, t0
+jalr x0, ra, 0
+.L_clz_zero:
+li a0, 32
+jalr x0, ra, 0
 |}
 
 (*遠すぎる条件分岐を直す
@@ -851,12 +946,14 @@ let emit_program ?(regalloc = false) ?(opt3 = false) (md : mode) (mrc : march) (
   (let s = Buffer.contents buf in
    Buffer.clear buf;
    Buffer.add_string buf (relax s));                                                                                      
-  (if md = Off then Buffer.add_string buf runtime_math);
+  ();
   (match mrc with
-    | I -> (Buffer.add_string buf runtime_m;
+    | I -> (if md = Off then Buffer.add_string buf runtime_math_to_i;
+            Buffer.add_string buf runtime_m;
             Buffer.add_string buf runtime_zbb)
-    | Im -> (Buffer.add_string buf runtime_zbb)
-    | _ -> ());
+    | Im -> (if md = Off then Buffer.add_string buf runtime_math_to_m;
+            Buffer.add_string buf runtime_zbb)
+    | Im_zbb -> if md = Off then Buffer.add_string buf runtime_math_to_zbb);
   (*定数データ*)
   if p.consts <> [] then begin
     Printf.bprintf buf "\n.section .rodata\n";
