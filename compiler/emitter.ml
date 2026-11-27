@@ -550,7 +550,10 @@ let emit_func ~regalloc ~opt3 (md : mode) (mrc : march) (f : func) =
   go f.blocks
 
 (*c-7*)
-let runtime_math = {|
+let runtime_math_to_i = {|
+|}
+
+let runtime_math_to_m = {|
 .globl __q16_sqrt
 __q16_sqrt:
 blez a0, .L_sqrt_zero
@@ -603,6 +606,113 @@ lui t1, 0x100
 bnez t0, .L_rsqrt_init
 lui t1, 0x1000
 .L_rsqrt_init:
+mv a1, a0
+li a0, 0
+lui t2, 0x10
+.L_rsqrt_loop:
+or t3, a0, t1
+mul t4, t3, t3
+mulhu t5, t3, t3
+mulhu t6, t4, a1
+mulhu a2, t5, a1
+mul t5, t5, a1
+add t5, t5, t6
+sltu t6, t5, t6
+add t6, a2, t6
+bnez t6, .L_rsqrt_branch
+bgeu t5, t2, .L_rsqrt_branch
+.L_rsqrt_store:
+mv a0, t3
+.L_rsqrt_next:
+srli t1, t1, 1
+bnez t1, .L_rsqrt_loop
+jalr x0, ra, 0
+.L_rsqrt_branch:
+bne t5, t2, .L_rsqrt_next
+bnez t6, .L_rsqrt_next
+mul t4, t4, a1
+beqz t4, .L_rsqrt_store
+j .L_rsqrt_next
+.L_rsqrt_zero:
+li a0, 0
+jalr x0, ra, 0
+
+.globl __q16_rcp
+__q16_rcp:
+beqz a0, .L_rcp_max
+bltz a0, .L_rcp_neg
+li t0, 2
+bgeu t0, a0, .L_rcp_max
+neg t1, a0
+divu a0, t1, a0
+addi a0, a0, 1
+jalr x0, ra, 0
+.L_rcp_neg:
+neg t1, a0
+li t0, 2
+lui a0, 0x80000
+bgeu t0, t1, .L_rcp_ret
+li a0, -1
+divu a0, a0, t1
+not a0, a0
+jalr x0, ra, 0
+.L_rcp_max:
+lui a0, 0x80000
+addi a0, a0, -1
+.L_rcp_ret:
+jalr x0, ra, 0
+|}
+
+let runtime_math_to_zbb = {|
+.globl __q16_sqrt
+__q16_sqrt:
+blez a0, .L_sqrt_zero
+clz t0, a0
+srli t0, t0, 1
+li t2, 23
+sub t2, t2, t0
+li t0, 1
+sll t0, t0, t2
+srai a1, a0, 16
+slli t6, a0, 16
+li t1, 0
+beqz a1, .L_sqrt_small
+.L_sqrt_loop:
+or t3, t1, t0
+mul t4, t3, t3
+mulh t5, t3, t3
+blt t5, a1, .L_sqrt_accept
+bgt t5, a1, .L_sqrt_next
+bltu t6, t4, .L_sqrt_next
+.L_sqrt_accept:
+mv t1, t3
+.L_sqrt_next:
+srli t0, t0, 1
+bnez t0, .L_sqrt_loop
+mv a0, t1
+jalr x0, ra, 0
+.L_sqrt_small:
+or t3, t1, t0
+mul t4, t3, t3
+bltu t6, t4, .L_sqrt_small_next
+mv t1, t3
+.L_sqrt_small_next:
+srli t0, t0, 1
+bnez t0, .L_sqrt_small
+mv a0, t1
+jalr x0, ra, 0
+.L_sqrt_zero:
+li a0, 0
+jalr x0, ra, 0
+
+.globl __q16_rsqrt
+__q16_rsqrt:
+blez a0, .L_rsqrt_zero
+clz t0, a0
+addi t0, t0, 17
+srli t0, t0, 1
+li t1, 1
+sll t1, t1, t0
 mv a1, a0
 li a0, 0
 lui t2, 0x10
@@ -836,12 +946,14 @@ let emit_program ?(regalloc = false) ?(opt3 = false) (md : mode) (mrc : march) (
   (let s = Buffer.contents buf in
    Buffer.clear buf;
    Buffer.add_string buf (relax s));                                                                                      
-  (if md = Off then Buffer.add_string buf runtime_math);
+  ();
   (match mrc with
-    | I -> (Buffer.add_string buf runtime_m;
+    | I -> (if md = Off then Buffer.add_string buf runtime_math_to_i;
+            Buffer.add_string buf runtime_m;
             Buffer.add_string buf runtime_zbb)
-    | Im -> (Buffer.add_string buf runtime_zbb)
-    | _ -> ());
+    | Im -> (if md = Off then Buffer.add_string buf runtime_math_to_m;
+            Buffer.add_string buf runtime_zbb)
+    | Im_zbb -> if md = Off then Buffer.add_string buf runtime_math_to_zbb);
   (*定数データ*)
   if p.consts <> [] then begin
     Printf.bprintf buf "\n.section .rodata\n";
