@@ -1,5 +1,6 @@
 // 320x180 VRAM (各色 8bit) + 6倍スケーラー + 6x6 ブロック内ディザ (1920x1080 フルHD出力)
-// ディザ: 各色 8bit の値を 0..540 に変換 → 閾値 (0..35) を足して 36 で割った値 (0..15) を出力
+// ディザ: 各色 8bit の値を 0..540 に変換し，閾値 (0..35) を足して 36 で割った値 (0..15) を出力
+// 閾値表は 6x6 ブロックごとに縦横へずらす
 module vga_display_v2 #(
     parameter string VRAM_INIT_FILE = ""
 )(
@@ -293,14 +294,74 @@ module vga_display_v2 #(
         end
     endfunction
 
-    logic [5:0] thr_r_q1, thr_g_q1, thr_b_q1;
-    logic [5:0] thr_r_q2, thr_g_q2, thr_b_q2;
-    logic [5:0] thr_r_q3, thr_g_q3, thr_b_q3;
-    logic [5:0] thr_r_q4, thr_g_q4, thr_b_q4;
+    // ---- ブロックごとの閾値ずらし ---------------------------------------------
+    // 6x6 ブロック (= VRAM 1 画素) の位置 (vram_x, vram_y) から、縦横のずらし量 (0..5) を作る。
+    // ずらした閾値表も 0..35 を 1 回ずつ使うので、ブロックの平均の明るさは変わらない。
+    // 0 にすると、従来どおり (全ブロック同じ並び) になる。
+    localparam bit BLOCK_SHIFT_EN = 1'b1;
+
+    // 段 S+1: 17bit の混ぜ合わせ (前半)
+    function automatic logic [16:0] hash_a(input logic [8:0] bx, input logic [7:0] by);
+        logic [16:0] v;
+        begin
+            v = {by, bx};
+            v = v ^ (v >> 8);
+            v = v + (v << 7);
+            v = v ^ (v >> 5);
+            hash_a = v;
+        end
+    endfunction
+
+    // 段 S+2: 混ぜ合わせ (後半)。戻り値 = {縦用 6bit, 横用 6bit}
+    function automatic logic [11:0] hash_b(input logic [16:0] v0);
+        logic [16:0] v;
+        begin
+            v = v0 + (v0 << 2) + (v0 << 9);
+            v = v ^ (v >> 7);
+            hash_b = v[11:0];
+        end
+    endfunction
+
+    function automatic logic [2:0] mod6(input logic [5:0] x);
+        begin
+            mod6 = 3'(x % 6);
+        end
+    endfunction
+
+    // --- ここから追加 ---
+    `include "thr_alt_f.svh"    // 添付の関数をここに貼る(または include)
+
+    (* rom_style = "distributed" *) logic [10:0] lut_r [0:255];
+    (* rom_style = "distributed" *) logic [10:0] lut_g [0:255];
+    (* rom_style = "distributed" *) logic [10:0] lut_b [0:255];
+    initial begin
+        $readmemh("C:/Users/nadu0/rv32i-core/hw/rtl/scale_lut_r.hex", lut_r);
+        $readmemh("C:/Users/nadu0/rv32i-core/hw/rtl/scale_lut_g.hex", lut_g);
+        $readmemh("C:/Users/nadu0/rv32i-core/hw/rtl/scale_lut_b.hex", lut_b);
+    end
+
+    logic       z_r, z_g, z_b;                 // 境目の区間のフラグ
+    logic [5:0] tha_r_q4, tha_g_q4, tha_b_q4;  // 2画素クラスタ閾値 (段 S+4 で有効)
+    // --- ここまで追加 ---
+    logic [5:0] thr_r_q4, thr_g_q4, thr_b_q4;  // 通常の閾値 (段 S+4 で有効)
+
+    // ブロックずらし用のレジスタ
+    logic [16:0] hash_q1;                      // 段 S+1
+    logic [2:0]  cx_q1, cy_q1;
+    logic [11:0] hash_q2;                      // 段 S+2
+    logic [2:0]  cx_q2, cy_q2;
+    logic [2:0]  sy_q3;                        // 段 S+3: 縦ずらし
+    logic [2:0]  sxr_q3, sxg_q3, sxb_q3;       //         横ずらし (通常。G, B は列ずらし 5, 4 を合成済み)
+    logic [2:0]  sxar_q3, sxag_q3, sxab_q3;    //         横ずらし (2画素クラスタ用。偶数に丸める)
+    logic [2:0]  cx_q3, cy_q3;
+    logic [2:0]  sx_c, sy_c, sxe_c, cyy_c;     // 組み合わせの途中値 (下の assign)
+    assign sx_c  = BLOCK_SHIFT_EN ? mod6(hash_q2[5:0])  : 3'd0;
+    assign sy_c  = BLOCK_SHIFT_EN ? mod6(hash_q2[11:6]) : 3'd0;
+    assign sxe_c = {sx_c[2:1], 1'b0};          // 2画素クラスタ用: 偶数にそろえる (かたまりを割らない)
+    assign cyy_c = add6(cy_q3, sy_q3);
     logic       de_q1, de_q2, de_q3, de_q4;
     logic [23:0] vram_rdata_q;          // BRAM出力を受けるレジスタ
     logic [9:0] u_r, u_g, u_b;          // 0..540
-    logic [4:0] hs_d, vs_d;
 
     wire [7:0] v_r = vram_rdata_q[23:16];
     wire [7:0] v_g = vram_rdata_q[15:8];
@@ -315,81 +376,73 @@ module vga_display_v2 #(
         end
     endfunction
 
-    // ((u + t) * 1821) >> 16 : u + t <= 575 (10bit), 積は 21bit
-    function automatic logic [3:0] div36(input logic [9:0] u, input logic [5:0] t);
-        logic [9:0]  s;
+    logic [9:0] s_r, s_g, s_b;   // u + t
+    logic       de_q5;
+    logic [5:0] hs_d, vs_d;
+
+    function automatic logic [3:0] div36(input logic [9:0] s);
         logic [20:0] p;
         begin
-            s = u + {4'b0, t};
             p = s * 21'd1821;
             div36 = p[19:16];
         end
     endfunction
 
 always_ff @(posedge clk_150m) begin
+    // 段 S+1: ブロック位置のハッシュ (前半) と、ブロック内の位置の遅延
+    hash_q1 <= hash_a(vram_x, vram_y);
+    cx_q1   <= cnt_x;
+    cy_q1   <= cnt_y;
+    de_q1   <= video_on;
 
-    // 段 S+1：閾値計算
-    thr_r_q1 <= thr_f(vram_y[0], cnt_y,             vram_x[0], cnt_x);
-    thr_g_q1 <= thr_f(vram_y[0], cnt_y,             vram_x[0], add6(cnt_x, 3'd5));
-    thr_b_q1 <= thr_f(vram_y[0], cnt_y, vram_x[0], add6(cnt_x, 3'd4));
+    // 段 S+2: ハッシュ (後半)
+    hash_q2 <= hash_b(hash_q1);
+    cx_q2   <= cx_q1;
+    cy_q2   <= cy_q1;
+    de_q2   <= de_q1;
 
-    // 段 S+2
-    thr_r_q2 <= thr_r_q1;
-    thr_g_q2 <= thr_g_q1;
-    thr_b_q2 <= thr_b_q1;
-
-    // 段 S+3
-    thr_r_q3 <= thr_r_q2;
-    thr_g_q3 <= thr_g_q2;
-    thr_b_q3 <= thr_b_q2;
-
+    // 段 S+3: ずらし量 (0..5) に変換し、色ごとの列ずらし (G=5, B=4) を合成
+    sy_q3   <= sy_c;
+    sxr_q3  <= sx_c;
+    sxg_q3  <= add6(sx_c, 3'd5);
+    sxb_q3  <= add6(sx_c, 3'd4);
+    sxar_q3 <= sxe_c;
+    sxag_q3 <= add6(sxe_c, 3'd5);
+    sxab_q3 <= add6(sxe_c, 3'd4);
+    cx_q3   <= cx_q2;
+    cy_q3   <= cy_q2;
+    de_q3   <= de_q2;
     vram_rdata_q <= vram_rdata;
 
-    // 段 S+4
-    thr_r_q4 <= thr_r_q3;
-    thr_g_q4 <= thr_g_q3;
-    thr_b_q4 <= thr_b_q3;
+    // 段 S+4: 閾値の参照 (通常 / 2画素クラスタ)
+    thr_r_q4 <= thr_f(1'b0, cyy_c, 1'b0, add6(cx_q3, sxr_q3));
+    thr_g_q4 <= thr_f(1'b0, cyy_c, 1'b0, add6(cx_q3, sxg_q3));
+    thr_b_q4 <= thr_f(1'b0, cyy_c, 1'b0, add6(cx_q3, sxb_q3));
+    tha_r_q4 <= thr_alt_f(cyy_c, add6(cx_q3, sxar_q3));
+    tha_g_q4 <= thr_alt_f(cyy_c, add6(cx_q3, sxag_q3));
+    tha_b_q4 <= thr_alt_f(cyy_c, add6(cx_q3, sxab_q3));
+    de_q4    <= de_q3;
+    {z_r, u_r} <= lut_r[v_r];
+    {z_g, u_g} <= lut_g[v_g];
+    {z_b, u_b} <= lut_b[v_b];
 
-    u_r <= scale540(v_r);
-    u_g <= scale540(v_g);
-    u_b <= scale540(v_b);
+    // 段 S+5: 加算．閾値をフラグで切り替え
+    s_r <= u_r + {4'b0, z_r ? tha_r_q4 : thr_r_q4};
+    s_g <= u_g + {4'b0, z_g ? tha_g_q4 : thr_g_q4};
+    s_b <= u_b + {4'b0, z_b ? tha_b_q4 : thr_b_q4};
+    de_q5 <= de_q4;
 
+    // 段 S+6: 乗算と出力
+    vga_r <= de_q5 ? div36(s_r) : 4'h0;
+    vga_g <= de_q5 ? div36(s_g) : 4'h0;
+    vga_b <= de_q5 ? div36(s_b) : 4'h0;
+
+    // 同期信号 (段 S -> 段 S+6)
+    hs_d <= {hs_d[4:0], hsync_s};
+    vs_d <= {vs_d[4:0], vsync_s};
 end
 
-always_ff @(posedge clk_150m or negedge rst_pix_n) begin
-    if (!rst_pix_n) begin
+assign vga_hsync = hs_d[5];
+assign vga_vsync = vs_d[5];
 
-        de_q1 <= 1'b0;
-        de_q2 <= 1'b0;
-        de_q3 <= 1'b0;
-        de_q4 <= 1'b0;
-
-        hs_d <= '0;
-        vs_d <= '0;
-
-        vga_r <= '0;
-        vga_g <= '0;
-        vga_b <= '0;
-
-    end else begin
-
-        // 有効画素の遅延
-        de_q1 <= video_on;
-        de_q2 <= de_q1;
-        de_q3 <= de_q2;
-        de_q4 <= de_q3;
-
-        // RGB出力
-        vga_r <= de_q4 ? div36(u_r, thr_r_q4) : 4'h0;
-        vga_g <= de_q4 ? div36(u_g, thr_g_q4) : 4'h0;
-        vga_b <= de_q4 ? div36(u_b, thr_b_q4) : 4'h0;
-
-        // 同期信号
-        hs_d <= {hs_d[3:0], hsync_s};
-        vs_d <= {vs_d[3:0], vsync_s};
-
-    end
-end
-    assign vga_hsync = hs_d[4];
-    assign vga_vsync = vs_d[4];
 endmodule
