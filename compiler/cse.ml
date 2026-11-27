@@ -70,7 +70,9 @@ let cse_block (b : block) : block =
     (* 配列に書く命令のあとは、その配列の Load を忘れる *)
     (match i' with
      | Store (id, _, _, _) -> drop (fun k _ -> match k with KLoad (Local id', _, _) -> id' = id | _ -> false)
-     | Call _ -> drop (fun k _ -> is_local_load k)
+     (* MMIO・乱数の命令と呼び出し:前後をまたいで計算をまとめない*)
+     | Bprint _ | Cycles _ | AccelSetSphere _ | AccelHit _ | AccelT _
+     | RngSeed _ | RandQ16 _ | RandQ16S _ | Call _ -> Hashtbl.reset table
      | _ -> ());
     (* 新しく計算したものを表に書く(結果が入力を上書きする命令はのぞく) *)
     (match i', key_of i with
