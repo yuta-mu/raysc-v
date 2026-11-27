@@ -48,12 +48,22 @@ let layout ?(imm = false) (f : func) ~out_bytes ~nbases ~saved ~nslots ~loc =
   let size = arr_end + 4 in
   { out_bytes; arrays; ra_off = size - 4; size; nbases; saved; slot_base; loc; imm }
 
-(* 割り当てなし:vreg v はスロット v(今までどおり、全部スタック) *)
+(*割り当てなし:関数の中に出てくる vreg に、出てきた順に 0, 1, 2, ... のスロットを割り当てる*)
 let make_frame (f : func) =
   let out_bytes = outgoing_bytes f in
-  let rough = out_bytes + 4 * 11 + 4 * f.nvregs + array_bytes f + 4 in
-  layout f ~out_bytes ~nbases:(bases_for rough) ~saved:[] ~nslots:f.nvregs
-    ~loc:(fun v -> Regalloc.Slot v)
+  let slot_of = Hashtbl.create 256 in
+  let add v = if not (Hashtbl.mem slot_of v) then Hashtbl.replace slot_of v (Hashtbl.length slot_of) in
+  List.iter add f.params;
+  List.iter (fun b ->
+    List.iter (fun i -> List.iter add (defs i); List.iter add (uses i)) b.body;
+    List.iter add (term_uses b.term)) f.blocks;
+  let nslots = Hashtbl.length slot_of in
+  let rough = out_bytes + 4 * 11 + 4 * nslots + array_bytes f + 4 in
+  layout f ~out_bytes ~nbases:(bases_for rough) ~saved:[] ~nslots
+    ~loc:(fun v ->
+      match Hashtbl.find_opt slot_of v with
+      | Some n -> Regalloc.Slot n
+      | None -> failwith (Printf.sprintf "make_frame: v%d has no slot in %s" v f.name))
 
 (* 割り当てあり:Regalloc の結果で置き場所を決める。
    フレームが大きくてベースレジスタが要るときは、その s を外して割り当てをやり直す *)
