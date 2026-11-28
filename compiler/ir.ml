@@ -47,11 +47,12 @@ type instr =
   | AddrLocal  of vreg * int   (*d = 局所配列の先頭アドレス*)
   | AddrGlobal of vreg * string  (*d = constの先頭アドレス*)
   | Load  of vreg * region * vreg * int                 (*d = mem[addr + ofs]*)
+  | LoadB of vreg * region * vreg * int                 (*d = mem[addr + ofs] の 1 バイト(0〜255。lbu)。print の文字列を読む*)
   | Store of int * vreg * int * vreg                    (*mem[addr + ofs] = src(書けるのは局所配列だけ。int は局所配列の番号)*)
   (*関数呼び出し*)
   | Call  of vreg list * string * vreg list    (*戻り値を入れる仮想レジスタのリスト,関数名,引数の仮想レジスタ*)
   (*MMIO呼び出し(仕様 §11):消去・並べ替え禁止。他の命令もこの前後を越えて動かさない
-    print("...") は translate で const(1文字1ワード、末尾 0)と Load / Bprint のループに分解する*)
+    print("...") は translate で文字列(1文字1バイト、末尾 0)と LoadB / Bprint のループに分解する*)
   | Bprint of vreg                             (*下位8ビットをUARTに送る*)
   (*組み込み関数*)
   | Cycles of vreg                             (*d = cycles()*)
@@ -87,6 +88,7 @@ type func = {
 
 type program = {
   consts : (string * int32 list) list;   (* const:名前とワード列*)
+  strs   : (string * string) list;       (* print の文字列:名前と中身(末尾の 0 は emitter が足す)*)
   funcs  : func list;
 }
 
@@ -128,6 +130,7 @@ let string_of_instr = function
   | AddrLocal (d, id)   -> Printf.sprintf "%s = &array%d" (v d) id
   | AddrGlobal (d, s)   -> Printf.sprintf "%s = &%s" (v d) s
   | Load (d, r, a, ofs) -> Printf.sprintf "%s = load %s[%s + %d]" (v d) (string_of_region r) (v a) ofs
+  | LoadB (d, r, a, ofs) -> Printf.sprintf "%s = loadb %s[%s + %d]" (v d) (string_of_region r) (v a) ofs
   | Store (id, a, ofs, s)-> Printf.sprintf "store array%d[%s + %d] = %s" id (v a) ofs (v s)
   | Call ([], f, args)  -> Printf.sprintf "call %s(%s)" f (vs args)
   | Call (rs, f, args)  -> Printf.sprintf "%s = call %s(%s)" (vs rs) f (vs args)
@@ -170,7 +173,8 @@ let dump_program oc p =
        Printf.fprintf oc "const %s = [%s]\n" name
          (String.concat ", " (List.map Int32.to_string words)))
     p.consts;
-  if p.consts <> [] then Printf.fprintf oc "\n";
+  List.iter (fun (name, str) -> Printf.fprintf oc "str %s = %S\n" name str) p.strs;
+  if p.consts <> [] || p.strs <> [] then Printf.fprintf oc "\n";
   List.iter (dump_func oc) p.funcs
 
 (* 平らな列 → 基本ブロック(C-4 の translate 用) *)
@@ -209,7 +213,7 @@ let blocks_of_items (items : item list) : block list =
   let defs = function
   | Const (d, _) | Move (d, _) | Bin (_, d, _, _) | Un (_, d, _) | Intr (_, d, _)
   | Zbb_b (_, d, _, _) | Zbb_u (_, d, _)
-  | AddrLocal (d, _) | AddrGlobal (d, _) | Load (d, _, _, _) | Cycles d
+  | AddrLocal (d, _) | AddrGlobal (d, _) | Load (d, _, _, _) | LoadB (d, _, _, _) | Cycles d
   | Qabs (d, _) | Qclamp (d, _, _, _)
   | AccelHit (d, _, _, _, _, _, _, _, _) | AccelT d -> [d]
   | Call (rs, _, _) -> rs
@@ -220,7 +224,7 @@ let blocks_of_items (items : item list) : block list =
 let uses = function
   | Const _ | AddrLocal _ | AddrGlobal _ | Cycles _ | AccelT _ | RandQ16 _ | RandQ16S _ -> []
   | Move (_, a) | Un (_, _, a) | Intr (_, _, a) | Zbb_u (_, _, a)
-  | Load (_, _, a, _) | Bprint a | Qabs (_, a) -> [a]
+  | Load (_, _, a, _) | LoadB (_, _, a, _) | Bprint a | Qabs (_, a) -> [a]
   | Bin (_, _, a, b) | Zbb_b (_, _, a, b) -> [a; b]
   | Store (_, a, _, s) -> [a; s]
   | Qclamp (_, a, b, c) -> [a; b; c]
@@ -256,5 +260,5 @@ let writes_mem = function
 
 (*Loadがどの配列から読んでいるか*)
 let reads_mem = function
-  | Load (_, r, _, _) -> Some r
+  | Load (_, r, _, _) | LoadB (_, r, _, _) -> Some r
   | _ -> None
