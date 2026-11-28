@@ -18,6 +18,7 @@ let map_instr vm am (i : instr) : instr =
   | AddrLocal (d, id) -> AddrLocal (v d, a id)
   | AddrGlobal (d, s) -> AddrGlobal (v d, s)          (* 名前はずらさない *)
   | Load (d, rg, x, o) -> Load (v d, r rg, v x, o)
+  | LoadB (d, rg, x, o) -> LoadB (v d, r rg, v x, o)
   | Store (id, x, o, s) -> Store (a id, v x, o, v s)
   | Call (rs, f, args) -> Call (List.map v rs, f, List.map v args)
   | Bprint x -> Bprint (v x)

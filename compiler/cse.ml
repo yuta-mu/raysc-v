@@ -12,6 +12,7 @@ type key =
   | KAddrLocal of int
   | KAddrGlobal of string
   | KLoad of region * vreg * int
+  | KLoadB of region * vreg * int
 
 (*入力を入れかえても答えが同じ計算*)
 let commutative_bin = function
@@ -38,16 +39,17 @@ let key_of (i : instr) =
   | AddrLocal (d, id) -> Some (KAddrLocal id, d)
   | AddrGlobal (d, s) -> Some (KAddrGlobal s, d)
   | Load (d, r, a, o) -> Some (KLoad (r, a, o), d)
+  | LoadB (d, r, a, o) -> Some (KLoadB (r, a, o), d)
   | _ -> None   (* Const は Remat があるので入れない。副作用のある命令も入れない *)
 
 (*計算の中身が読むvreg*)
 let operands = function
   | KBin (_, a, b) | KZbb_b (_, a, b) -> [a; b]
-  | KUn (_, a) | KIntr (_, a) | KZbb_u (_, a) | KQabs a | KLoad (_, a, _) -> [a]
+  | KUn (_, a) | KIntr (_, a) | KZbb_u (_, a) | KQabs a | KLoad (_, a, _) | KLoadB (_, a, _) -> [a]
   | KQclamp (a, b, c) -> [a; b; c]
   | KAddrLocal _ | KAddrGlobal _ -> []
 
-let is_local_load = function KLoad (Local _, _, _) -> true | _ -> false
+let is_local_load = function KLoad (Local _, _, _) | KLoadB (Local _, _, _) -> true | _ -> false
 
 let cse_block (b : block) : block =
   let table : (key, vreg) Hashtbl.t = Hashtbl.create 32 in
@@ -69,7 +71,7 @@ let cse_block (b : block) : block =
     List.iter killed (defs i');
     (* 配列に書く命令のあとは、その配列の Load を忘れる *)
     (match i' with
-     | Store (id, _, _, _) -> drop (fun k _ -> match k with KLoad (Local id', _, _) -> id' = id | _ -> false)
+     | Store (id, _, _, _) -> drop (fun k _ -> match k with KLoad (Local id', _, _) | KLoadB (Local id', _, _) -> id' = id | _ -> false)
      (* MMIO・乱数の命令と呼び出し:前後をまたいで計算をまとめない*)
      | Bprint _ | Cycles _ | AccelSetSphere _ | AccelHit _ | AccelT _
      | RngSeed _ | RandQ16 _ | RandQ16S _ | Call _ -> Hashtbl.reset table

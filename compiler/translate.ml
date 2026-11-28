@@ -59,7 +59,7 @@ type place =
 
 (* 変換本体 *)
 let compile (ctx : Semant.context) : Ir.program =
-  let str_consts = ref [] in                   (* print 用の文字列 const (逆順) *)
+  let str_consts = ref [] in                   (* print 用の文字列 (名前,中身) (逆順) *)
   let words_of ty = Semant.type_words ctx.Semant.structs ty in
 
   let compile_function (info : Semant.fn_info) : Ir.func =
@@ -156,29 +156,26 @@ let compile (ctx : Semant.context) : Ir.program =
       | PMem (Ir.Global _, _, _) -> invalid_arg "store_place: const は読み取り専用"
     in
 
-    (* print("...") を文字列 const と出力ループに分解する *)
-    (* const は 1 文字 1 ワード, 末尾 0 *)
+    (* print("...") を文字列と出力ループに分解する *)
+    (* 文字列は 1 文字 1 バイト, 末尾 0 (仕様 §5・§8)。0 は emitter が足す *)
     let print_literal s =
       let name = Printf.sprintf "__str_%d" (List.length !str_consts) in
-      let words =
-        List.init (String.length s) (fun i -> Int32.of_int (Char.code s.[i])) @ [0l]
-      in
-      str_consts := (name, words) :: !str_consts;
+      str_consts := (name, s) :: !str_consts;
       let p = fresh 1 in                       (* 現在位置のアドレス *)
       let c = fresh 1 in                       (* 現在の文字 *)
       let zero = const_i32 0l in
-      let four = const_i32 4l in
+      let one = const_i32 1l in
       let l_head = fresh_label () in           (* ループの先頭 *)
       let l_body = fresh_label () in           (* ループの本体 *)
       let l_end = fresh_label () in            (* ループの終了 *)
       emit_i (Ir.AddrGlobal (p, name));
       emit_l l_head;
-      emit_i (Ir.Load (c, Ir.Global name, p, 0));
+      emit_i (Ir.LoadB (c, Ir.Global name, p, 0));   (* 1 バイト読む (lbu) *)
       let nz = bin Ir.Ne c zero in            (* Branch が 0/1 前提でも安全なように明示 *)
       emit_t (Ir.Branch (nz, l_body, l_end));
       emit_l l_body;
       emit_i (Ir.Bprint c);
-      emit_i (Ir.Bin (Ir.Add, p, p, four));
+      emit_i (Ir.Bin (Ir.Add, p, p, one));     (* 次の文字は 1 バイト先 *)
       emit_t (Ir.Jump l_head);
       emit_l l_end;
       fresh 0                                  (* void: 値なし *)
@@ -644,5 +641,4 @@ let compile (ctx : Semant.context) : Ir.program =
   in
   (* compile 関数の返戻値 (Ir.program) *)
   (* プログラム全体の構造体を構築 *)
-  { Ir.consts = consts @ List.rev !str_consts; funcs }
-
+  { Ir.consts; strs = List.rev !str_consts; funcs }

@@ -105,6 +105,11 @@ let load_from reg base off =
   if fits off then Printf.bprintf buf "lw %s, %d(%s)\n" reg off base
   else Printf.bprintf buf "li t6, %d\nadd t6, %s, t6\nlw %s, 0(t6)\n" off base reg
 
+(* reg = mem[base + off] の 1 バイト(LoadB 命令用。lbu) *)
+let loadb_from reg base off =
+  if fits off then Printf.bprintf buf "lbu %s, %d(%s)\n" reg off base
+  else Printf.bprintf buf "li t6, %d\nadd t6, %s, t6\nlbu %s, 0(t6)\n" off base reg
+
 (* mem[base + off] = reg(Store 命令用) *)
 let store_to reg base off =
   if fits off then Printf.bprintf buf "sw %s, %d(%s)\n" reg off base
@@ -305,6 +310,11 @@ let emit_instr (md : mode) (mrc : march) fr (i : instr) =
       let ra = src "t0" a in (*アドレス*)
       let rd = dst "t0" d in
       load_from rd ra ofs;
+      fin "t0" d
+  | LoadB (d, _, a, ofs) ->
+      let ra = src "t0" a in (*アドレス*)
+      let rd = dst "t0" d in
+      loadb_from rd ra ofs;
       fin "t0" d
   | Store (_, a, ofs, v) ->
       let ra = src "t0" a in (*アドレス*)
@@ -962,5 +972,23 @@ let emit_program ?(regalloc = false) ?(opt3 = false) (md : mode) (mrc : march) (
       Printf.bprintf buf ".globl %s\n" name;
       Printf.bprintf buf "%s:\n" name;
       List.iter (fun w -> Printf.bprintf buf ".word %ld\n" w) words) p.consts
+  end;
+  (*print の文字列:1 文字 1 バイト、末尾 0(ワードの const の後ろに置くので、const の 4 バイト境界はずれない)*)
+  if p.strs <> [] then begin
+    if p.consts = [] then Printf.bprintf buf "\n.section .rodata\n";
+    List.iter (fun (name, str) ->
+      Printf.bprintf buf ".globl %s\n" name;
+      Printf.bprintf buf "%s:\n" name;
+      (*assembler.py は .word しか読めないので、4 バイトずつ .word にまとめる
+        (リトルエンディアン:1 文字目が下位バイト。足りない分は 0)*)
+      let n = String.length str + 1 in   (*末尾の 0 を含めたバイト数*)
+      let byte i = if i < String.length str then Char.code str.[i] else 0 in
+      for k = 0 to (n + 3) / 4 - 1 do
+        let w = ref 0l in
+        for j = 3 downto 0 do
+          w := Int32.logor (Int32.shift_left !w 8) (Int32.of_int (byte (4 * k + j)))
+        done;
+        Printf.bprintf buf ".word %ld\n" !w
+      done) p.strs
   end;
   Buffer.contents buf

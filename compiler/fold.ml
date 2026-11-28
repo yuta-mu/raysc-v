@@ -52,6 +52,7 @@ let subst_uses f (i : instr) : instr =
   | Qabs (d, a) -> Qabs (d, f a)                            
   | Qclamp (d, a, b, c) -> Qclamp (d, f a, f b, f c)  
   | Load (d, r, a, o) -> Load (d, r, f a, o)
+  | LoadB (d, r, a, o) -> LoadB (d, r, f a, o)
   | Store (id, a, o, s) -> Store (id, f a, o, f s)
   | Call (rs, n, args) -> Call (rs, n, List.map f args)
   | Bprint a -> Bprint (f a)
