@@ -67,6 +67,7 @@ rule token = parse
   | "vec3" { VEC3_T }
   | "void" { VOID_T }
   | "<.>" { DOTPROD }
+  | "<*>" { HADPROD }
   | "->" { ARROW }
   | ".." { DOTDOT }
   | "==" { EQ }

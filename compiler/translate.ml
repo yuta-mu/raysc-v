@@ -25,7 +25,7 @@ let ir_binop : Ast.binop -> Ir.binop = function
   | BitAnd -> Ir.And | BitOr -> Ir.Or | BitXor -> Ir.Xor
   | Eq -> Ir.Eq | Ne -> Ir.Ne | Lt -> Ir.Lt | Le -> Ir.Le
   | Gt -> Ir.Gt | Ge -> Ir.Ge
-  | Mul | And | Or | Dot -> invalid_arg "ir_binop: 専用の変換が必要"
+  | Mul | And | Or | Dot | Had -> invalid_arg "ir_binop: 専用の変換が必要"
 
 (* n が 2 の冪なら Some (log_2 n) を返す *)
 let log2_exact n =
@@ -59,7 +59,7 @@ type place =
 
 (* 変換本体 *)
 let compile (ctx : Semant.context) : Ir.program =
-  let str_consts = ref [] in                   (* print 用の文字列 const (逆順) *)
+  let str_consts = ref [] in                   (* print 用の文字列 (名前,中身) (逆順) *)
   let words_of ty = Semant.type_words ctx.Semant.structs ty in
 
   let compile_function (info : Semant.fn_info) : Ir.func =
@@ -156,29 +156,26 @@ let compile (ctx : Semant.context) : Ir.program =
       | PMem (Ir.Global _, _, _) -> invalid_arg "store_place: const は読み取り専用"
     in
 
-    (* print("...") を文字列 const と出力ループに分解する *)
-    (* const は 1 文字 1 ワード, 末尾 0 *)
+    (* print("...") を文字列と出力ループに分解する *)
+    (* 文字列は 1 文字 1 バイト, 末尾 0 (仕様 §5・§8)。0 は emitter が足す *)
     let print_literal s =
       let name = Printf.sprintf "__str_%d" (List.length !str_consts) in
-      let words =
-        List.init (String.length s) (fun i -> Int32.of_int (Char.code s.[i])) @ [0l]
-      in
-      str_consts := (name, words) :: !str_consts;
+      str_consts := (name, s) :: !str_consts;
       let p = fresh 1 in                       (* 現在位置のアドレス *)
       let c = fresh 1 in                       (* 現在の文字 *)
       let zero = const_i32 0l in
-      let four = const_i32 4l in
+      let one = const_i32 1l in
       let l_head = fresh_label () in           (* ループの先頭 *)
       let l_body = fresh_label () in           (* ループの本体 *)
       let l_end = fresh_label () in            (* ループの終了 *)
       emit_i (Ir.AddrGlobal (p, name));
       emit_l l_head;
-      emit_i (Ir.Load (c, Ir.Global name, p, 0));
+      emit_i (Ir.LoadB (c, Ir.Global name, p, 0));   (* 1 バイト読む (lbu) *)
       let nz = bin Ir.Ne c zero in            (* Branch が 0/1 前提でも安全なように明示 *)
       emit_t (Ir.Branch (nz, l_body, l_end));
       emit_l l_body;
       emit_i (Ir.Bprint c);
-      emit_i (Ir.Bin (Ir.Add, p, p, four));
+      emit_i (Ir.Bin (Ir.Add, p, p, one));     (* 次の文字は 1 バイト先 *)
       emit_t (Ir.Jump l_head);
       emit_l l_end;
       fresh 0                                  (* void: 値なし *)
@@ -226,6 +223,12 @@ let compile (ctx : Semant.context) : Ir.program =
           let p2 = bin Ir.QMul (sa + 2) (sb + 2) in
           bin Ir.Add (bin Ir.Add p0 p1) p2
 
+      (* アダマール積 : 3 成分それぞれの QMul を計算し, 3 成分の vec3 を返す *)
+      | Binary (Had, a, b) ->
+          let sa = expr a in
+          let sb = expr b in
+          bin_words Ir.QMul 3 sa sb
+
       (* 乗算 : 型の組み合わせにより適切な演算に分岐 *)
       | Binary (Mul, a, b) ->
           let sa = expr a in
@@ -235,6 +238,17 @@ let compile (ctx : Semant.context) : Ir.program =
            | Vec3, Q16 -> vec3_scale sa sb
            | Q16, Vec3 -> vec3_scale sb sa
            | _ -> bin Ir.Mul sa sb)           (* i32*i32, q16*i32, i32*q16 は素の乗算 *)
+
+      (* シフト : 左辺は 1 or 3 ワード, シフト量は常に 1 ワードの i32 *)
+      | Binary ((Shl | Shr) as op, a, b) ->
+          let sa = expr a in
+          let sb = expr b in
+          let n = words_of (type_of a) in
+          let d = fresh n in
+          for i = 0 to n - 1 do
+            emit_i (Ir.Bin (ir_binop op, d + i, sa + i, sb))
+          done;
+          d
 
       (* その他の二項演算 *)
       | Binary (op, a, b) ->
@@ -269,6 +283,115 @@ let compile (ctx : Semant.context) : Ir.program =
       | Call ("sqrt", [x]) -> intr Ir.Sqrt (expr x)
       | Call ("rsqrt", [x]) -> intr Ir.Rsqrt (expr x)
       | Call ("rcp", [x]) -> intr Ir.Rcp (expr x)
+      (* zbb組み込み関数 *)
+      | Call (("min" | "qmin"), [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Min, d, sx, sy));
+          d
+      | Call (("max" | "qmax"), [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Max, d, sx, sy));
+          d
+      | Call ("minu", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Minu, d, sx, sy));
+          d
+      | Call ("maxu", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Maxu, d, sx, sy));
+          d
+      | Call ("andn", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Andn, d, sx, sy));
+          d
+      | Call ("orn", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Orn, d, sx, sy));
+          d
+      | Call ("xnor", [x; y]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          emit_i (Ir.Zbb_b (Xnor, d, sx, sy));
+          d
+      | Call (("clz" | "qclz"), [x]) ->
+          let d = fresh 1 in
+          emit_i (Ir.Zbb_u (Clz, d, expr x));
+          d
+      | Call ("sext_b", [x]) ->
+          let d = fresh 1 in
+          emit_i (Ir.Zbb_u (Sext_b, d, expr x));
+          d
+      | Call ("sext_h", [x]) ->
+          let d = fresh 1 in
+          emit_i (Ir.Zbb_u (Sext_h, d, expr x));
+          d
+      | Call ("qabs", [x]) ->
+          let d = fresh 1 in
+          emit_i (Ir.Qabs (d, expr x));
+          d
+      | Call ("qclamp", [x; y; z]) ->
+          let d = fresh 1 in
+          let sx = expr x in
+          let sy = expr y in
+          let sz = expr z in
+          emit_i (Ir.Qclamp (d, sx, sy, sz));
+          d
+    (* 1. 文 (stmt) または void 式の Call ("bprint", [a]) の隣に追加 *)
+| Call ("accel_set_sphere", [ei; ex; ey; ez; er; er2; em]) ->
+          let d = fresh 1 in
+    let vi  = expr ei in
+    let vx  = expr ex in
+    let vy  = expr ey in
+    let vz  = expr ez in
+    let vr  = expr er in
+    let vr2 = expr er2 in
+    let vm  = expr em in
+    emit_i (Ir.AccelSetSphere (vi, vx, vy, vz, vr, vr2, vm));
+    d
+
+(* 2. 式 (expr) の Call ("cycles", []) や Call ("qclamp", ...) の隣に追加 *)
+| Call ("accel_hit", [eox; eoy; eoz; edx; edy; edz; etmin; etmax]) ->
+          let d = fresh 1 in
+    let vox   = expr eox in
+    let voy   = expr eoy in
+    let voz   = expr eoz in
+    let vdx   = expr edx in
+    let vdy   = expr edy in
+    let vdz   = expr edz in
+    let vtmin = expr etmin in
+    let vtmax = expr etmax in
+    emit_i (Ir.AccelHit (d, vox, voy, voz, vdx, vdy, vdz, vtmin, vtmax));
+    d
+
+| Call ("accel_t", []) ->
+          let d = fresh 1 in
+    emit_i (Ir.AccelT d);
+    d
+    | Call ("rng_seed", [es]) ->
+    let vs = expr es in
+    emit_i (Ir.RngSeed vs);
+    fresh 0
+| Call ("rand_q16", []) ->
+    let d = fresh 1 in
+    emit_i (Ir.RandQ16 d);
+    d
+| Call ("rand_q16_s", []) ->
+    let d = fresh 1 in
+    emit_i (Ir.RandQ16S d);
+    d
       (* 一般の呼び出し *)
       | Call (n, args) ->
           let srcs = map_ltr expr args in
@@ -518,5 +641,4 @@ let compile (ctx : Semant.context) : Ir.program =
   in
   (* compile 関数の返戻値 (Ir.program) *)
   (* プログラム全体の構造体を構築 *)
-  { Ir.consts = consts @ List.rev !str_consts; funcs }
-
+  { Ir.consts; strs = List.rev !str_consts; funcs }

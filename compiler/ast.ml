@@ -26,7 +26,7 @@ type binop =
   | Add | Sub | Mul | Div | Mod
   | Shl | Shr | BitAnd | BitOr | BitXor
   | Eq | Ne | Lt | Le | Gt | Ge
-  | And | Or | Dot
+  | And | Or | Dot | Had
 
 type unop = Neg | Not
 

@@ -12,7 +12,7 @@ let expr loc desc = { desc; loc }
 %token COMMA SEMI COLON DOT ARROW DOTDOT
 %token ASSIGN PLUS MINUS STAR SLASH PERCENT
 %token SHL SHR BAND BOR BXOR
-%token EQ NE LT LE GT GE LAND LOR NOT DOTPROD
+%token EQ NE LT LE GT GE LAND LOR NOT DOTPROD HADPROD
 %token EOF
 
 %right ASSIGN
@@ -25,7 +25,7 @@ let expr loc desc = { desc; loc }
 %left LT LE GT GE
 %left SHL SHR
 %left PLUS MINUS
-%left STAR SLASH PERCENT DOTPROD
+%left STAR SLASH PERCENT DOTPROD HADPROD
 %right NOT UMINUS
 %left DOT LBRACKET LPAREN
 
@@ -191,6 +191,7 @@ mul:
 | mul SLASH unary   { expr (Parsing.symbol_start_pos ()) (Binary (Div, $1, $3)) }
 | mul PERCENT unary { expr (Parsing.symbol_start_pos ()) (Binary (Mod, $1, $3)) }
 | mul DOTPROD unary { expr (Parsing.symbol_start_pos ()) (Binary (Dot, $1, $3)) }
+| mul HADPROD unary { expr (Parsing.symbol_start_pos ()) (Binary (Had, $1, $3)) }
 ;
 
 unary:
