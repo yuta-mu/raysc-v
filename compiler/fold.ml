@@ -111,7 +111,7 @@ let fold_block (b : block) : block =
       let c = root c in
         (match value c with
         | Some n -> Jump (if n <> 0l then t else f)
-        | None -> b.term)
+        | None -> Branch (c, t, f))
     | Ret vs -> Ret (List.map root vs)
     | other -> other
   in

@@ -86,11 +86,11 @@ let inline_one funcs (f : func) : func option =
              (* g の中身:ret を「戻り値をコピーして、call の後ろへ」に置きかえる *)
              let body_blocks = List.map (fun cb ->
                match cb.term with
-               | Ret vs ->
-                   if List.length rs <> List.length vs then
-                     failwith (Printf.sprintf "inline: missing return value in '%s'" name);
+               | Ret vs when List.length vs = List.length rs ->
                    { cb with body = cb.body @ List.map2 (fun r v -> Move (r, v)) rs vs;
                              term = Jump l_after }
+               | Ret _ ->
+                   { cb with term = Jump l_after }
                | _ -> cb) g'.blocks in
              (* call の後ろ:元のブロックの残りと、元の終わりの命令 *)
              let b_post = { label = l_after; body = post; term = b.term } in

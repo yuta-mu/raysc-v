@@ -1,3 +1,4 @@
+(*ロード使用ハザード回避*)
 let regs = [
   "zero"; "ra"; "sp"; "gp"; "tp";
   "t0"; "t1"; "t2"; "t3"; "t4"; "t5"; "t6";
@@ -6,7 +7,7 @@ let regs = [
 
 let is_reg s = List.mem s regs
 
-(*命令の種類*)
+(* 命令の種類 *)
 type kind =
   | Plain            (* 自由に動かせる命令 *)
   | Load             (* メモリを読む *)
@@ -24,8 +25,8 @@ let loads = ["lw"; "lh"; "lhu"; "lb"; "lbu"]
 let stores = ["sw"; "sh"; "sb"]
 let branches = ["j"; "jal"; "jalr"; "beq"; "bne"; "blt"; "bge"; "bltu"; "bgeu";
                 "beqz"; "bnez"; "bltz"; "bgez"; "blez"; "bgtz"; "ble"; "bgt"; "ret"; "call"; "ecall"; "ebreak"]
-let ordered = ["qseed"; "qrand"; "qrands"]          (*状態を持つ専用命令*)
-(*1つ目が書く先で、残りを読む命令*)
+let ordered = ["qseed"; "qrand"; "qrands"]          (* 状態を持つ専用命令 *)
+(* 1 つ目が書く先で、残りを読む命令 *)
 let plain = ["add"; "sub"; "mul"; "mulh"; "mulhu"; "mulhsu"; "div"; "divu"; "rem"; "remu";
              "and"; "or"; "xor"; "sll"; "srl"; "sra"; "slt"; "sltu";
              "addi"; "andi"; "ori"; "xori"; "slli"; "srli"; "srai"; "slti"; "sltiu";
@@ -34,7 +35,7 @@ let plain = ["add"; "sub"; "mul"; "mulh"; "mulhu"; "mulhsu"; "div"; "divu"; "rem
              "sext.b"; "sext.h"; "zext.h"; "rol"; "ror"; "rori";
              "qmul"; "qsqrt"; "qrsqrt"; "qrcp"]
 
-(*1行を読む。命令でない行(ラベル、.globl、空行)はNone*)
+(* 1 行を読む。命令でない行(ラベル、.globl、空行)は None *)
 let parse (line : string) : insn option =
   let s = String.trim line in
   if s = "" || s.[0] = '.' || s.[0] = '#' || s.[String.length s - 1] = ':' then None
@@ -43,7 +44,7 @@ let parse (line : string) : insn option =
       match String.index_opt s ' ' with
       | Some k -> (String.sub s 0 k, String.sub s (k + 1) (String.length s - k - 1))
       | None -> (s, "") in
-    (*オペランドをレジスタ名に分ける。"40(sp)" のspも拾う*)
+    (* オペランドをレジスタ名に分ける。"40(sp)" の sp も拾う *)
     let toks = String.split_on_char ',' rest
                |> List.concat_map (fun t ->
                     String.split_on_char '(' t |> List.concat_map (String.split_on_char ')'))
@@ -53,34 +54,36 @@ let parse (line : string) : insn option =
     let first_def = List.filter (fun r -> r <> "x0" && r <> "zero") first in
     let rest_regs = match toks with t :: tl when is_reg t -> List.filter is_reg tl | tl -> List.filter is_reg tl in
     let mk kind defs uses = Some { text = line; defs; uses; kind } in
-    if List.mem op loads then mk Load first_def rest_regs
+    if op = "sb" || List.mem op ordered then mk Barrier [] []
+      (* sb は bprint(UART)専用、qseed / qrand / qrands は乱数の状態を持つ:前後の命令も越えさせない *)
+    else if op = "la" then mk Plain first_def []         (* la rd, ラベル:ラベル名をレジスタと読まない *)
+    else if List.mem op loads then mk Load first_def rest_regs
     else if List.mem op stores then mk Mem [] rs
-    else if List.mem op ordered then mk Mem first_def rest_regs
     else if List.mem op branches then mk Barrier [] []
     else if List.mem op plain then mk Plain first_def rest_regs
-    else mk Barrier [] []                               (*知らない命令は動かさない*)
+    else mk Barrier [] []                               (* 知らない命令は動かさない *)
   end
 
 let inter a b = List.exists (fun x -> List.mem x b) a
 
-(*jがiより後ろにあるとき、iより前に出してはいけないか*)
+(* j が i より後ろにあるとき、i より前に出してはいけないか *)
 let depends i j =
   inter i.defs j.uses                      (* 書いてから読む *)
   || inter i.uses j.defs                   (* 読んでから書く *)
   || inter i.defs j.defs                   (* 書いてから書く *)
   || (i.kind <> Plain && j.kind <> Plain)
-     (*メモリの命令どうし。MMIOは読む順番にも意味があるので、lwとlwも入れかえない*)
+     (* メモリの命令どうし。MMIO は読む順番にも意味があるので、lw と lw も入れかえない *)
 
-(*直前の命令prevがlwで、cがその値を読むなら待ちが起きる*)
+(* 直前の命令 prev が lw で、c がその値を読むなら待ちが起きる *)
 let stalls prev c =
   match prev with
   | Some p when p.kind = Load -> inter p.defs c.uses
   | _ -> false
 
-(*1つのブロック(動かしてよい命令だけの並び)を並べかえる*)
+(* 1 つのブロック(動かしてよい命令だけの並び)を並べかえる *)
 let schedule_block (xs : insn array) : insn list =
   let n = Array.length xs in
-  (*preds.(j) = jより前に出さないといけない命令の数*)
+  (* preds.(j) = j より前に出さないといけない命令の数 *)
   let preds = Array.make n 0 and succs = Array.make n [] in
   for j = 0 to n - 1 do
     for i = 0 to j - 1 do
@@ -93,7 +96,7 @@ let schedule_block (xs : insn array) : insn list =
   let done_ = Array.make n false in
   let out = ref [] and prev = ref None in
   for _ = 1 to n do
-    (*出せる命令(前に出すべき命令が全部出ている)を、元の順番で*)
+    (* 出せる命令(前に出すべき命令が全部出ている)を、元の順番で *)
     let ready = List.filter (fun k -> not done_.(k) && preds.(k) = 0) (List.init n Fun.id) in
     let pick =
       match List.find_opt (fun k -> not (stalls !prev xs.(k))) ready with
@@ -106,7 +109,7 @@ let schedule_block (xs : insn array) : insn list =
   done;
   List.rev !out
 
-(*アセンブリ全体を並べかえる*)
+(* アセンブリ全体を並べかえる *)
 let run (asm : string) : string =
   let out = ref [] in                              (* 出力する行(逆順) *)
   let pending = ref [] in                          (* 並べかえを待っている命令(逆順) *)
