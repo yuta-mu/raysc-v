@@ -1,9 +1,36 @@
-module top (
+module top #(
+    parameter bit    ENABLE_M            = 1'b1,
+    parameter bit    ENABLE_DIV          = 1'b1,
+    parameter bit    ENABLE_ZBB          = 1'b1,
+    parameter bit    ENABLE_CUSTOM0      = 1'b1,
+    parameter bit    ENABLE_QMUL         = 1'b1,
+    parameter bit    ENABLE_QSQRT        = 1'b1,
+    parameter bit    ENABLE_QRSQRT       = 1'b1,
+    parameter bit    ENABLE_QRCP         = 1'b1,
+    parameter bit    ENABLE_QRAND        = 1'b1,
+    parameter bit    ENABLE_SPHERE_ACCEL = 1'b1,
+    parameter bit    PIPE_MUL            = 1'b0,
+    parameter bit    MUL_STALL           = 1'b1,
+    parameter bit    QMUL_STALL          = 1'b1,
+    parameter int    CLK_DIV             = 16,
+    parameter        INIT_FILE           = "boot.hex",
+    parameter bit    ENABLE_VGA          = 1'b1,
+    parameter        VRAM_INIT_FILE      = ""
+)(
     input  logic       CLK100MHZ, // Arty A7 100MHz 水晶発振器 (Pin E3)
     input  logic       ck_rst,    // RESET ボタン (Pin C2, Active-Low)
     output logic       uart_tx,   // FTDI USB-UART TX ピン (Pin D10)
-    output logic [3:0] led        // ステータス確認用 LED (Pin H5, J5, T9, T10)
+    output logic [3:0] led,        // ステータス確認用 LED (Pin H5, J5, T9, T10)
+    
+    // Pmod VGA 出力ポート
+    output logic [3:0] vga_r, // 赤 4bit
+    output logic [3:0] vga_g, // 緑 4bit
+    output logic [3:0] vga_b, // 青 4bit
+    output logic vga_hsync, // 水平同期信号
+    output logic vga_vsync // 垂直同期信号
 );
+
+    localparam int CLK_FREQ_HZ = 800_000_000 / CLK_DIV;
 
     // 入力バッファ
     logic clk_100m_ibuf;
@@ -29,7 +56,7 @@ module top (
         .CLKFBOUT_MULT(8),        // 100MHz * 8 = 800MHz (VCO 動作範囲: 800-1600MHz)
         .CLKFBOUT_PHASE(0.0),
         .CLKIN1_PERIOD(10.0),     // 入力 100MHz (10.0ns)
-        .CLKOUT0_DIVIDE(16),      // 800MHz / 16 = 50MHz 出力
+        .CLKOUT0_DIVIDE(CLK_DIV), // 800MHz / CLK_DIV (既定 16 -> 50MHz 出力)
         .CLKOUT0_DUTY_CYCLE(0.5),
         .CLKOUT0_PHASE(0.0),
         .DIVCLK_DIVIDE(1),
@@ -88,13 +115,28 @@ module top (
     logic [63:0] instret;
     logic        retire;
 
-    cpu u_cpu (.*);
+    cpu #(
+        .ENABLE_M            (ENABLE_M),
+        .ENABLE_DIV          (ENABLE_DIV),
+        .ENABLE_ZBB          (ENABLE_ZBB),
+        .ENABLE_CUSTOM0      (ENABLE_CUSTOM0),
+        .ENABLE_QMUL         (ENABLE_QMUL),
+        .ENABLE_QSQRT        (ENABLE_QSQRT),
+        .ENABLE_QRSQRT       (ENABLE_QRSQRT),
+        .ENABLE_QRCP         (ENABLE_QRCP),
+        .ENABLE_QRAND        (ENABLE_QRAND),
+        .ENABLE_SPHERE_ACCEL (ENABLE_SPHERE_ACCEL),
+        .PIPE_MUL            (PIPE_MUL),
+        .MUL_STALL           (MUL_STALL),
+        .QMUL_STALL          (QMUL_STALL)
+    ) u_cpu (.*);
 
     logic [31:0] bram_rdata;
     wire is_bram = (mem_addr < MEM_BYTES);
 
     bram #(
-        .MEM_WORDS(65536)
+        .MEM_WORDS(65536),
+        .INIT_FILE(INIT_FILE)
     ) u_bram (
         .clk     (clk),
         .a_addr  (pc),
@@ -107,10 +149,44 @@ module top (
         .b_rdata (bram_rdata)
     );
 
+    // MMIO バス判定 & VGA VRAM 接続 (0x4000_0000 帯, 320x180 RGB888)
     wire is_uart = (mem_addr == UART_ADDR);
 
+    generate
+        if (ENABLE_VGA) begin : gen_vga
+            wire        is_vram    = (mem_addr[31:28] == 4'h4);
+            wire [15:0] vram_waddr = mem_addr[17:2]; // 0 .. 57599
+            wire        vram_we    = mem_write && is_vram && (vram_waddr < 16'd57600);
+            wire [23:0] vram_wdata = mem_wdata[23:0]; // [23:16]=R, [15:8]=G, [7:0]=B
+            logic       vga_clk_locked;
+
+            vga_display_v2 #(
+                .VRAM_INIT_FILE (VRAM_INIT_FILE)
+            ) u_vga_display (
+                .clk_100m_ibuf (clk_100m_ibuf),
+                .clk_cpu       (clk),
+                .rst_n         (rst_n),
+                .vram_we       (vram_we),
+                .vram_waddr    (vram_waddr),
+                .vram_wdata    (vram_wdata),
+                .clk_locked    (vga_clk_locked),
+                .vga_r         (vga_r),
+                .vga_g         (vga_g),
+                .vga_b         (vga_b),
+                .vga_hsync     (vga_hsync),
+                .vga_vsync     (vga_vsync)
+            );
+        end else begin : gen_no_vga
+            assign vga_r     = 4'h0;
+            assign vga_g     = 4'h0;
+            assign vga_b     = 4'h0;
+            assign vga_hsync = 1'b0;
+            assign vga_vsync = 1'b0;
+        end
+    endgenerate
+
     uart_tx_fifo #(
-        .CLK_FREQ   (50_000_000),
+        .CLK_FREQ   (CLK_FREQ_HZ),
         .BAUD_RATE  (115_200),
         .FIFO_DEPTH (512)
     ) u_uart (
@@ -126,7 +202,7 @@ module top (
     logic        mem_read_d;
     logic [31:0] mmio_rdata_d;
 
-    logic is_counter = (mem_addr[31:28] == 4'h2); // 0x2000_0000 空間
+    wire is_counter = (mem_addr[31:28] == 4'h2); // 0x2000_0000 空間
     logic [31:0] counter_rdata;
 
     always_comb begin

@@ -1,6 +1,9 @@
 `include "rv32i_types.svh"
 
-module control(
+module control #(
+    parameter bit ENABLE_M       = 1'b1,
+    parameter bit ENABLE_CUSTOM0 = 1'b1
+)(
     input  opcode_t      opcode,
     input  logic [6:0]   funct7,
     output logic         branch_en,
@@ -31,7 +34,7 @@ module control(
                 reg_write  = 1'b1;
                 alu_src_a  = 1'b0; // rs1
                 alu_src_b  = 1'b0; // rs2
-                if (funct7 == 7'b0000001) begin
+                if (ENABLE_M && (funct7 == 7'b0000001)) begin
                     result_src = RESULT_MDU;
                     alu_op     = ALU_OP_ADD;
                 end else begin
@@ -100,8 +103,10 @@ module control(
             end
 
             OP_CUSTOM0: begin
-                reg_write  = 1'b1;
-                result_src = RESULT_C0;
+                if (ENABLE_CUSTOM0) begin
+                    reg_write  = 1'b1;
+                    result_src = RESULT_C0;
+                end
             end
 
             default: ;

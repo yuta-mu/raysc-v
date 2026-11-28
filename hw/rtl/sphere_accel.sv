@@ -22,49 +22,285 @@ module sphere_accel #(
     // =========================================================================
     // 初期値定数テーブル (全64球)
     // =========================================================================
-    localparam logic signed [31:0] INIT_X_ROUND [0:63] = '{
-        32'sd0,       -32'sd262144,  32'sd262144, -32'sd372244,  32'sd449577, -32'sd517734,  32'sd405668, -32'sd532808,
-       -32'sd231997,   32'sd493486, -32'sd394527,  32'sd96993,  -32'sd28836,   32'sd513802,  32'sd521667, -32'sd469893,
-       -32'sd229376,  -32'sd323748,  32'sd374211, -32'sd494797, -32'sd308019,  32'sd216924,  32'sd463340,  32'sd70779,
-        32'sd532808,   32'sd332923, -32'sd125829, -32'sd513147,  32'sd287048, -32'sd66847,   32'sd549192,  32'sd403046,
-       -32'sd380109,  -32'sd11141,  -32'sd268698,  32'sd66191,   32'sd39977,  -32'sd93716,  -32'sd251003,  32'sd394527,
-        32'sd154665,   32'sd270664, -32'sd134349,  32'sd589824,  32'sd126484, -32'sd148111, -32'sd293601, -32'sd73400,
-        32'sd227410,  -32'sd135004, -32'sd351928,  32'sd430572,  32'sd585892,  32'sd338166,  32'sd472515, -32'sd445645,
-        32'sd62259,   -32'sd166461, -32'sd403702, -32'sd551813,  32'sd490209, -32'sd502661,  32'sd22938,  -32'sd475791
-    };
+    function automatic logic signed [31:0] init_x_round(input int idx);
+        case (idx)
+            0:  init_x_round = 32'sd0;
+            1:  init_x_round = -32'sd262144;
+            2:  init_x_round = 32'sd262144;
+            3:  init_x_round = -32'sd372244;
+            4:  init_x_round = 32'sd449577;
+            5:  init_x_round = -32'sd517734;
+            6:  init_x_round = 32'sd405668;
+            7:  init_x_round = -32'sd532808;
+            8:  init_x_round = -32'sd231997;
+            9:  init_x_round = 32'sd493486;
+            10: init_x_round = -32'sd394527;
+            11: init_x_round = 32'sd96993;
+            12: init_x_round = -32'sd28836;
+            13: init_x_round = 32'sd513802;
+            14: init_x_round = 32'sd521667;
+            15: init_x_round = -32'sd469893;
+            16: init_x_round = -32'sd229376;
+            17: init_x_round = -32'sd323748;
+            18: init_x_round = 32'sd374211;
+            19: init_x_round = -32'sd494797;
+            20: init_x_round = -32'sd308019;
+            21: init_x_round = 32'sd216924;
+            22: init_x_round = 32'sd463340;
+            23: init_x_round = 32'sd70779;
+            24: init_x_round = 32'sd532808;
+            25: init_x_round = 32'sd332923;
+            26: init_x_round = -32'sd125829;
+            27: init_x_round = -32'sd513147;
+            28: init_x_round = 32'sd287048;
+            29: init_x_round = -32'sd66847;
+            30: init_x_round = 32'sd549192;
+            31: init_x_round = 32'sd403046;
+            32: init_x_round = -32'sd380109;
+            33: init_x_round = -32'sd11141;
+            34: init_x_round = -32'sd268698;
+            35: init_x_round = 32'sd66191;
+            36: init_x_round = 32'sd39977;
+            37: init_x_round = -32'sd93716;
+            38: init_x_round = -32'sd251003;
+            39: init_x_round = 32'sd394527;
+            40: init_x_round = 32'sd154665;
+            41: init_x_round = 32'sd270664;
+            42: init_x_round = -32'sd134349;
+            43: init_x_round = 32'sd589824;
+            44: init_x_round = 32'sd126484;
+            45: init_x_round = -32'sd148111;
+            46: init_x_round = -32'sd293601;
+            47: init_x_round = -32'sd73400;
+            48: init_x_round = 32'sd227410;
+            49: init_x_round = -32'sd135004;
+            50: init_x_round = -32'sd351928;
+            51: init_x_round = 32'sd430572;
+            52: init_x_round = 32'sd585892;
+            53: init_x_round = 32'sd338166;
+            54: init_x_round = 32'sd472515;
+            55: init_x_round = -32'sd445645;
+            56: init_x_round = 32'sd62259;
+            57: init_x_round = -32'sd166461;
+            58: init_x_round = -32'sd403702;
+            59: init_x_round = -32'sd551813;
+            60: init_x_round = 32'sd490209;
+            61: init_x_round = -32'sd502661;
+            62: init_x_round = 32'sd22938;
+            63: init_x_round = -32'sd475791;
+            default: init_x_round = 32'sd0;
+        endcase
+    endfunction
 
-    localparam logic signed [31:0] INIT_X_TRUNC [0:63] = '{
-        32'sd0,       -32'sd262144,  32'sd262144, -32'sd372244,  32'sd449576, -32'sd517734,  32'sd405667, -32'sd532807,
-       -32'sd231997,   32'sd493486, -32'sd394526,  32'sd96993,  -32'sd28835,   32'sd513802,  32'sd521666, -32'sd469893,
-       -32'sd229376,  -32'sd323747,  32'sd374210, -32'sd494796, -32'sd308019,  32'sd216924,  32'sd463339,  32'sd70778,
-        32'sd532807,   32'sd332922, -32'sd125829, -32'sd513146,  32'sd287047, -32'sd66846,   32'sd549191,  32'sd403046,
-       -32'sd380108,  -32'sd11141,  -32'sd268697,  32'sd66191,   32'sd39976,  -32'sd93716,  -32'sd251002,  32'sd394526,
-        32'sd154664,   32'sd270663, -32'sd134348,  32'sd589824,  32'sd126484, -32'sd148111, -32'sd293601, -32'sd73400,
-        32'sd227409,  -32'sd135004, -32'sd351928,  32'sd430571,  32'sd585891,  32'sd338165,  32'sd472514, -32'sd445644,
-        32'sd62259,   -32'sd166461, -32'sd403701, -32'sd551813,  32'sd490209, -32'sd502661,  32'sd22937,  -32'sd475791
-    };
+    function automatic logic signed [31:0] init_x_trunc(input int idx);
+        case (idx)
+            0:  init_x_trunc = 32'sd0;
+            1:  init_x_trunc = -32'sd262144;
+            2:  init_x_trunc = 32'sd262144;
+            3:  init_x_trunc = -32'sd372244;
+            4:  init_x_trunc = 32'sd449576;
+            5:  init_x_trunc = -32'sd517734;
+            6:  init_x_trunc = 32'sd405667;
+            7:  init_x_trunc = -32'sd532807;
+            8:  init_x_trunc = -32'sd231997;
+            9:  init_x_trunc = 32'sd493486;
+            10: init_x_trunc = -32'sd394526;
+            11: init_x_trunc = 32'sd96993;
+            12: init_x_trunc = -32'sd28835;
+            13: init_x_trunc = 32'sd513802;
+            14: init_x_trunc = 32'sd521666;
+            15: init_x_trunc = -32'sd469893;
+            16: init_x_trunc = -32'sd229376;
+            17: init_x_trunc = -32'sd323747;
+            18: init_x_trunc = 32'sd374210;
+            19: init_x_trunc = -32'sd494796;
+            20: init_x_trunc = -32'sd308019;
+            21: init_x_trunc = 32'sd216924;
+            22: init_x_trunc = 32'sd463339;
+            23: init_x_trunc = 32'sd70778;
+            24: init_x_trunc = 32'sd532807;
+            25: init_x_trunc = 32'sd332922;
+            26: init_x_trunc = -32'sd125829;
+            27: init_x_trunc = -32'sd513146;
+            28: init_x_trunc = 32'sd287047;
+            29: init_x_trunc = -32'sd66846;
+            30: init_x_trunc = 32'sd549191;
+            31: init_x_trunc = 32'sd403046;
+            32: init_x_trunc = -32'sd380108;
+            33: init_x_trunc = -32'sd11141;
+            34: init_x_trunc = -32'sd268697;
+            35: init_x_trunc = 32'sd66191;
+            36: init_x_trunc = 32'sd39976;
+            37: init_x_trunc = -32'sd93716;
+            38: init_x_trunc = -32'sd251002;
+            39: init_x_trunc = 32'sd394526;
+            40: init_x_trunc = 32'sd154664;
+            41: init_x_trunc = 32'sd270663;
+            42: init_x_trunc = -32'sd134348;
+            43: init_x_trunc = 32'sd589824;
+            44: init_x_trunc = 32'sd126484;
+            45: init_x_trunc = -32'sd148111;
+            46: init_x_trunc = -32'sd293601;
+            47: init_x_trunc = -32'sd73400;
+            48: init_x_trunc = 32'sd227409;
+            49: init_x_trunc = -32'sd135004;
+            50: init_x_trunc = -32'sd351928;
+            51: init_x_trunc = 32'sd430571;
+            52: init_x_trunc = 32'sd585891;
+            53: init_x_trunc = 32'sd338165;
+            54: init_x_trunc = 32'sd472514;
+            55: init_x_trunc = -32'sd445644;
+            56: init_x_trunc = 32'sd62259;
+            57: init_x_trunc = -32'sd166461;
+            58: init_x_trunc = -32'sd403701;
+            59: init_x_trunc = -32'sd551813;
+            60: init_x_trunc = 32'sd490209;
+            61: init_x_trunc = -32'sd502661;
+            62: init_x_trunc = 32'sd22937;
+            63: init_x_trunc = -32'sd475791;
+            default: init_x_trunc = 32'sd0;
+        endcase
+    endfunction
 
-    localparam logic signed [31:0] INIT_Z_ROUND [0:63] = '{
-        32'sd0,        32'sd0,       32'sd0,      -32'sd243794,  32'sd220856, -32'sd32113,  -32'sd2621,   -32'sd137626,
-        32'sd112067,   32'sd115999,  32'sd43254,   32'sd101581,  32'sd140902, -32'sd19005,   32'sd74056,   32'sd146145,
-        32'sd201196,  -32'sd89784,   32'sd96993,   32'sd61604,   32'sd81920,  -32'sd67502,  -32'sd237240, -32'sd74056,
-       -32'sd199229,   32'sd39977,  -32'sd28180,   32'sd190710,  32'sd112722,  32'sd178258,  32'sd165151, -32'sd68157,
-        32'sd110100,  -32'sd98304,  -32'sd214303, -32'sd175636,  32'sd176292,  32'sd25559,  -32'sd129106,  32'sd246415,
-       -32'sd27525,   -32'sd139592,  32'sd230687, -32'sd221512,  32'sd201196, -32'sd173015,  32'sd234619,  32'sd109445,
-        32'sd191365,   32'sd178913, -32'sd145490,  32'sd125174,  32'sd47841,  -32'sd38666,   32'sd165151, -32'sd76677,
-       -32'sd226099,   32'sd0,      -32'sd22938,  -32'sd211026, -32'sd144835, -32'sd197263,  32'sd243139, -32'sd142868
-    };
+    function automatic logic signed [31:0] init_z_round(input int idx);
+        case (idx)
+            0:  init_z_round = 32'sd0;
+            1:  init_z_round = 32'sd0;
+            2:  init_z_round = 32'sd0;
+            3:  init_z_round = -32'sd243794;
+            4:  init_z_round = 32'sd220856;
+            5:  init_z_round = -32'sd32113;
+            6:  init_z_round = -32'sd2621;
+            7:  init_z_round = -32'sd137626;
+            8:  init_z_round = 32'sd112067;
+            9:  init_z_round = 32'sd115999;
+            10: init_z_round = 32'sd43254;
+            11: init_z_round = 32'sd101581;
+            12: init_z_round = 32'sd140902;
+            13: init_z_round = -32'sd19005;
+            14: init_z_round = 32'sd74056;
+            15: init_z_round = 32'sd146145;
+            16: init_z_round = 32'sd201196;
+            17: init_z_round = -32'sd89784;
+            18: init_z_round = 32'sd96993;
+            19: init_z_round = 32'sd61604;
+            20: init_z_round = 32'sd81920;
+            21: init_z_round = -32'sd67502;
+            22: init_z_round = -32'sd237240;
+            23: init_z_round = -32'sd74056;
+            24: init_z_round = -32'sd199229;
+            25: init_z_round = 32'sd39977;
+            26: init_z_round = -32'sd28180;
+            27: init_z_round = 32'sd190710;
+            28: init_z_round = 32'sd112722;
+            29: init_z_round = 32'sd178258;
+            30: init_z_round = 32'sd165151;
+            31: init_z_round = -32'sd68157;
+            32: init_z_round = 32'sd110100;
+            33: init_z_round = -32'sd98304;
+            34: init_z_round = -32'sd214303;
+            35: init_z_round = -32'sd175636;
+            36: init_z_round = 32'sd176292;
+            37: init_z_round = 32'sd25559;
+            38: init_z_round = -32'sd129106;
+            39: init_z_round = 32'sd246415;
+            40: init_z_round = -32'sd27525;
+            41: init_z_round = -32'sd139592;
+            42: init_z_round = 32'sd230687;
+            43: init_z_round = -32'sd221512;
+            44: init_z_round = 32'sd201196;
+            45: init_z_round = -32'sd173015;
+            46: init_z_round = 32'sd234619;
+            47: init_z_round = 32'sd109445;
+            48: init_z_round = 32'sd191365;
+            49: init_z_round = 32'sd178913;
+            50: init_z_round = -32'sd145490;
+            51: init_z_round = 32'sd125174;
+            52: init_z_round = 32'sd47841;
+            53: init_z_round = -32'sd38666;
+            54: init_z_round = 32'sd165151;
+            55: init_z_round = -32'sd76677;
+            56: init_z_round = -32'sd226099;
+            57: init_z_round = 32'sd0;
+            58: init_z_round = -32'sd22938;
+            59: init_z_round = -32'sd211026;
+            60: init_z_round = -32'sd144835;
+            61: init_z_round = -32'sd197263;
+            62: init_z_round = 32'sd243139;
+            63: init_z_round = -32'sd142868;
+            default: init_z_round = 32'sd0;
+        endcase
+    endfunction
 
-    localparam logic signed [31:0] INIT_Z_TRUNC [0:63] = '{
-        32'sd0,        32'sd0,       32'sd0,      -32'sd243793,  32'sd220856, -32'sd32112,  -32'sd2621,   -32'sd137625,
-        32'sd112066,   32'sd115998,  32'sd43253,   32'sd101580,  32'sd140902, -32'sd19005,   32'sd74055,   32'sd146145,
-        32'sd201195,  -32'sd89784,   32'sd96993,   32'sd61603,   32'sd81920,  -32'sd67502,  -32'sd237240, -32'sd74055,
-       -32'sd199229,   32'sd39976,  -32'sd28180,   32'sd190709,  32'sd112721,  32'sd178257,  32'sd165150, -32'sd68157,
-        32'sd110100,  -32'sd98304,  -32'sd214302, -32'sd175636,  32'sd176291,  32'sd25559,  -32'sd129105,  32'sd246415,
-       -32'sd27525,   -32'sd139591,  32'sd230686, -32'sd221511,  32'sd201195, -32'sd173015,  32'sd234618,  32'sd109445,
-        32'sd191365,   32'sd178913, -32'sd145489,  32'sd125173,  32'sd47841,  -32'sd38666,   32'sd165150, -32'sd76677,
-       -32'sd226099,   32'sd0,      -32'sd22937,  -32'sd211025, -32'sd144834, -32'sd197263,  32'sd243138, -32'sd142868
-    };
+    function automatic logic signed [31:0] init_z_trunc(input int idx);
+        case (idx)
+            0:  init_z_trunc = 32'sd0;
+            1:  init_z_trunc = 32'sd0;
+            2:  init_z_trunc = 32'sd0;
+            3:  init_z_trunc = -32'sd243793;
+            4:  init_z_trunc = 32'sd220856;
+            5:  init_z_trunc = -32'sd32112;
+            6:  init_z_trunc = -32'sd2621;
+            7:  init_z_trunc = -32'sd137625;
+            8:  init_z_trunc = 32'sd112066;
+            9:  init_z_trunc = 32'sd115998;
+            10: init_z_trunc = 32'sd43253;
+            11: init_z_trunc = 32'sd101580;
+            12: init_z_trunc = 32'sd140902;
+            13: init_z_trunc = -32'sd19005;
+            14: init_z_trunc = 32'sd74055;
+            15: init_z_trunc = 32'sd146145;
+            16: init_z_trunc = 32'sd201195;
+            17: init_z_trunc = -32'sd89784;
+            18: init_z_trunc = 32'sd96993;
+            19: init_z_trunc = 32'sd61603;
+            20: init_z_trunc = 32'sd81920;
+            21: init_z_trunc = -32'sd67502;
+            22: init_z_trunc = -32'sd237240;
+            23: init_z_trunc = -32'sd74055;
+            24: init_z_trunc = -32'sd199229;
+            25: init_z_trunc = 32'sd39976;
+            26: init_z_trunc = -32'sd28180;
+            27: init_z_trunc = 32'sd190709;
+            28: init_z_trunc = 32'sd112721;
+            29: init_z_trunc = 32'sd178257;
+            30: init_z_trunc = 32'sd165150;
+            31: init_z_trunc = -32'sd68157;
+            32: init_z_trunc = 32'sd110100;
+            33: init_z_trunc = -32'sd98304;
+            34: init_z_trunc = -32'sd214302;
+            35: init_z_trunc = -32'sd175636;
+            36: init_z_trunc = 32'sd176291;
+            37: init_z_trunc = 32'sd25559;
+            38: init_z_trunc = -32'sd129105;
+            39: init_z_trunc = 32'sd246415;
+            40: init_z_trunc = -32'sd27525;
+            41: init_z_trunc = -32'sd139591;
+            42: init_z_trunc = 32'sd230686;
+            43: init_z_trunc = -32'sd221511;
+            44: init_z_trunc = 32'sd201195;
+            45: init_z_trunc = -32'sd173015;
+            46: init_z_trunc = 32'sd234618;
+            47: init_z_trunc = 32'sd109445;
+            48: init_z_trunc = 32'sd191365;
+            49: init_z_trunc = 32'sd178913;
+            50: init_z_trunc = -32'sd145489;
+            51: init_z_trunc = 32'sd125173;
+            52: init_z_trunc = 32'sd47841;
+            53: init_z_trunc = -32'sd38666;
+            54: init_z_trunc = 32'sd165150;
+            55: init_z_trunc = -32'sd76677;
+            56: init_z_trunc = -32'sd226099;
+            57: init_z_trunc = 32'sd0;
+            58: init_z_trunc = -32'sd22937;
+            59: init_z_trunc = -32'sd211025;
+            60: init_z_trunc = -32'sd144834;
+            61: init_z_trunc = -32'sd197263;
+            62: init_z_trunc = 32'sd243138;
+            63: init_z_trunc = -32'sd142868;
+            default: init_z_trunc = 32'sd0;
+        endcase
+    endfunction
 
     localparam logic [0:63] INIT_DIEL = 64'b1001_0010_0001_1001_0000_0010_0000_0000_0000_0010_0000_0000_0001_0000_0000_0100;
 
@@ -76,12 +312,13 @@ module sphere_accel #(
     logic               sph_diel[0:NUM_LANES-1][0:NUM_BATCH-1];
 
     initial begin
+        int ln, bt;
         for (int i = 0; i < 64; i++) begin
-            automatic int ln = i % 4;
-            automatic int bt = i / 4;
-            sph_x[ln][bt]    = USE_ROUND ? INIT_X_ROUND[i] : INIT_X_TRUNC[i];
+            ln = i % 4;
+            bt = i / 4;
+            sph_x[ln][bt]    = USE_ROUND ? init_x_round(i) : init_x_trunc(i);
             sph_y[ln][bt]    = (i < 3) ? 32'sd65536 : 32'sd13107;
-            sph_z[ln][bt]    = USE_ROUND ? INIT_Z_ROUND[i] : INIT_Z_TRUNC[i];
+            sph_z[ln][bt]    = USE_ROUND ? init_z_round(i) : init_z_trunc(i);
             sph_r[ln][bt]    = (i < 3) ? 32'sd65536 : 32'sd13107;
             sph_r2[ln][bt]   = (i < 3) ? 32'sd65536 : 32'sd2621;
             sph_diel[ln][bt] = INIT_DIEL[i];
@@ -241,40 +478,56 @@ module sphere_accel #(
     end
 
     // Stage G5..G16 (12段): 地面用 24bit Restoring Square Root
-    logic               gsq_valid [0:12];
-    logic               gsq_rej   [0:12];
-    logic signed [31:0] gsq_neg_b [0:12];
-    logic [47:0]        gsq_rad   [0:12];
-    logic [27:0]        gsq_rem   [0:12];
-    logic [23:0]        gsq_q     [0:12];
-
-    assign gsq_valid[0] = g4_valid;
-    assign gsq_rej[0]   = g4_rej;
-    assign gsq_neg_b[0] = g4_neg_bs;
-    assign gsq_rad[0]   = g4_rad;
-    assign gsq_rem[0]   = 28'd0;
-    assign gsq_q[0]     = 24'd0;
+    logic               gsq_valid [1:12];
+    logic               gsq_rej   [1:12];
+    logic signed [31:0] gsq_neg_b [1:12];
+    logic [47:0]        gsq_rad   [1:12];
+    logic [27:0]        gsq_rem   [1:12];
+    logic [23:0]        gsq_q     [1:12];
 
     genvar gst;
     generate
         for (gst = 0; gst < 12; gst++) begin : gen_gnd_sqrt
+            logic               in_valid;
+            logic               in_rej;
+            logic signed [31:0] in_neg_b;
+            logic [47:0]        in_rad;
+            logic [27:0]        in_rem;
+            logic [23:0]        in_q;
+
+            if (gst == 0) begin : gen_in0
+                assign in_valid = g4_valid;
+                assign in_rej   = g4_rej;
+                assign in_neg_b = g4_neg_bs;
+                assign in_rad   = g4_rad;
+                assign in_rem   = 28'd0;
+                assign in_q     = 24'd0;
+            end else begin : gen_inN
+                assign in_valid = gsq_valid[gst];
+                assign in_rej   = gsq_rej[gst];
+                assign in_neg_b = gsq_neg_b[gst];
+                assign in_rad   = gsq_rad[gst];
+                assign in_rem   = gsq_rem[gst];
+                assign in_q     = gsq_q[gst];
+            end
+
             logic [27:0] rem1, test1, rem1_next;
             logic [23:0] q1;
             logic [27:0] rem2, test2, rem2_next;
             logic [23:0] q2;
 
             always_comb begin
-                rem1  = {gsq_rem[gst][25:0], gsq_rad[gst][47:46]};
-                test1 = {2'b00, gsq_q[gst], 2'b01};
+                rem1  = {in_rem[25:0], in_rad[47:46]};
+                test1 = {2'b00, in_q, 2'b01};
                 if (rem1 >= test1) begin
                     rem1_next = rem1 - test1;
-                    q1        = {gsq_q[gst][22:0], 1'b1};
+                    q1        = {in_q[22:0], 1'b1};
                 end else begin
                     rem1_next = rem1;
-                    q1        = {gsq_q[gst][22:0], 1'b0};
+                    q1        = {in_q[22:0], 1'b0};
                 end
 
-                rem2  = {rem1_next[25:0], gsq_rad[gst][45:44]};
+                rem2  = {rem1_next[25:0], in_rad[45:44]};
                 test2 = {2'b00, q1, 2'b01};
                 if (rem2 >= test2) begin
                     rem2_next = rem2 - test2;
@@ -287,12 +540,12 @@ module sphere_accel #(
 
             always_ff @(posedge clk or negedge rst_n) begin
                 if (!rst_n) gsq_valid[gst+1] <= 1'b0;
-                else        gsq_valid[gst+1] <= gsq_valid[gst];
+                else        gsq_valid[gst+1] <= in_valid;
             end
             always_ff @(posedge clk) begin
-                gsq_rej[gst+1]   <= gsq_rej[gst];
-                gsq_neg_b[gst+1] <= gsq_neg_b[gst];
-                gsq_rad[gst+1]   <= {gsq_rad[gst][43:0], 4'd0};
+                gsq_rej[gst+1]   <= in_rej;
+                gsq_neg_b[gst+1] <= in_neg_b;
+                gsq_rad[gst+1]   <= {in_rad[43:0], 4'd0};
                 gsq_rem[gst+1]   <= rem2_next;
                 gsq_q[gst+1]     <= q2;
             end
@@ -522,47 +775,71 @@ module sphere_accel #(
             end
 
             // --- Stage 7..18: 24bit Restoring Square Root (12段) ---
-            logic               sq_valid [0:12];
-            logic               sq_last  [0:12];
-            logic [5:0]         sq_idx   [0:12];
-            logic               sq_diel  [0:12];
-            logic signed [31:0] sq_neg_b [0:12];
-            logic signed [31:0] sq_min_t [0:12];
-            logic               sq_reject[0:12];
-            logic [47:0]        sq_rad   [0:12];
-            logic [27:0]        sq_rem   [0:12];
-            logic [23:0]        sq_q     [0:12];
-
-            assign sq_valid[0]  = s6_valid;
-            assign sq_last[0]   = s6_last;
-            assign sq_idx[0]    = s6_idx;
-            assign sq_diel[0]   = s6_diel;
-            assign sq_neg_b[0]  = s6_neg_b;
-            assign sq_min_t[0]  = s6_min_t;
-            assign sq_reject[0] = s6_reject;
-            assign sq_rad[0]    = s6_rad;
-            assign sq_rem[0]    = 28'd0;
-            assign sq_q[0]      = 24'd0;
+            logic               sq_valid [1:12];
+            logic               sq_last  [1:12];
+            logic [5:0]         sq_idx   [1:12];
+            logic               sq_diel  [1:12];
+            logic signed [31:0] sq_neg_b [1:12];
+            logic signed [31:0] sq_min_t [1:12];
+            logic               sq_reject[1:12];
+            logic [47:0]        sq_rad   [1:12];
+            logic [27:0]        sq_rem   [1:12];
+            logic [23:0]        sq_q     [1:12];
 
             genvar st;
             for (st = 0; st < 12; st++) begin : gen_sqrt
+                logic               in_valid;
+                logic               in_last;
+                logic [5:0]         in_idx;
+                logic               in_diel;
+                logic signed [31:0] in_neg_b;
+                logic signed [31:0] in_min_t;
+                logic               in_reject;
+                logic [47:0]        in_rad;
+                logic [27:0]        in_rem;
+                logic [23:0]        in_q;
+
+                if (st == 0) begin : gen_sq_in0
+                    assign in_valid  = s6_valid;
+                    assign in_last   = s6_last;
+                    assign in_idx    = s6_idx;
+                    assign in_diel   = s6_diel;
+                    assign in_neg_b  = s6_neg_b;
+                    assign in_min_t  = s6_min_t;
+                    assign in_reject = s6_reject;
+                    assign in_rad    = s6_rad;
+                    assign in_rem    = 28'd0;
+                    assign in_q      = 24'd0;
+                end else begin : gen_sq_inN
+                    assign in_valid  = sq_valid[st];
+                    assign in_last   = sq_last[st];
+                    assign in_idx    = sq_idx[st];
+                    assign in_diel   = sq_diel[st];
+                    assign in_neg_b  = sq_neg_b[st];
+                    assign in_min_t  = sq_min_t[st];
+                    assign in_reject = sq_reject[st];
+                    assign in_rad    = sq_rad[st];
+                    assign in_rem    = sq_rem[st];
+                    assign in_q      = sq_q[st];
+                end
+
                 logic [27:0] rem1, test1, rem1_next;
                 logic [23:0] q1;
                 logic [27:0] rem2, test2, rem2_next;
                 logic [23:0] q2;
 
                 always_comb begin
-                    rem1  = {sq_rem[st][25:0], sq_rad[st][47:46]};
-                    test1 = {2'b00, sq_q[st], 2'b01};
+                    rem1  = {in_rem[25:0], in_rad[47:46]};
+                    test1 = {2'b00, in_q, 2'b01};
                     if (rem1 >= test1) begin
                         rem1_next = rem1 - test1;
-                        q1        = {sq_q[st][22:0], 1'b1};
+                        q1        = {in_q[22:0], 1'b1};
                     end else begin
                         rem1_next = rem1;
-                        q1        = {sq_q[st][22:0], 1'b0};
+                        q1        = {in_q[22:0], 1'b0};
                     end
 
-                    rem2  = {rem1_next[25:0], sq_rad[st][45:44]};
+                    rem2  = {rem1_next[25:0], in_rad[45:44]};
                     test2 = {2'b00, q1, 2'b01};
                     if (rem2 >= test2) begin
                         rem2_next = rem2 - test2;
@@ -575,15 +852,15 @@ module sphere_accel #(
 
                 always_ff @(posedge clk or negedge rst_n) begin
                     if (!rst_n) begin sq_valid[st+1] <= 1'b0; sq_last[st+1] <= 1'b0; end
-                    else        begin sq_valid[st+1] <= sq_valid[st]; sq_last[st+1] <= sq_last[st]; end
+                    else        begin sq_valid[st+1] <= in_valid; sq_last[st+1] <= in_last; end
                 end
                 always_ff @(posedge clk) begin
-                    sq_idx[st+1]    <= sq_idx[st];
-                    sq_diel[st+1]   <= sq_diel[st];
-                    sq_neg_b[st+1]  <= sq_neg_b[st];
-                    sq_min_t[st+1]  <= sq_min_t[st];
-                    sq_reject[st+1] <= sq_reject[st];
-                    sq_rad[st+1]    <= {sq_rad[st][43:0], 4'd0};
+                    sq_idx[st+1]    <= in_idx;
+                    sq_diel[st+1]   <= in_diel;
+                    sq_neg_b[st+1]  <= in_neg_b;
+                    sq_min_t[st+1]  <= in_min_t;
+                    sq_reject[st+1] <= in_reject;
+                    sq_rad[st+1]    <= {in_rad[43:0], 4'd0};
                     sq_rem[st+1]    <= rem2_next;
                     sq_q[st+1]      <= q2;
                 end
